@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stock Transfer Hub</title>
+<!-- ====================================================================
+     EDIT THESE TWO LINES with the values from Supabase → Project Settings → API
+     (Project URL, and the "anon public" key). Then save & redeploy.
+     ==================================================================== -->
+<script>
+  window.SUPABASE_URL = "https://rnpyqaokbvwktyyjarkp.supabase.co";
+  window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJucHlxYW9rYnZ3a3R5eWphcmtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3OTQ2NzEsImV4cCI6MjEwNTM3MDY3MX0.SE_S5_PLTmNl4SGixoIVz5pXqge_heUJ_h7CJZIzuqc";
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#eef1f4;--surface:#ffffff;--surface-2:#f6f8fa;--ink:#141b22;--muted:#5b6b7a;--faint:#8a99a7;
+    --border:#dde3ea;--border-strong:#c7d0da;--accent:#127a72;--accent-soft:#d7ece9;--accent-ink:#0c534d;
+    --good:#157f3c;--good-soft:#dcf2e3;--warn:#a45a00;--warn-soft:#fbecd6;--crit:#b4231d;--crit-soft:#fadedb;
+    --transit:#5b3bc4;--transit-soft:#e7e0fb;
+    --shadow:0 1px 2px rgba(20,27,34,.06),0 4px 16px rgba(20,27,34,.05);--shadow-lg:0 8px 40px rgba(20,27,34,.18);
+    --r:12px;--sans:"Public Sans",system-ui,-apple-system,Segoe UI,sans-serif;--disp:"Manrope",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0d1218;--surface:#151d26;--surface-2:#1b2530;--ink:#e7eef4;--muted:#9db0bf;--faint:#6d7f8d;
+    --border:#25303b;--border-strong:#324150;--accent:#33b3a8;--accent-soft:#123832;--accent-ink:#8fe0d7;
+    --good:#43c46f;--good-soft:#123020;--warn:#e39b3c;--warn-soft:#31240f;--crit:#f0645d;--crit-soft:#3a1512;
+    --transit:#9b83ef;--transit-soft:#231a45;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);--shadow-lg:0 10px 46px rgba(0,0,0,.6);}}
+  :root[data-theme="dark"]{
+    --bg:#0d1218;--surface:#151d26;--surface-2:#1b2530;--ink:#e7eef4;--muted:#9db0bf;--faint:#6d7f8d;
+    --border:#25303b;--border-strong:#324150;--accent:#33b3a8;--accent-soft:#123832;--accent-ink:#8fe0d7;
+    --good:#43c46f;--good-soft:#123020;--warn:#e39b3c;--warn-soft:#31240f;--crit:#f0645d;--crit-soft:#3a1512;
+    --transit:#9b83ef;--transit-soft:#231a45;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);--shadow-lg:0 10px 46px rgba(0,0,0,.6);}
+  *{box-sizing:border-box}html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:var(--disp);margin:0;text-wrap:balance;letter-spacing:-.01em}
+  button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textarea{font-family:inherit;font-size:14px}
+  .mono{font-family:var(--mono)}.tnum{font-variant-numeric:tabular-nums}
+  .app{display:grid;grid-template-columns:248px 1fr;height:100%}
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+  .brand-mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,var(--accent),#0c534d);display:grid;place-items:center;color:#fff;font-family:var(--disp);font-weight:800;font-size:17px;flex:none}
+  .brand-name{font-family:var(--disp);font-weight:800;font-size:15.5px;line-height:1.1}
+  .brand-sub{font-size:11px;color:var(--faint)}
+  .nav{padding:6px 10px;overflow-y:auto;flex:1;min-height:0}
+  .nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:600;padding:14px 10px 6px}
+  .nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;color:var(--muted);padding:9px 11px;border-radius:9px;font-weight:500}
+  .nav-item:hover{background:var(--surface-2);color:var(--ink)}
+  .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+  .nav-item svg{width:18px;height:18px;flex:none}
+  .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
+  .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
+  .sq-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}.dot.ok{background:var(--good)}.dot.off{background:var(--faint)}
+  .sq-title{font-family:var(--disp);font-weight:700;font-size:12px;display:flex;align-items:center;gap:7px;margin-bottom:6px;color:var(--ink)}
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
+  .topbar h1{font-size:19px}.topbar .sub{font-size:12.5px;color:var(--faint);margin-top:1px}.spacer{flex:1}
+  .hamburger{display:none;background:none;border:1px solid var(--border);border-radius:9px;padding:7px;color:var(--ink)}
+  .content{padding:22px;overflow-y:auto;flex:1;min-height:0}.content-inner{max-width:1120px;margin:0 auto}
+  .rolechip{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}
+  .userchip{display:flex;align-items:center;gap:9px}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-family:var(--disp);font-size:13px}
+  .theme-btn,.signout{background:none;border:1px solid var(--border);border-radius:9px;padding:7px;color:var(--muted);display:grid;place-items:center}
+  .theme-btn:hover,.signout:hover{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:9px;font-weight:600;font-size:13px;transition:.12s}
+  .btn:hover{background:var(--surface-2)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{filter:brightness(1.06)}
+  .btn.sm{padding:5px 10px;font-size:12px}.btn:disabled{opacity:.45;cursor:not-allowed}.btn svg{width:16px;height:16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}.pad{padding:16px 18px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:15px 16px;box-shadow:var(--shadow)}
+  .tile .lbl{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:7px}
+  .tile .val{font-family:var(--disp);font-weight:800;font-size:27px;margin-top:8px;letter-spacing:-.02em}
+  .tile .meta{font-size:12px;color:var(--faint);margin-top:3px}
+  .tile.accent{border-left:3px solid var(--accent)}.tile.transit{border-left:3px solid var(--transit)}.tile.crit{border-left:3px solid var(--crit)}
+  .section-head{display:flex;align-items:center;gap:12px;margin:24px 0 12px}.section-head h2{font-size:16px}
+  .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:560px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap}
+  td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}tr:last-child td{border-bottom:0}
+  tbody tr.clickable{cursor:pointer}tbody tr.clickable:hover{background:var(--surface-2)}th.num,td.num{text-align:right}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+  .p-draft{background:var(--surface-2);color:var(--muted)}.p-req{background:var(--warn-soft);color:var(--warn)}.p-appr{background:var(--accent-soft);color:var(--accent-ink)}
+  .p-transit{background:var(--transit-soft);color:var(--transit)}.p-partial{background:var(--warn-soft);color:var(--warn)}.p-done{background:var(--good-soft);color:var(--good)}.p-cancel{background:var(--crit-soft);color:var(--crit)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;background:var(--surface-2);border:1px solid var(--border);font-size:11.5px;color:var(--muted);font-weight:600}
+  .empty{text-align:center;padding:46px 20px;color:var(--faint)}.empty svg{width:38px;height:38px;opacity:.5;margin-bottom:10px}
+  .field{margin-bottom:14px}.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  .field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink)}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.hint{font-size:11.5px;color:var(--faint);margin-top:5px}
+  .scrim{position:fixed;inset:0;background:rgba(10,15,20,.5);backdrop-filter:blur(2px);z-index:50;display:flex;justify-content:flex-end;opacity:0;transition:opacity .18s}
+  .scrim.show{opacity:1}.scrim.center{align-items:center;justify-content:center;padding:16px}
+  .panel{background:var(--surface);width:min(560px,100%);height:100%;overflow-y:auto;box-shadow:var(--shadow-lg);transform:translateX(20px);transition:transform .2s;display:flex;flex-direction:column}
+  .scrim.show .panel{transform:none}
+  .modal{background:var(--surface);border-radius:var(--r);width:min(680px,100%);max-height:92vh;overflow-y:auto;box-shadow:var(--shadow-lg);transform:scale(.98);transition:transform .18s}
+  .scrim.show .modal{transform:none}
+  .panel-head{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);padding:16px 20px;display:flex;align-items:flex-start;gap:12px;z-index:2}
+  .panel-head h2{font-size:17px}.panel-head .sub{font-size:12.5px;color:var(--faint);margin-top:2px}
+  .panel-body{padding:18px 20px;flex:1}.panel-foot{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:14px 20px;display:flex;gap:10px;justify-content:flex-end}
+  .x{margin-left:auto;background:none;border:0;color:var(--muted);border-radius:8px;padding:5px;display:grid;place-items:center}.x:hover{background:var(--surface-2);color:var(--ink)}.x svg{width:20px;height:20px}
+  .linerow{display:grid;grid-template-columns:1fr 84px 34px;gap:9px;align-items:center;margin-bottom:9px}
+  .linerow .rm{background:none;border:1px solid var(--border);border-radius:8px;color:var(--crit);padding:8px;display:grid;place-items:center}
+  .recv-row{display:grid;grid-template-columns:1fr 74px 74px 74px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+  .recv-row .cap{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+  .steps{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+  .step{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--faint);font-weight:600}
+  .step .n{width:18px;height:18px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;font-size:10px}
+  .step.done .n{background:var(--good);border-color:var(--good);color:#fff}.step.cur .n{background:var(--accent);border-color:var(--accent);color:#fff}.step.cur{color:var(--ink)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px}.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-weight:600}
+  .banner{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;border-radius:10px;font-size:12.5px;margin-bottom:14px}
+  .banner svg{width:17px;height:17px;flex:none;margin-top:1px}
+  .banner.info{background:var(--accent-soft);color:var(--accent-ink)}.banner.warn{background:var(--warn-soft);color:var(--warn)}.banner.crit{background:var(--crit-soft);color:var(--crit)}.banner.transit{background:var(--transit-soft);color:var(--transit)}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .search{position:relative;flex:1;min-width:180px;max-width:340px}
+  .search input{width:100%;padding:9px 11px 9px 34px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink)}
+  .search svg{position:absolute;left:10px;top:9px;width:16px;height:16px;color:var(--faint)}
+  select.filter{padding:9px 11px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink);font-weight:500}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(14px);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:10px;font-weight:600;font-size:13px;box-shadow:var(--shadow-lg);z-index:80;opacity:0;transition:.22s;pointer-events:none;display:flex;align-items:center;gap:9px}
+  .toast.show{opacity:1;transform:translateX(-50%)}.toast svg{width:17px;height:17px}
+  .lock{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--faint);background:var(--surface-2);border:1px dashed var(--border-strong);padding:7px 11px;border-radius:9px}.lock svg{width:14px;height:14px}
+  .mobile-tabs{display:none}
+  /* login */
+  .login{position:fixed;inset:0;display:grid;place-items:center;padding:20px;background:var(--bg)}
+  .login .box{width:min(400px,100%);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-lg);padding:30px}
+  .login h2{font-size:22px;margin-bottom:6px}.login p{color:var(--muted);font-size:13.5px;margin:0 0 18px}
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .sidebar{position:fixed;inset:0 auto 0 0;width:270px;z-index:60;transform:translateX(-100%);transition:transform .2s;box-shadow:var(--shadow-lg)}
+    .sidebar.open{transform:none}.sidebar-scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:55;display:none}.sidebar-scrim.show{display:block}
+    .hamburger{display:grid;place-items:center}.tiles{grid-template-columns:1fr 1fr}.content{padding:16px}.topbar{padding:11px 16px}.grid2{grid-template-columns:1fr}
+    .rolechip .rc-full{display:none}
+    .mobile-tabs{display:flex;position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));z-index:20}
+    .mtab{flex:1;background:none;border:0;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:10.5px;font-weight:600;border-radius:8px;position:relative}
+    .mtab svg{width:20px;height:20px}.mtab.active{color:var(--accent)}
+    .mtab .badge-count{position:absolute;top:2px;right:22%;background:var(--crit);color:#fff;border-radius:20px;font-size:9px;font-weight:700;padding:0 5px}
+  }
+  @media (max-width:440px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tile .val{font-size:22px}.topbar h1{font-size:16px}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- login screen -->
+<div class="login" id="login" hidden>
+  <div class="box">
+    <div class="brand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Stock Transfer Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
+    <h2>Sign in</h2>
+    <p id="loginMsg">Enter your work email and we’ll send you a one-time sign-in link.</p>
+    <div class="field"><label for="email">Work email</label><input id="email" type="email" placeholder="you@au.baps.org" autocomplete="email"></div>
+    <button class="btn primary" id="sendLink" style="width:100%;justify-content:center">Email me a sign-in link</button>
+    <div id="cfgWarn" hidden style="margin-top:16px" class="banner crit"></div>
+  </div>
+</div>
+
+<!-- app -->
+<div class="app" id="app" hidden>
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">S</div><div><div class="brand-name">Stock Transfer Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sq-status" id="sqStatus"></div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="hamburger" id="hamburger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub"></div></div>
+      <div class="spacer"></div>
+      <button class="theme-btn" id="themeBtn" aria-label="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"/><circle cx="12" cy="12" r="3.5"/></svg></button>
+      <div class="rolechip" id="roleChip"></div>
+      <button class="signout" id="signout" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
+      <div class="userchip"><div class="avatar" id="avatar">·</div></div>
+    </header>
+    <div class="content"><div class="content-inner" id="view"></div></div>
+    <nav class="mobile-tabs" id="mtabs"></nav>
+  </div>
+</div>
+
+<div id="overlay"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   Stock Transfer Hub — production app (Supabase-connected)
+   Reads live data; every stock/cost action calls a server-side
+   database function (RPC) so the maths is safe and enforced.
+   ============================================================ */
+let sb = null;
+function initClient(){
+  if(!window.SUPABASE_URL || window.SUPABASE_URL.includes("YOUR-PROJECT") || !window.SUPABASE_ANON_KEY || window.SUPABASE_ANON_KEY.includes("YOUR-")){
+    return false;
+  }
+  sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  return true;
+}
+
+/* icons */
+const I={dash:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>',transfer:'<path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 20l-4-4 4-4"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',catalog:'<path d="M4 5h16v14H4zM4 9h16M9 5v14"/>',location:'<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.8M22 20a6 6 0 0 0-4-5.6"/>',audit:'<path d="M5 3h9l5 5v13H5zM14 3v5h5M8 13h8M8 17h6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',check:'<path d="M20 6 9 17l-5-5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',alert:'<path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',truck:'<path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>',box:'<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16M3 12A9 9 0 0 1 18.5 5.7L21 8"/><path d="M21 4v4h-4M3 20v-4h4"/>',arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.3c0-1 1.1-1.8 2.5-1.8s2.5.8 2.5 1.8-1.1 1.6-2.5 1.9-2.5.9-2.5 1.9 1.1 1.8 2.5 1.8 2.5-.8 2.5-1.8"/>',order:'<path d="M3 4h2l2.2 11a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.8L20 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/>',stocktake:'<path d="M9 3.5h6V6H9zM8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',supplier:'<path d="M3 7h12v9H3zM15 10h3.5l2.5 3v3H15z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>'};
+const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="${w}" height="${w}">${p}</svg>`;
+const money=n=>'$'+(Number(n)||0).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
+const money0=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-AU');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const today=()=>new Date().toISOString().slice(0,10);
+const fmtDate=d=>d?new Date(d).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'—';
+const fmtDT=ts=>ts?new Date(ts).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+
+/* RBAC */
+const ROLES={
+  user:{name:'User',scoped:true,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do']},
+  admin:{name:'Admin',scoped:true,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.approve','transfer.dispatch','transfer.cancel','audit.view','supplier.manage']},
+  national_admin:{name:'National Admin',scoped:false,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.approve','transfer.dispatch','transfer.cancel','audit.view','supplier.manage','catalog.edit','location.manage','sync.run']},
+  super_admin:{name:'Super Admin',scoped:false,can:['*']},
+};
+let ME=null, ROLE='user', HOME=null;
+const roleDef=()=>ROLES[ROLE]||ROLES.user;
+const can=a=>{const r=roleDef();return r.can.includes('*')||r.can.includes(a);};
+const scoped=()=>roleDef().scoped;
+const visLocs=()=>scoped()?[HOME]:S.locations.map(l=>l.id);
+const canSee=t=>!scoped()||t.from_location===HOME||t.to_location===HOME;
+const canApproveT=t=>can('transfer.approve')&&(!scoped()||t.from_location===HOME);
+const canDispatchT=t=>can('transfer.dispatch')&&(!scoped()||t.from_location===HOME);
+const canReceiveT=t=>can('transfer.receive')&&(!scoped()||t.to_location===HOME);
+
+/* state */
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[]};
+const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
+const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
+const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
+const onHand=(l,i)=>S.stock[l+'__'+i]||0;
+const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.email):'—';};
+function reservedAt(l,it){return S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);}
+const availAt=(l,it)=>onHand(l,it)-reservedAt(l,it);
+function invValueFor(locs){let v=0;for(const k in S.stock){const[l,i]=k.split('__');if(locs.includes(l))v+=S.stock[k]*item(i).unit_cost;}return v;}
+const trValue=t=>(t.lines||[]).reduce((s,l)=>s+l.qty_requested*item(l.item_id).unit_cost,0);
+const trTransit=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received)*item(l.item_id).unit_cost,0);
+const trShortU=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received),0);
+const trShortV=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received)*item(l.item_id).unit_cost,0);
+
+const STATUS={requested:{label:'Requested',cls:'p-req'},approved:{label:'Approved',cls:'p-appr'},in_transit:{label:'In Transit',cls:'p-transit'},partially_received:{label:'Partially Received',cls:'p-partial'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
+const sPill=s=>`<span class="pill ${(STATUS[s]||STATUS.requested).cls}">${(STATUS[s]||{label:s}).label}</span>`;
+const OSTATUS={draft:{label:'Draft',cls:'p-draft'},placed:{label:'Placed',cls:'p-req'},shipped:{label:'Shipped',cls:'p-transit'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
+const oPill=s=>`<span class="pill ${(OSTATUS[s]||OSTATUS.placed).cls}">${(OSTATUS[s]||{label:s}).label}</span>`;
+function daysUntil(d){if(!d)return null;return Math.round((new Date(d+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);}
+function etaText(d){const n=daysUntil(d);if(n===null)return'—';if(n<0)return'overdue '+(-n)+'d';if(n===0)return'due today';return'in '+n+'d';}
+const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
+
+/* ---------- data loading ---------- */
+async function loadAll(){
+  const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
+  try{
+    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit]=await Promise.all([
+      q(sb.from('locations').select('*').order('code')),
+      q(sb.from('items').select('*').order('name')),
+      q(sb.from('stock').select('*')),
+      q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
+      q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
+      q(sb.from('suppliers').select('*').order('name')),
+      q(sb.from('purchase_orders').select('*, lines:purchase_order_lines(*)').order('created_at',{ascending:false})),
+      q(sb.from('stocktakes').select('*, lines:stocktake_lines(*)').order('started_at',{ascending:false})),
+      q(sb.from('profiles').select('*')),
+      q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
+    ]);
+    S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
+    S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
+    S.stock={}; stockRows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
+    return true;
+  }catch(e){ toast('Could not load data: '+(e.message||e),true); console.error(e); return false; }
+}
+async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView(); }
+
+/* ---------- auth ---------- */
+async function boot(){
+  if(!initClient()){ showLogin('Configuration needed: open index.html and set your Supabase URL and anon key at the top, then redeploy.'); return; }
+  const{data:{session}}=await sb.auth.getSession();
+  if(session) return startApp();
+  showLogin();
+  sb.auth.onAuthStateChange((_e,s)=>{ if(s) startApp(); });
+}
+function showLogin(msg){
+  document.getElementById('app').hidden=true;
+  const l=document.getElementById('login'); l.hidden=false;
+  if(msg){ const w=document.getElementById('cfgWarn'); w.hidden=false; w.innerHTML=svg(I.alert,17)+'<div>'+esc(msg)+'</div>'; }
+}
+async function startApp(){
+  // load my profile → role + home centre
+  const{data:{user}}=await sb.auth.getUser();
+  ME=user;
+  let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+  if(!prof){ prof={id:user.id,email:user.email,full_name:user.email,role:'user',home_centre:null}; }
+  ROLE=prof.role||'user'; HOME=prof.home_centre;
+  document.getElementById('login').hidden=true;
+  document.getElementById('app').hidden=false;
+  document.getElementById('avatar').textContent=(prof.full_name||prof.email||'?').split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+  await loadAll();
+  // if scoped but no home centre set, warn
+  renderRoleChip(prof); renderNav(); renderSq(); renderView();
+  if(scoped()&&!HOME){ toast('No home centre set on your profile yet — ask a Super Admin.',true); }
+}
+function renderRoleChip(prof){
+  const c=document.getElementById('roleChip');
+  c.innerHTML=`<span class="rc-full">${esc((prof.full_name||prof.email).split(' ')[0])} ·</span> ${roleDef().name}${scoped()&&HOME?` · ${loc(HOME).code}`:''}`;
+}
+
+/* ---------- nav ---------- */
+const NAV=[
+  {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
+  {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
+  {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
+  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||s.location_id===HOME)&&s.status==='open').length},
+  {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
+  {id:'catalog',label:'Catalog',icon:I.catalog,group:'Operations'},
+  {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
+  {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
+  {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
+  {id:'audit',label:'Audit Log',icon:I.audit,group:'Admin',need:'audit.view'},
+  {id:'settings',label:'Square Sync',icon:I.settings,group:'Admin',need:'*'},
+];
+const MOBILE=['dashboard','transfers','orders','stocktake'];
+let route='dashboard';
+function navVisible(n){ if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'; return can(n.need); }
+function myActionCount(){return S.transfers.filter(t=>{if(!canSee(t))return false;if(t.status==='requested'&&canApproveT(t))return true;if(t.status==='approved'&&canDispatchT(t))return true;if((t.status==='in_transit'||t.status==='partially_received')&&canReceiveT(t))return true;return false;}).length;}
+function incomingCount(){return S.orders.filter(o=>(!scoped()||o.location_id===HOME)&&(o.status==='placed'||o.status==='shipped')).length;}
+function renderNav(){
+  let html='',g='';
+  NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
+  document.getElementById('nav').innerHTML=html;
+  const mt=document.getElementById('mtabs');
+  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['receipts','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+}
+function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
+
+/* ---------- views ---------- */
+const PAGE={dashboard:['Dashboard','Live view across your sites'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+function renderView(){
+  document.getElementById('pageTitle').textContent=PAGE[route][0];
+  document.getElementById('pageSub').textContent=PAGE[route][1];
+  const v=document.getElementById('view');
+  ({dashboard:vDash,transfers:vTransfers,orders:vOrders,stocktake:vStock,receipts:vReceipts,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+}
+function vDash(v){
+  const locs=visLocs(), visT=S.transfers.filter(canSee);
+  const transitList=visT.filter(t=>t.status==='in_transit'||t.status==='partially_received');
+  const transitVal=transitList.reduce((s,t)=>s+trTransit(t),0);
+  const disc=visT.filter(t=>trShortU(t)>0&&t.status==='received');
+  const inc=S.orders.filter(o=>(!scoped()||o.location_id===HOME)&&(o.status==='placed'||o.status==='shipped'));
+  const recent=visT.slice(0,6);
+  v.innerHTML=`
+    ${scoped()?`<div class="banner info">${svg(I.location,17)}<div>You’re scoped to <b>${esc(loc(HOME).name)}</b> — you see stock, transfers and receipts involving your centre.</div></div>`:''}
+    <div class="tiles">
+      <div class="tile accent"><div class="lbl">${svg(I.box,14)} On-hand value</div><div class="val tnum">${money0(invValueFor(locs))}</div><div class="meta">${scoped()?loc(HOME).name:'all '+S.locations.length+' sites'}</div></div>
+      <div class="tile transit"><div class="lbl">${svg(I.truck,14)} In transit</div><div class="val tnum">${money0(transitVal)}</div><div class="meta">${transitList.length} moving</div></div>
+      <div class="tile"><div class="lbl">${svg(I.transfer,14)} Needs my action</div><div class="val tnum">${myActionCount()}</div><div class="meta">approve · dispatch · receive</div></div>
+      <div class="tile ${disc.length?'crit':''}"><div class="lbl">${svg(I.alert,14)} Transit losses</div><div class="val tnum">${money0(disc.reduce((s,t)=>s+trShortV(t),0))}</div><div class="meta">${disc.length} with shortfall</div></div>
+    </div>
+    ${transitList.length?`<div class="banner transit">${svg(I.truck,17)}<div><b>${transitList.length} in transit</b> — ${money(transitVal)} between sites, held until received.</div></div>`:''}
+    ${inc.length?`<div class="banner info" style="cursor:pointer" data-route="orders">${svg(I.order,17)}<div><b>${inc.length} supplier order(s) incoming.</b> Next: ${(()=>{const n=inc.slice().sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on))[0];return n.code+' — '+etaText(n.expected_on);})()}. Tap to view.</div></div>`:''}
+    <div class="section-head"><h2>Recent transfers</h2><div class="spacer"></div>${can('transfer.create')?`<button class="btn primary sm" data-act="new-transfer">${svg(I.plus,15)} New transfer</button>`:''}</div>
+    ${recent.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th>Updated</th></tr></thead><tbody>${recent.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPill(t.status)}</td><td class="num tnum">${money(trValue(t))}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(t.received_at||t.dispatched_at||t.approved_at||t.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers yet.</div></div>`}`;
+}
+/* Transfers */
+let trFilter='all',trSearch='';
+function vTransfers(v){
+  v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
+    <select class="filter" id="f"><option value="all">All statuses</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
+    <div class="spacer"></div>${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
+  document.getElementById('f').value=trFilter;
+  document.getElementById('f').onchange=e=>{trFilter=e.target.value;trList();};
+  document.getElementById('q').oninput=e=>{trSearch=e.target.value;trList();};
+  trList();
+}
+function trList(){
+  const q=trSearch.toLowerCase();let list=S.transfers.filter(canSee);
+  if(trFilter!=='all')list=list.filter(t=>t.status===trFilter);
+  if(q)list=list.filter(t=>t.code.toLowerCase().includes(q)||loc(t.from_location).name.toLowerCase().includes(q)||loc(t.to_location).name.toLowerCase().includes(q));
+  const el=document.getElementById('list');
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPill(t.status)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers match.</div></div>`;
+}
+function openTransfer(id){
+  const t=S.transfers.find(x=>x.id===id);if(!t)return;
+  const steps=['requested','approved','in_transit','received'];
+  const cur=t.status==='cancelled'?-1:(t.status==='partially_received'?2:steps.indexOf(t.status));
+  const stepHtml=t.status==='cancelled'?`<div class="banner crit">${svg(I.x,17)}<div>Cancelled.</div></div>`:`<div class="steps">${steps.map((s,i)=>`<div class="step ${i<cur?'done':''} ${i===cur?'cur':''}"><span class="n">${i<cur?'✓':i+1}</span>${STATUS[s].label}</div>${i<3?`<span>${svg(I.arrow,13)}</span>`:''}`).join('')}</div>`;
+  const du=trShortU(t),dv=trShortV(t);
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);const sh=Math.max(0,l.qty_dispatched-l.qty_received);const shown=['received','partially_received'].includes(t.status);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty_requested}</td><td class="num tnum">${l.qty_dispatched||'—'}</td><td class="num tnum">${shown?l.qty_received:(t.status==='in_transit'?'—':'')}</td><td class="num tnum" style="color:${sh>0&&shown?'var(--crit)':'var(--faint)'}">${sh>0&&shown?'−'+sh:'—'}</td></tr>`;}).join('');
+  let actions='';
+  if(t.status==='requested')actions=canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`;
+  else if(t.status==='approved')actions=canDispatchT(t)?`<button class="btn" data-cancel="${t.id}">Cancel</button><button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch to transit</button>`:`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;
+  else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
+  const body=`${stepHtml}
+    ${(t.status==='in_transit'||t.status==='partially_received')?`<div class="banner transit">${svg(I.truck,17)}<div><b>${money(trTransit(t))} in transit</b> from ${esc(loc(t.from_location).name)} to ${esc(loc(t.to_location).name)}.</div></div>`:''}
+    ${du>0&&t.status==='received'?`<div class="banner crit">${svg(I.alert,17)}<div><b>Discrepancy: ${du} short (${money(dv)}).</b></div></div>`:''}
+    <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Route</dt><dd>${esc(loc(t.from_location).name)} → ${esc(loc(t.to_location).name)}</dd><dt>Value</dt><dd class="tnum">${money(trValue(t))}</dd><dt>Created by</dt><dd>${esc(pname(t.created_by))} · ${fmtDate(t.created_at)}</dd>${t.approved_by?`<dt>Approved</dt><dd>${esc(pname(t.approved_by))}</dd>`:''}${t.dispatched_at?`<dt>Dispatched</dt><dd>${fmtDate(t.dispatched_at)}</dd>`:''}${t.received_at?`<dt>Received</dt><dd>${fmtDate(t.received_at)}</dd>`:''}</dl>${t.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)"><b style="color:var(--ink)">Notes:</b> ${esc(t.notes)}</div>`:''}</div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Req</th><th class="num">Disp</th><th class="num">Recv</th><th class="num">Short</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  slideover(t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,body,actions);
+}
+/* New transfer */
+let dLines=[],tfExceed=false;
+function newTransfer(){
+  dLines=[{item:'',qty:1}];
+  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location</label><select id="tf-to">${opts}</select></div></div>
+    <div class="field"><label>Items</label><div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
+    <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
+    <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
+  modal('New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Submit request</button>`);
+  const hub=S.locations.find(l=>l.is_hub);const from=document.getElementById('tf-from'),to=document.getElementById('tf-to');
+  if(scoped()){to.value=HOME;from.value=(hub&&hub.id!==HOME)?hub.id:S.locations.find(l=>l.id!==HOME).id;}
+  else{if(hub)from.value=hub.id;to.value=(S.locations.find(l=>l.id!==(hub?hub.id:''))||{}).id;}
+  edLines();from.onchange=sum;to.onchange=sum;
+  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
+  document.getElementById('go').onclick=submitTransfer;
+}
+function edLines(){
+  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
+  const ed=document.getElementById('ed');
+  ed.innerHTML=dLines.map((l,ix)=>`<div class="linerow"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
+  ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;sum();});
+  ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{dLines[+e.target.dataset.lq].qty=Math.max(1,+e.target.value||1);sum();});
+  ed.querySelectorAll('[data-lr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-lr]').dataset.lr;if(dLines.length>1)dLines.splice(ix,1);edLines();});
+  sum();
+}
+function sum(){
+  const from=document.getElementById('tf-from').value,btn=document.getElementById('go');let val=0;tfExceed=false;const rows=[];
+  dLines.forEach(l=>{if(l.item){const it=item(l.item);val+=l.qty*it.unit_cost;const av=availAt(from,l.item),rs=reservedAt(from,l.item),over=l.qty>av;if(over)tfExceed=true;rows.push(`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;${over?'color:var(--crit);font-weight:700':''}"><span>${esc(it.name)}</span><span class="tnum">need ${l.qty} · avail ${av}${rs>0?` (−${rs} reserved)`:''}${over?' ⚠':''}</span></div>`);}});
+  const s=document.getElementById('sum');
+  if(!rows.length)s.className='banner info',s.innerHTML=`${svg(I.info,17)}<div>Add items to see availability at <b>${esc(loc(from).code)}</b>.</div>`;
+  else if(tfExceed)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>More than available at ${esc(loc(from).code)}.</b> Reserved stock (open requests) doesn’t count. Reduce to submit.<div style="margin-top:7px;display:grid;gap:3px">${rows.join('')}</div></div>`;
+  else s.className='banner info',s.innerHTML=`${svg(I.cost,17)}<div>Value <b>${money(val)}</b> · within available at <b>${esc(loc(from).code)}</b>.<div style="margin-top:7px;display:grid;gap:3px">${rows.join('')}</div></div>`;
+  if(btn){btn.disabled=tfExceed;btn.style.opacity=tfExceed?'.5':'';}
+}
+async function submitTransfer(){
+  const from=document.getElementById('tf-from').value,to=document.getElementById('tf-to').value,notes=document.getElementById('tf-notes').value.trim();
+  const lines=dLines.filter(l=>l.item&&l.qty>0);
+  if(from===to)return toast('Source and destination must differ',true);
+  if(scoped()&&from!==HOME&&to!==HOME)return toast('Your centre must be source or destination',true);
+  if(!lines.length)return toast('Add an item',true);
+  if(tfExceed)return toast('Reduce quantities over available',true);
+  await callRpc('create_transfer',{p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Request submitted');
+}
+/* Receive */
+function openReceive(id){
+  const t=S.transfers.find(x=>x.id===id);if(!t)return;
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div></div>`;}).join('');
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  document.getElementById('go').onclick=async()=>{
+    const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
+    await callRpc('receive_transfer',{p_id:id,p_recv:recv},'Receipt confirmed');
+  };
+}
+/* Orders */
+let oSearch='';
+function vOrders(v){
+  const inc=S.orders.filter(o=>(!scoped()||o.location_id===HOME)&&(o.status==='placed'||o.status==='shipped')).sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on));
+  v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div><b>What’s coming in.</b> Orders placed on suppliers, with expected arrival. Receiving adds stock and updates cost.</div></div>
+    ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
+    <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New order</button>`:''}</div><div id="list"></div>`;
+  document.getElementById('q').oninput=e=>{oSearch=e.target.value;oList();};oList();
+}
+function oList(){
+  const q=oSearch.toLowerCase();let list=S.orders.filter(o=>!scoped()||o.location_id===HOME);
+  if(q)list=list.filter(o=>o.code.toLowerCase().includes(q)||supplier(o.supplier_id).name.toLowerCase().includes(q));
+  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Order</th><th>Supplier</th><th>Into</th><th>Status</th><th>ETA</th><th class="num">Value</th></tr></thead><tbody>${list.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="mono">${o.code}</span></td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td>${oPill(o.status)}</td><td style="font-size:12.5px;color:${daysUntil(o.expected_on)<0&&o.status!=='received'?'var(--crit)':'var(--muted)'}">${o.status==='received'?'—':fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.order,38)}<div>No orders yet.</div></div>`;
+}
+function openOrder(id){
+  const o=S.orders.find(x=>x.id===id);if(!o)return;
+  const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
+  let act='';
+  if(o.status==='placed'&&can('order.receive'))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
+  else if(o.status==='shipped'&&can('order.receive'))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
+  const body=`${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
+    <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,body,act);
+}
+let poLines=[];
+function newOrder(){
+  poLines=[{item:'',qty:1,cost:0}];
+  const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const sup=S.suppliers[0];const eta=new Date(Date.now()+((sup&&sup.lead_days)||30)*864e5).toISOString().slice(0,10);
+  const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
+    <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">Pre-filled from supplier lead time — adjust as needed.</div></div>
+    <div class="field"><label>Items</label><div id="ped"></div><button class="btn sm" id="pAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
+    <div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
+  modal('New supplier order','Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Place order</button>`);
+  if(scoped()){const ls=document.getElementById('po-loc');ls.value=HOME;ls.disabled=true;}
+  pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();};
+  document.getElementById('go').onclick=submitOrder;
+}
+function pEd(){
+  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
+  const ed=document.getElementById('ped');
+  ed.innerHTML=poLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 62px 80px 34px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-pq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
+  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pSum();});
+  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pq].qty=Math.max(1,+e.target.value||1);pSum();});
+  ed.querySelectorAll('[data-pc]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pc].cost=Math.max(0,+e.target.value||0);pSum();});
+  ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
+  pSum();
+}
+function pSum(){const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
+async function submitOrder(){
+  const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
+  const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
+  await callRpc('create_order',{p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Order placed');
+}
+/* Stock take */
+function vStock(v){
+  const list=S.stocktakes.filter(s=>!scoped()||s.location_id===HOME);
+  v.innerHTML=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Live-adjusted counts.</b> While a count is open, sales keep updating the system figure so your variance is always current. Finalising posts a physical count to Square.</div></div>
+    <div class="toolbar"><div class="spacer"></div>${can('stocktake.do')?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>No stock takes yet.</div></div>`}`;
+}
+function newStock(){
+  const cats=['(all categories)',...new Set(S.items.map(i=>i.category).filter(Boolean))];
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
+  if(scoped()){const ls=document.getElementById('st-loc');ls.value=HOME;ls.disabled=true;}
+  document.getElementById('go').onclick=async()=>{
+    const lc=document.getElementById('st-loc').value,cat=document.getElementById('st-cat').value;
+    await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
+  };
+}
+function openStock(id){
+  const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
+  // system column reflects live on-hand for open takes
+  const rows=(st.lines||[]).map(l=>{const it=item(l.item_id);const sys=open?onHand(st.location_id,l.item_id):l.system_qty;const c=l.counted_qty;const vv=(c==null)?null:c-sys;return `<div class="recv-row" style="grid-template-columns:1fr 68px 78px 60px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys}</div></div><div><div class="cap">Counted</div>${open?`<input type="number" min="0" value="${c==null?'':c}" data-c="${l.id}" data-sys="${sys}" style="width:100%;padding:6px 7px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)">`:`<div class="tnum" style="font-weight:600">${c==null?'—':c}</div>`}</div><div><div class="cap">Var</div><div class="tnum" data-v="${l.id}" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;}).join('');
+  const foot=open?`<button class="btn" data-close>Close</button>${can('stocktake.do')?`<button class="btn primary" id="fin">${svg(I.check,16)} Finalise count</button>`:''}`:`<button class="btn" data-close>Close</button>`;
+  slideover(st.code,loc(st.location_id).name,`${open?`<div class="banner transit">${svg(I.sync,17)}<div><b>Live.</b> System quantities reflect current stock, including sales during the count.</div></div>`:''}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div>${rows}`,foot);
+  if(open){
+    document.querySelectorAll('[data-c]').forEach(inp=>inp.oninput=e=>{const sys=+e.target.dataset.sys;const val=e.target.value===''?null:Math.max(0,+e.target.value);const vv=val==null?null:val-sys;const ve=document.querySelector(`[data-v="${e.target.dataset.c}"]`);ve.textContent=vv==null?'—':(vv>0?'+'+vv:vv);ve.style.color=vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'));});
+    const fin=document.getElementById('fin');if(fin)fin.onclick=async()=>{
+      const counts=[];document.querySelectorAll('[data-c]').forEach(inp=>{if(inp.value!=='')counts.push({line:inp.dataset.c,counted:Math.max(0,+inp.value)});});
+      if(!counts.length)return toast('Enter at least one count',true);
+      await callRpc('finalize_stocktake',{p_id:id,p_counts:counts},'Stock take finalised');
+    };
+  }
+}
+/* Receipts */
+let rcSearch='';
+function vReceipts(v){
+  v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search GRN, supplier…" value="${esc(rcSearch)}"></div><div class="spacer"></div>${can('receipt.create')?`<button class="btn primary" data-act="new-receipt">${svg(I.plus,16)} New receipt</button>`:''}</div>
+    <div class="banner info">${svg(I.info,17)}<div>Recording a receipt adds stock to a centre and updates the item’s weighted-average cost.</div></div><div id="list"></div>`;
+  document.getElementById('q').oninput=e=>{rcSearch=e.target.value;rcList();};rcList();
+}
+function rcList(){
+  const q=rcSearch.toLowerCase();let list=S.receipts.filter(r=>!scoped()||r.location_id===HOME);
+  if(q)list=list.filter(r=>r.code.toLowerCase().includes(q)||(r.supplier||'').toLowerCase().includes(q));
+  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Receipt</th><th>Supplier</th><th>Into</th><th class="num">Total</th><th>Date</th></tr></thead><tbody>${list.map(r=>`<tr class="clickable" data-rcpt="${r.id}"><td><span class="mono">${r.code}</span></td><td>${esc(r.supplier||'—')}</td><td>${loc(r.location_id).code}</td><td class="num tnum">${money((r.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0))}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(r.received_on)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.receipt,38)}<div>No receipts yet.</div></div>`;
+}
+function openReceipt(id){
+  const r=S.receipts.find(x=>x.id===id);if(!r)return;
+  const rows=(r.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
+  slideover(r.code,r.supplier||'',`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(r.supplier||'—')}</dd><dt>Reference</dt><dd class="mono">${esc(r.reference||'—')}</dd><dt>Into</dt><dd>${esc(loc(r.location_id).name)}</dd><dt>Date</dt><dd>${fmtDate(r.received_on)}</dd><dt>By</dt><dd>${esc(pname(r.created_by))}</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`,'');
+}
+let recLines=[];
+function newReceipt(){
+  recLines=[{item:'',qty:1,cost:0}];
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
+  if(scoped()){const ls=document.getElementById('rc-loc');ls.value=HOME;ls.disabled=true;}
+  rEd();document.getElementById('rAdd').onclick=()=>{recLines.push({item:'',qty:1,cost:0});rEd();};
+  document.getElementById('go').onclick=submitReceipt;
+}
+function rEd(){
+  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
+  const ed=document.getElementById('red');
+  ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 62px 80px 34px"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  recLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-ri="${ix}"]`).value=l.item;});
+  ed.querySelectorAll('[data-ri]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ri;recLines[ix].item=e.target.value;if(!recLines[ix].cost){recLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-rk="${ix}"]`).value=recLines[ix].cost;}rSum();});
+  ed.querySelectorAll('[data-rq]').forEach(s=>s.oninput=e=>{recLines[+e.target.dataset.rq].qty=Math.max(1,+e.target.value||1);rSum();});
+  ed.querySelectorAll('[data-rk]').forEach(s=>s.oninput=e=>{recLines[+e.target.dataset.rk].cost=Math.max(0,+e.target.value||0);rSum();});
+  ed.querySelectorAll('[data-rr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-rr]').dataset.rr;if(recLines.length>1)recLines.splice(ix,1);rEd();});
+  rSum();
+}
+function rSum(){const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('rsum').innerHTML=`${svg(I.cost,17)}<div>Total cost <b>${money(t)}</b>.</div>`;}
+async function submitReceipt(){
+  const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
+  const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
+  await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted');
+}
+/* Catalog */
+let catSearch='',catCat='all';
+function vCatalog(v){
+  const cats=['all',...new Set(S.items.map(i=>i.category).filter(Boolean))];
+  v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div><b>Synced from Square.</b> ${S.items.length} items. New items in Square flow in automatically.</div></div>
+    <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search name or SKU…" value="${esc(catSearch)}"></div><select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select><div class="spacer"></div>${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
+  document.getElementById('c').value=catCat;document.getElementById('q').oninput=e=>{catSearch=e.target.value;catList();};document.getElementById('c').onchange=e=>{catCat=e.target.value;catList();};catList();
+}
+function catList(){
+  const q=catSearch.toLowerCase();let list=S.items.slice();
+  if(catCat!=='all')list=list.filter(i=>i.category===catCat);
+  if(q)list=list.filter(i=>i.name.toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q));
+  const oh=scoped()?('On hand ('+loc(HOME).code+')'):'Total on hand';
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${oh}</th></tr></thead><tbody>${list.map(i=>{let t=0;if(scoped())t=onHand(HOME,i.id);else for(const k in S.stock)if(k.endsWith('__'+i.id))t+=S.stock[k];return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
+function openItem(id){
+  const it=S.items.find(x=>x.id===id);if(!it)return;
+  const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>`<tr><td>${esc(l.name)} <span class="tag">${l.code}</span></td><td class="num tnum">${onHand(l.id,id)}</td><td class="num tnum">${money(onHand(l.id,id)*it.unit_cost)}</td></tr>`).join('');
+  slideover(it.name,it.sku||'',`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th class="num">On hand</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>`,'');
+}
+/* Suppliers */
+function vSuppliers(v){
+  v.innerHTML=`<div class="toolbar"><div class="spacer"></div>${can('supplier.manage')?`<button class="btn primary" data-act="new-supplier">${svg(I.plus,16)} Add supplier</button>`:''}</div><div class="tablewrap"><table><thead><tr><th>Supplier</th><th>Country</th><th>Contact</th><th class="num">Lead time</th><th class="num">Open orders</th></tr></thead><tbody>${S.suppliers.map(s=>{const open=S.orders.filter(o=>o.supplier_id===s.id&&(o.status==='placed'||o.status==='shipped')).length;return `<tr><td style="font-weight:600">${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.country||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(s.contact||'—')}</td><td class="num tnum">${s.lead_days||'—'} days</td><td class="num tnum">${open}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
+function newSupplier(){
+  modal('Add supplier','Someone you order stock from',`<div class="field"><label>Name</label><input id="su-name" placeholder="e.g. Premvati India"></div><div class="grid2"><div class="field"><label>Country</label><input id="su-country"></div><div class="field"><label>Lead time (days)</label><input id="su-lead" type="number" value="30"></div></div><div class="field"><label>Contact email</label><input id="su-contact"></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Add supplier</button>`);
+  document.getElementById('go').onclick=async()=>{
+    const name=document.getElementById('su-name').value.trim();if(!name)return toast('Enter a name',true);
+    const{error}=await sb.from('suppliers').insert({name,country:document.getElementById('su-country').value.trim(),contact:document.getElementById('su-contact').value.trim(),lead_days:+document.getElementById('su-lead').value||30});
+    if(error)return toast(error.message,true);closeOverlay();toast('Supplier added');refresh();
+  };
+}
+/* Locations, Users, Audit, Settings */
+function vLocations(v){
+  v.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Type</th></tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
+function vUsers(v){
+  const badge=r=>({user:'p-draft',admin:'p-appr',national_admin:'p-partial',super_admin:'p-transit'}[r]||'p-draft');
+  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and (for User/Admin) a home centre. Change a value below and it saves.</div></div>
+    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Home centre</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
+      <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
+      <td>${can('*')?`<select data-uhome="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="">— none —</option>${S.locations.map(l=>`<option value="${l.id}" ${u.home_centre===l.id?'selected':''}>${l.code}</option>`).join('')}</select>`:((u.role==='national_admin'||u.role==='super_admin')?'<span class="tag">All</span>':loc(u.home_centre).code)}</td></tr>`).join('')}</tbody></table></div>`;
+  if(can('*')){
+    document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
+    document.querySelectorAll('[data-uhome]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({home_centre:e.target.value||null}).eq('id',e.target.dataset.uhome);toast(error?error.message:'Home centre updated',!!error);if(!error)refresh();});
+  }
+}
+function vAudit(v){
+  let list=S.audit;if(scoped())list=list.filter(a=>a.location_id===HOME);
+  v.innerHTML=`<div class="tablewrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th></tr></thead><tbody>${list.map(a=>`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12.5px">${fmtDT(a.ts)}</td><td style="font-weight:600;white-space:nowrap">${esc(pname(a.actor))}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function vSettings(v){
+  v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
+    <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
+    <div style="font-size:13px;color:var(--muted);margin-top:12px">New &amp; changed items and live stock arrive automatically via Square webhooks. Use “Sync now” to pull a full refresh.</div></div>
+    ${can('sync.run')?`<button class="btn primary" data-act="sync">${svg(I.sync,16)} Run full sync now</button>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
+}
+function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
+async function runSync(){
+  toast('Syncing with Square…');
+  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;toast('Synced'+(data&&data.itemsUpserted!=null?` — ${data.itemsUpserted} items`:''));refresh();}
+  catch(e){toast('Sync failed: '+(e.message||e),true);}
+}
+
+/* ---------- RPC wrapper ---------- */
+async function callRpc(fn,args,okMsg){
+  const{error}=await sb.rpc(fn,args);
+  if(error){toast(error.message||'Action failed',true);return;}
+  closeOverlay();toast(okMsg||'Done');await refresh();
+}
+
+/* ---------- overlays / toast / nav plumbing ---------- */
+function overlayEl(){return document.getElementById('overlay');}
+function slideover(t,s,b,f){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
+function modal(t,s,b,f){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
+function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));s.addEventListener('click',e=>{if(e.target===s)closeOverlay();});}
+function closeOverlay(){const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
+let toastT;
+function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
+function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('open',f);document.getElementById('sidebarScrim').classList.toggle('show',f);}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const nav=e.target.closest('[data-route]');if(nav){go(nav.dataset.route);return;}
+  const tr=e.target.closest('[data-tr]');if(tr){openTransfer(tr.dataset.tr);return;}
+  const od=e.target.closest('[data-order]');if(od){openOrder(od.dataset.order);return;}
+  const stk=e.target.closest('[data-stk]');if(stk){openStock(stk.dataset.stk);return;}
+  const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
+  const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
+  if(e.target.closest('[data-close]')){closeOverlay();return;}
+  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync}[k]||(()=>{}))();return;}
+  const ap=e.target.closest('[data-approve]');if(ap){callRpc('approve_transfer',{p_id:ap.dataset.approve},'Approved');return;}
+  const cx=e.target.closest('[data-cancel]');if(cx){callRpc('cancel_transfer',{p_id:cx.dataset.cancel},'Cancelled');return;}
+  const dp=e.target.closest('[data-dispatch]');if(dp){callRpc('dispatch_transfer',{p_id:dp.dataset.dispatch},'Dispatched to transit');return;}
+  const rc=e.target.closest('[data-receive]');if(rc){openReceive(rc.dataset.receive);return;}
+  const os=e.target.closest('[data-oship]');if(os){callRpc('ship_order',{p_id:os.dataset.oship},'Marked shipped');return;}
+  const orr=e.target.closest('[data-orecv]');if(orr){callRpc('receive_order',{p_id:orr.dataset.orecv},'Order received');return;}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlay();});
+document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
+document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
+document.getElementById('themeBtn').onclick=()=>{const r=document.documentElement,c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':(c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark')));};
+document.getElementById('signout').onclick=async()=>{await sb.auth.signOut();location.reload();};
+document.getElementById('sendLink').onclick=async()=>{
+  const email=document.getElementById('email').value.trim();if(!email)return;
+  const btn=document.getElementById('sendLink');btn.disabled=true;btn.textContent='Sending…';
+  const{error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+  const m=document.getElementById('loginMsg');
+  if(error){m.textContent=error.message;m.style.color='var(--crit)';btn.disabled=false;btn.textContent='Email me a sign-in link';}
+  else{m.textContent='Check your email for the sign-in link. You can close this tab.';m.style.color='var(--good)';btn.textContent='Link sent ✓';}
+};
+document.getElementById('email').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('sendLink').click();});
+
+boot();
+</script>
+</body>
+</html>
