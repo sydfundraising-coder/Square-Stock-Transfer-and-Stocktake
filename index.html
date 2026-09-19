@@ -634,22 +634,59 @@ function newStock(){
     await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
   };
 }
+let stCounts={}, stCurrentId=null, stSaveT=null;
+function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
 function openStock(id){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
-  // system column reflects live on-hand for open takes
-  const rows=(st.lines||[]).map(l=>{const it=item(l.item_id);const sys=open?onHand(st.location_id,l.item_id):l.system_qty;const c=l.counted_qty;const vv=(c==null)?null:c-sys;return `<div class="recv-row" style="grid-template-columns:1fr 68px 78px 60px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys}</div></div><div><div class="cap">Counted</div>${open?`<input type="number" min="0" value="${c==null?'':c}" data-c="${l.id}" data-sys="${sys}" style="width:100%;padding:6px 7px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)">`:`<div class="tnum" style="font-weight:600">${c==null?'—':c}</div>`}</div><div><div class="cap">Var</div><div class="tnum" data-v="${l.id}" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;}).join('');
-  const canDel = open ? can('stocktake.do') : (ROLE==='super_admin');
-  const foot=`<button class="btn" data-close>Close</button>${canDel?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`:''}${open&&can('stocktake.do')?`<button class="btn primary" id="fin">${svg(I.check,16)} Finalise count</button>`:''}`;
-  slideover(st.code,loc(st.location_id).name,`${open?`<div class="banner transit">${svg(I.sync,17)}<div><b>Live.</b> System quantities reflect current stock, including sales during the count.</div></div>`:''}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div>${rows}`,foot);
+  if(stCurrentId!==id){ stCounts={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);}); }
+  stCurrentId=id;
+  const camOk=('BarcodeDetector' in window);
+  const head=open?`<div class="banner info">${svg(I.stocktake,17)}<div><b>Blind count.</b> Enter what you physically count — the on-hand figure is hidden so the count stays honest. Scan with a USB scanner or your camera, or search below. Progress saves as you go, so you can stop and finish later.</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="st-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam">${svg(I.box,16)} Camera</button>`:''}</div>`:'';
+  const canDel=open?can('stocktake.do'):(ROLE==='super_admin');
+  const foot=`<button class="btn" data-close>Close</button>${canDel?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`:''}${open&&can('stocktake.do')?`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`:''}`;
+  slideover(st.code,loc(st.location_id).name,`${head}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div><div id="stList">${renderStRows(st,open,'')}</div>`,foot);
   if(open){
-    document.querySelectorAll('[data-c]').forEach(inp=>inp.oninput=e=>{const sys=+e.target.dataset.sys;const val=e.target.value===''?null:Math.max(0,+e.target.value);const vv=val==null?null:val-sys;const ve=document.querySelector(`[data-v="${e.target.dataset.c}"]`);ve.textContent=vv==null?'—':(vv>0?'+'+vv:vv);ve.style.color=vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'));});
-    const fin=document.getElementById('fin');if(fin)fin.onclick=async()=>{
-      const counts=[];document.querySelectorAll('[data-c]').forEach(inp=>{if(inp.value!=='')counts.push({line:inp.dataset.c,counted:Math.max(0,+inp.value)});});
+    const scan=document.getElementById('st-scan');
+    scan.oninput=()=>renderStList(st);
+    scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();stScanCode(st,scan.value.trim());scan.value='';renderStList(st);scan.focus();}};
+    setTimeout(()=>scan.focus(),60);
+    bindStInputs();
+    const cam=document.getElementById('st-cam'); if(cam)cam.onclick=()=>openScanner(st);
+    document.getElementById('st-save').onclick=()=>saveStProgress(st,true);
+    document.getElementById('fin').onclick=async()=>{
+      const counts=stCountsArray();
       if(!counts.length)return toast('Enter at least one count',true);
       await callRpc('finalize_stocktake',{p_id:id,p_counts:counts},'Stock take finalised');
     };
   }
 }
+function renderStRows(st,open,filter){
+  const q=(filter||'').toLowerCase();
+  let lines=st.lines||[];
+  if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});
+  if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;
+  return lines.map(l=>{const it=item(l.item_id);
+    if(open){const c=stCounts[l.id];
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div></div>`;}
+    const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
+    return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
+  }).join('');
+}
+function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,st.status==='open',f);bindStInputs();}
+function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});}
+function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const line=(st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this count: '+code,true);return;}const cur=+stCounts[line.id]||0;stCounts[line.id]=cur+1;toast('+1 '+item(line.item_id).name+' = '+(cur+1));saveStProgress(st,false);}
+function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce)toast(error?('Save failed: '+error.message):'Progress saved',!!error);};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
+async function openScanner(st){
+  if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
+  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan barcodes</h2><div class="sub">Point at a barcode — each scan adds 1</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center"><video id="scanVid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="scanMsg" style="margin-top:10px;color:var(--muted);font-size:13px">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
+  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let stream=null,running=true,last='',lastT=0;const det=new window.BarcodeDetector();
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();msg.textContent='Point the camera at a barcode';}catch(err){msg.textContent='Could not open camera: '+(err.message||err);}
+  window._stopScan=()=>{running=false;if(stream)stream.getTracks().forEach(t=>t.stop());};
+  const loop=async()=>{if(!running)return;try{const codes=await det.detect(vid);if(codes&&codes.length){const val=String(codes[0].rawValue||'').trim();const now=Date.now();if(val&&(val!==last||now-lastT>1400)){last=val;lastT=now;stScanCode(st,val);if(navigator.vibrate)navigator.vibrate(60);msg.textContent='Scanned: '+val;}}}catch(e){}if(running)requestAnimationFrame(loop);};
+  requestAnimationFrame(loop);
+}
+function stopScannerAndReturn(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}openStock(stCurrentId);}
 async function deleteStocktake(id){
   const st=S.stocktakes.find(x=>x.id===id);
   if(!window.confirm('Delete stock take '+(st?st.code:'')+'? This cannot be undone.'))return;
@@ -772,7 +809,7 @@ function vUsers(v){
     ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Home centre</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
-      <td>${can('*')?`<select data-uhome="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="">— none —</option>${S.locations.map(l=>`<option value="${l.id}" ${u.home_centre===l.id?'selected':''}>${l.code}</option>`).join('')}</select>`:((u.role==='national_admin'||u.role==='super_admin')?'<span class="tag">All</span>':loc(u.home_centre).code)}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${can('*')?`<select data-uhome="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="">— none —</option>${S.locations.map(l=>`<option value="${l.id}" ${u.home_centre===l.id?'selected':''}>${esc(l.code)} — ${esc(l.name)}</option>`).join('')}</select>`:((u.role==='national_admin'||u.role==='super_admin')?'<span class="tag">All centres</span>':esc(loc(u.home_centre).name))}</td></tr>`).join('')}</tbody></table></div>`;
   if(can('*')){
     document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
     document.querySelectorAll('[data-uhome]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({home_centre:e.target.value||null}).eq('id',e.target.dataset.uhome);toast(error?error.message:'Home centre updated',!!error);if(!error)refresh();});
@@ -814,7 +851,7 @@ function overlayEl(){return document.getElementById('overlay');}
 function slideover(t,s,b,f){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function modal(t,s,b,f){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));s.addEventListener('click',e=>{if(e.target===s)closeOverlay();});}
-function closeOverlay(){const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
+function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
 let toastT;
 function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
 function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('open',f);document.getElementById('sidebarScrim').classList.toggle('show',f);}
@@ -826,6 +863,7 @@ document.addEventListener('click',e=>{
   const od=e.target.closest('[data-order]');if(od){openOrder(od.dataset.order);return;}
   const stk=e.target.closest('[data-stk]');if(stk){openStock(stk.dataset.stk);return;}
   const sdl=e.target.closest('[data-st-del]');if(sdl){deleteStocktake(sdl.dataset.stDel);return;}
+  const scc=e.target.closest('[data-scan-close]');if(scc){stopScannerAndReturn();return;}
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
