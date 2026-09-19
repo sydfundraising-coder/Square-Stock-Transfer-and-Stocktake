@@ -637,7 +637,8 @@ function openStock(id){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   // system column reflects live on-hand for open takes
   const rows=(st.lines||[]).map(l=>{const it=item(l.item_id);const sys=open?onHand(st.location_id,l.item_id):l.system_qty;const c=l.counted_qty;const vv=(c==null)?null:c-sys;return `<div class="recv-row" style="grid-template-columns:1fr 68px 78px 60px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys}</div></div><div><div class="cap">Counted</div>${open?`<input type="number" min="0" value="${c==null?'':c}" data-c="${l.id}" data-sys="${sys}" style="width:100%;padding:6px 7px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)">`:`<div class="tnum" style="font-weight:600">${c==null?'—':c}</div>`}</div><div><div class="cap">Var</div><div class="tnum" data-v="${l.id}" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;}).join('');
-  const foot=open?`<button class="btn" data-close>Close</button>${can('stocktake.do')?`<button class="btn primary" id="fin">${svg(I.check,16)} Finalise count</button>`:''}`:`<button class="btn" data-close>Close</button>`;
+  const canDel = open ? can('stocktake.do') : (ROLE==='super_admin');
+  const foot=`<button class="btn" data-close>Close</button>${canDel?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`:''}${open&&can('stocktake.do')?`<button class="btn primary" id="fin">${svg(I.check,16)} Finalise count</button>`:''}`;
   slideover(st.code,loc(st.location_id).name,`${open?`<div class="banner transit">${svg(I.sync,17)}<div><b>Live.</b> System quantities reflect current stock, including sales during the count.</div></div>`:''}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div>${rows}`,foot);
   if(open){
     document.querySelectorAll('[data-c]').forEach(inp=>inp.oninput=e=>{const sys=+e.target.dataset.sys;const val=e.target.value===''?null:Math.max(0,+e.target.value);const vv=val==null?null:val-sys;const ve=document.querySelector(`[data-v="${e.target.dataset.c}"]`);ve.textContent=vv==null?'—':(vv>0?'+'+vv:vv);ve.style.color=vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'));});
@@ -647,6 +648,13 @@ function openStock(id){
       await callRpc('finalize_stocktake',{p_id:id,p_counts:counts},'Stock take finalised');
     };
   }
+}
+async function deleteStocktake(id){
+  const st=S.stocktakes.find(x=>x.id===id);
+  if(!window.confirm('Delete stock take '+(st?st.code:'')+'? This cannot be undone.'))return;
+  const{error}=await sb.from('stocktakes').delete().eq('id',id);
+  if(error){toast(error.message,true);return;}
+  closeOverlay();toast('Stock take deleted');refresh();
 }
 /* Receipts */
 let rcSearch='';
@@ -816,6 +824,7 @@ document.addEventListener('click',e=>{
   const tr=e.target.closest('[data-tr]');if(tr){openTransfer(tr.dataset.tr);return;}
   const od=e.target.closest('[data-order]');if(od){openOrder(od.dataset.order);return;}
   const stk=e.target.closest('[data-stk]');if(stk){openStock(stk.dataset.stk);return;}
+  const sdl=e.target.closest('[data-st-del]');if(sdl){deleteStocktake(sdl.dataset.stDel);return;}
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
