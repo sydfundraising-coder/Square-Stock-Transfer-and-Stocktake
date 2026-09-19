@@ -270,6 +270,13 @@ const onHand=(l,i)=>S.stock[l+'__'+i]||0;
 const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.email):'—';};
 function reservedAt(l,it){return S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);}
 const availAt=(l,it)=>onHand(l,it)-reservedAt(l,it);
+/* demand-based recommendation: hold 2 months + cover the gap until next receipt (~20th next month) */
+const monthlyAvg=(l,it)=>(S.vel&&S.vel[l+'__'+it])||0;
+function leadMonths(){const now=new Date();const arr=new Date(now.getFullYear(),now.getMonth()+1,20);return Math.max(0,(arr-now)/864e5)/30;}
+function recTarget(l,it){const mv=monthlyAvg(l,it);return mv>0?Math.ceil(mv*(2+leadMonths())):0;}
+function recQty(l,it){return Math.max(0,recTarget(l,it)-onHand(l,it));}
+function monthsCover(l,it){const mv=monthlyAvg(l,it);return mv>0?onHand(l,it)/mv:null;}
+function isLow(l,it){const mv=monthlyAvg(l,it);return mv>0&&onHand(l,it)<mv*2;}
 function invValueFor(locs){let v=0;for(const k in S.stock){const[l,i]=k.split('__');if(locs.includes(l))v+=S.stock[k]*item(i).unit_cost;}return v;}
 const trValue=t=>(t.lines||[]).reduce((s,l)=>s+l.qty_requested*item(l.item_id).unit_cost,0);
 const trTransit=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received)*item(l.item_id).unit_cost,0);
@@ -288,7 +295,7 @@ const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
 async function loadAll(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit]=await Promise.all([
+    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,velocity,plocs]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('items').select('*').order('name')),
       q(sb.from('stock').select('*')),
@@ -299,10 +306,14 @@ async function loadAll(){
       q(sb.from('stocktakes').select('*, lines:stocktake_lines(*)').order('started_at',{ascending:false})),
       q(sb.from('profiles').select('*')),
       q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
+      q(sb.from('velocity').select('*')).catch(()=>[]),
+      q(sb.from('profile_locations').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
     S.stock={}; stockRows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
+    S.vel={}; (velocity||[]).forEach(r=>{S.vel[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});
+    S.plocs=plocs||[];
     return true;
   }catch(e){ toast('Could not load data: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -456,7 +467,9 @@ function vReports(v){
       <div class="tile"><div class="lbl">${svg(I.box,14)} Items counted</div><div class="val tnum">${counted}</div><div class="meta">across completed counts</div></div>
       <div class="tile ${stVar>0?'crit':''}"><div class="lbl">${svg(I.alert,14)} Count discrepancies</div><div class="val tnum">${stVarLines}</div><div class="meta">${stVar} units off</div></div>
       <div class="tile"><div class="lbl">${svg(I.check,14)} Accuracy</div><div class="val tnum">${counted?Math.round((1-stVarLines/counted)*100)+'%':'—'}</div><div class="meta">lines matching system</div></div>
-    </div>`;
+    </div>
+    ${(()=>{const byLoc={};stDone.forEach(s=>(s.lines||[]).forEach(l=>{if(l.counted_qty!=null&&l.system_qty!=null){const d=l.counted_qty-(l.system_qty||0);if(d!==0){const k=s.location_id;(byLoc[k]=byLoc[k]||{u:0,v:0});byLoc[k].u+=Math.abs(d);byLoc[k].v+=Math.abs(d)*item(l.item_id).unit_cost;}}}));const rows=Object.entries(byLoc).sort((a,b)=>b[1].v-a[1].v);
+      return `<div class="section-head" style="margin-top:8px"><h3 style="font-size:14px">Stock take variance by centre</h3></div><div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">Variance units</th><th class="num">Variance value</th></tr></thead><tbody>${rows.length?rows.map(([k,v])=>`<tr><td>${esc(loc(k).name)}</td><td class="num tnum">${v.u}</td><td class="num tnum">${money(v.v)}</td></tr>`).join(''):`<tr><td colspan="3" style="color:var(--faint)">No variances recorded yet.</td></tr>`}</tbody></table></div>`;})()}`;
 }
 
 /* Transfers */
@@ -502,7 +515,7 @@ function newTransfer(){
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location</label><select id="tf-to">${opts}</select></div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload filled</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="tf-rec">${svg(I.chart,14)} Fill recommended (2-month cover)</button><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -515,7 +528,15 @@ function newTransfer(){
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));edLines();sum();});
+  document.getElementById('tf-rec').onclick=fillRecommended;
   document.getElementById('go').onclick=submitTransfer;
+}
+function fillRecommended(){
+  const to=document.getElementById('tf-to').value;
+  const low=S.items.filter(i=>i.active!==false&&isLow(to,i.id)).map(i=>({item:i.id,qty:recQty(to,i.id)})).filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty);
+  if(!low.length)return toast('Every item at '+loc(to).code+' has 2+ months cover, or there’s no sales data yet (run Square Sync → Update sales data).',true);
+  dLines=low;edLines();sum();
+  toast('Filled '+low.length+' item(s) below 2 months at '+loc(to).code);
 }
 function edLines(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
@@ -528,8 +549,8 @@ function edLines(){
   sum();
 }
 function sum(){
-  const from=document.getElementById('tf-from').value,btn=document.getElementById('go');let val=0;tfExceed=false;const rows=[];
-  dLines.forEach(l=>{if(l.item){const it=item(l.item);val+=l.qty*it.unit_cost;const av=availAt(from,l.item),rs=reservedAt(from,l.item),over=l.qty>av;if(over)tfExceed=true;rows.push(`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;${over?'color:var(--crit);font-weight:700':''}"><span>${esc(it.name)}</span><span class="tnum">need ${l.qty} · avail ${av}${rs>0?` (−${rs} reserved)`:''}${over?' ⚠':''}</span></div>`);}});
+  const from=document.getElementById('tf-from').value,to=(document.getElementById('tf-to')||{}).value,btn=document.getElementById('go');let val=0;tfExceed=false;const rows=[];
+  dLines.forEach(l=>{if(l.item){const it=item(l.item);val+=l.qty*it.unit_cost;const av=availAt(from,l.item),rs=reservedAt(from,l.item),over=l.qty>av;if(over)tfExceed=true;const mc=monthsCover(to,l.item);const low=isLow(to,l.item);const destNote=mc==null?'':` · <span style="color:${low?'var(--crit)':'var(--muted)'}">${loc(to).code} ${mc.toFixed(1)}mo${low?' ⚠ low':''}</span>`;rows.push(`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;${over?'color:var(--crit);font-weight:700':''}"><span>${esc(it.name)}</span><span class="tnum">need ${l.qty} · avail ${av}${rs>0?` (−${rs} reserved)`:''}${over?' ⚠':''}${destNote}</span></div>`);}});
   const s=document.getElementById('sum');
   if(!rows.length)s.className='banner info',s.innerHTML=`${svg(I.info,17)}<div>Add items to see availability at <b>${esc(loc(from).code)}</b>.</div>`;
   else if(tfExceed)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>More than available at ${esc(loc(from).code)}.</b> Reserved stock (open requests) doesn’t count. Reduce to submit.<div style="margin-top:7px;display:grid;gap:3px">${rows.join('')}</div></div>`;
@@ -552,7 +573,7 @@ function openReceive(id){
   modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
-    await callRpc('receive_transfer',{p_id:id,p_recv:recv},'Receipt confirmed');
+    await callRpc('receive_transfer',{p_id:id,p_recv:recv},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});
   };
 }
 /* Orders */
@@ -634,48 +655,73 @@ function newStock(){
     await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
   };
 }
-let stCounts={}, stCurrentId=null, stSaveT=null;
+let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false;
 function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
-function openStock(id){
+function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
+function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
-  if(stCurrentId!==id){ stCounts={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);}); }
+  const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
+  stEditable=editable;
+  if(stCurrentId!==id||amend){ stCounts={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);}); }
   stCurrentId=id;
   const camOk=('BarcodeDetector' in window);
-  const head=open?`<div class="banner info">${svg(I.stocktake,17)}<div><b>Blind count.</b> Enter what you physically count — the on-hand figure is hidden so the count stays honest. Scan with a USB scanner or your camera, or search below. Progress saves as you go, so you can stop and finish later.</div></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="st-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam">${svg(I.box,16)} Camera</button>`:''}</div>`:'';
-  const canDel=open?can('stocktake.do'):(ROLE==='super_admin');
-  const foot=`<button class="btn" data-close>Close</button>${canDel?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`:''}${open&&can('stocktake.do')?`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`:''}`;
-  slideover(st.code,loc(st.location_id).name,`${head}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div><div id="stList">${renderStRows(st,open,'')}</div>`,foot);
-  if(open){
+  let head='';
+  if(open){ head=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Blind count.</b> Enter what you physically count — the on-hand figure is hidden so the count stays honest. Scan with a USB scanner or your camera, or search below. Progress saves as you go.</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="st-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam">${svg(I.box,16)} Camera</button>`:''}</div>
+    <div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span id="st-prog-txt">0 of 0 counted</span><span id="st-prog-pct" class="tnum">0%</span></div><div style="height:7px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div id="st-prog-bar" style="height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .2s"></div></div></div>`;
+  } else if(editable){ head=`<div class="banner warn">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="search" style="max-width:none;margin-bottom:12px">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div>`; }
+  const canDel=open?can('stocktake.do'):(ROLE==='super_admin'&&!amend);
+  let foot=`<button class="btn" data-close>Close</button>`;
+  if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`;
+  if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
+  else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
+  else if(st.status==='completed'&&ROLE==='super_admin') foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
+  slideover(st.code,loc(st.location_id).name,`${head}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div><div id="stList">${renderStRows(st,editable,'')}</div>`,foot);
+  if(editable){
     const scan=document.getElementById('st-scan');
-    scan.oninput=()=>renderStList(st);
-    scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();stScanCode(st,scan.value.trim());scan.value='';renderStList(st);scan.focus();}};
-    setTimeout(()=>scan.focus(),60);
-    bindStInputs();
+    if(scan){ scan.oninput=()=>renderStList(st); scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();stScanCode(st,scan.value.trim());scan.value='';renderStList(st);scan.focus();}}; if(open)setTimeout(()=>scan.focus(),60); }
+    bindStInputs(); if(open)updateStProgress();
     const cam=document.getElementById('st-cam'); if(cam)cam.onclick=()=>openScanner(st);
-    document.getElementById('st-save').onclick=()=>saveStProgress(st,true);
-    document.getElementById('fin').onclick=async()=>{
-      const counts=stCountsArray();
-      if(!counts.length)return toast('Enter at least one count',true);
-      await callRpc('finalize_stocktake',{p_id:id,p_counts:counts},'Stock take finalised');
-    };
+    const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>saveStProgress(st,true);
+    const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
+    const am=document.getElementById('st-amend-save'); if(am)am.onclick=()=>saveAmend(st);
+  } else {
+    const amb=document.getElementById('st-amend'); if(amb)amb.onclick=()=>openStock(id,true);
   }
 }
-function renderStRows(st,open,filter){
+function reviewStocktake(st){
+  const counted=stCountsArray();
+  if(!counted.length)return toast('Enter at least one count',true);
+  const total=(st.lines||[]).length, doneN=counted.length, uncounted=total-doneN;
+  let varUnits=0,varVal=0; const rows=[];
+  counted.forEach(c=>{const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)return;const it=item(l.item_id);const sys=onHand(st.location_id,l.item_id);const d=c.counted-sys;if(d!==0){varUnits+=Math.abs(d);varVal+=Math.abs(d)*it.unit_cost;rows.push(`<tr><td>${esc(it.name)}</td><td class="num tnum">${sys}</td><td class="num tnum">${c.counted}</td><td class="num tnum" style="color:${d>0?'var(--transit)':'var(--crit)'}">${d>0?'+'+d:d}</td></tr>`);}});
+  const body=`<div class="banner warn">${svg(I.alert,17)}<div><b>Review before submitting.</b> Once submitted, this updates ${esc(loc(st.location_id).name)}'s stock, pushes to Square, and can only be changed afterwards by a Super Admin.</div></div>
+    <dl class="kv" style="margin-bottom:12px"><dt>Items counted</dt><dd>${doneN} of ${total}</dd><dt>Not counted</dt><dd>${uncounted}</dd><dt>Lines with variance</dt><dd>${rows.length}</dd><dt>Total variance</dt><dd class="tnum">${varUnits} units · ${money(varVal)}</dd></dl>
+    ${uncounted>0?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px"><input type="checkbox" id="st-zero" style="margin-top:3px"><span>Treat the ${uncounted} not-counted item(s) as <b>0</b> (full count). Leave unticked to keep their current stock.</span></label>`:''}
+    ${rows.length?`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">System</th><th class="num">Counted</th><th class="num">Diff</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="banner info">${svg(I.check,17)}<div>No variances — everything matches.</div></div>`}`;
+  modal('Submit '+st.code,'Final review — cannot be undone',body,`<button class="btn" data-close>Back</button><button class="btn primary" id="st-confirm">Submit count</button>`);
+  document.getElementById('st-confirm').onclick=()=>{
+    let counts=stCountsArray();const zero=document.getElementById('st-zero');
+    if(zero&&zero.checked){(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});}
+    callRpc('finalize_stocktake',{p_id:st.id,p_counts:counts},'Stock take submitted',{location_id:st.location_id});
+  };
+}
+function saveAmend(st){const counts=stCountsArray();if(!counts.length)return toast('No counts to save',true);callRpc('amend_stocktake',{p_id:st.id,p_counts:counts},'Count amended',{location_id:st.location_id});}
+function renderStRows(st,editable,filter){
   const q=(filter||'').toLowerCase();
   let lines=st.lines||[];
   if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});
   if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;
   return lines.map(l=>{const it=item(l.item_id);
-    if(open){const c=stCounts[l.id];
+    if(editable){const c=stCounts[l.id];
       return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
 }
-function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,st.status==='open',f);bindStInputs();}
-function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});}
-function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const line=(st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this count: '+code,true);return;}const cur=+stCounts[line.id]||0;stCounts[line.id]=cur+1;toast('+1 '+item(line.item_id).name+' = '+(cur+1));saveStProgress(st,false);}
+function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f);bindStInputs();updateStProgress();}
+function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});}
+function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const line=(st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this count: '+code,true);return;}const cur=+stCounts[line.id]||0;stCounts[line.id]=cur+1;toast('+1 '+item(line.item_id).name+' = '+(cur+1));saveStProgress(st,false);updateStProgress();}
 function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce)toast(error?('Save failed: '+error.message):'Progress saved',!!error);};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
 async function openScanner(st){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
@@ -735,7 +781,7 @@ function rSum(){const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);docu
 async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
-  await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted');
+  await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
 }
 /* Catalog */
 let catSearch='',catCat='all';
@@ -805,15 +851,35 @@ async function linkLocations(){
 }
 function vUsers(v){
   const badge=r=>({user:'p-draft',admin:'p-appr',national_admin:'p-partial',super_admin:'p-transit'}[r]||'p-draft');
-  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and (for User/Admin) a home centre. Change a value below and it saves. Use <b>Sync team from Square</b> to pull everyone in your Square team in automatically (matched by email, with their Square location as their home centre).</div></div>
+  const centresCell=u=>{
+    if(u.role==='national_admin'||u.role==='super_admin')return '<span class="tag">All centres</span>';
+    const codes=(S.plocs||[]).filter(p=>p.profile_id===u.id).map(p=>loc(p.location_id).code);
+    const shown=codes.length?codes.map(c=>`<span class="tag" style="margin:0 3px 3px 0;display:inline-block">${esc(c)}</span>`).join(''):'<span style="color:var(--faint)">none</span>';
+    return `${shown}${can('*')?` <button class="btn sm" data-ucentres="${u.id}">Edit</button>`:''}`;
+  };
+  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres. <b>Sync team from Square</b> pulls everyone in automatically. A person can have <b>multiple centres</b> — use <b>Edit</b> under Centres.</div></div>
     ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
-    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Home centre</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
+    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Centres</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
-      <td>${can('*')?`<select data-uhome="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="">— none —</option>${S.locations.map(l=>`<option value="${l.id}" ${u.home_centre===l.id?'selected':''}>${esc(l.code)} — ${esc(l.name)}</option>`).join('')}</select>`:((u.role==='national_admin'||u.role==='super_admin')?'<span class="tag">All centres</span>':esc(loc(u.home_centre).name))}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${centresCell(u)}</td></tr>`).join('')}</tbody></table></div>`;
   if(can('*')){
     document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
-    document.querySelectorAll('[data-uhome]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({home_centre:e.target.value||null}).eq('id',e.target.dataset.uhome);toast(error?error.message:'Home centre updated',!!error);if(!error)refresh();});
+    document.querySelectorAll('[data-ucentres]').forEach(b=>b.onclick=()=>editUserCentres(b.dataset.ucentres));
   }
+}
+function editUserCentres(id){
+  const u=S.profiles.find(p=>p.id===id);const have=new Set((S.plocs||[]).filter(p=>p.profile_id===id).map(p=>p.location_id));
+  const body=`<div class="banner info">${svg(I.location,17)}<div>Tick every centre <b>${esc(u?(u.full_name||u.email):'')}</b> can access. The first ticked is their default.</div></div>
+    <div style="display:grid;gap:8px">${S.locations.map(l=>`<label style="display:flex;gap:9px;align-items:center;font-size:14px"><input type="checkbox" value="${l.id}" ${have.has(l.id)?'checked':''} data-lc> ${esc(l.code)} — ${esc(l.name)}</label>`).join('')}</div>`;
+  modal('Centres — '+(u?(u.full_name||u.email):''),'Multi-location access',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="uc-save">Save</button>`);
+  document.getElementById('uc-save').onclick=async()=>{
+    const checked=[...document.querySelectorAll('[data-lc]:checked')].map(c=>c.value);
+    const{error:e1}=await sb.from('profile_locations').delete().eq('profile_id',id);
+    if(e1){toast(e1.message,true);return;}
+    if(checked.length){const{error:e2}=await sb.from('profile_locations').insert(checked.map(l=>({profile_id:id,location_id:l})));if(e2){toast(e2.message,true);return;}}
+    await sb.from('profiles').update({home_centre:checked[0]||null}).eq('id',id);
+    closeOverlay();toast('Centres updated');refresh();
+  };
 }
 function vAudit(v){
   let list=S.audit;if(scoped())list=list.filter(a=>mine(a.location_id));
@@ -822,8 +888,9 @@ function vAudit(v){
 function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
-    <div style="font-size:13px;color:var(--muted);margin-top:12px">New &amp; changed items and live stock arrive automatically via Square webhooks. Use “Sync now” to pull a full refresh.</div></div>
-    ${can('sync.run')?`<button class="btn primary" data-act="sync">${svg(I.sync,16)} Run full sync now</button>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
+    <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks). Transfers, receipts and stock takes are pushed <b>back</b> to Square as they happen, so both stay in step.</div></div>
+    ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
+    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
 }
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
@@ -839,12 +906,21 @@ async function runTeamSync(){
   catch(e){toast('Team sync failed: '+(e.message||e),true);}
 }
 
-/* ---------- RPC wrapper ---------- */
-async function callRpc(fn,args,okMsg){
+/* ---------- RPC wrapper (+ optional push our stock to Square) ---------- */
+async function callRpc(fn,args,okMsg,push){
   const{error}=await sb.rpc(fn,args);
   if(error){toast(error.message||'Action failed',true);return;}
+  if(push&&push.location_id){ try{ await sb.functions.invoke('square-push',{body:push}); }catch(e){} }
   closeOverlay();toast(okMsg||'Done');await refresh();
 }
+function txItems(t){return (t.lines||[]).map(l=>l.item_id);}
+function doApprove(id){callRpc('approve_transfer',{p_id:id},'Approved');}
+function doCancel(id){callRpc('cancel_transfer',{p_id:id},'Cancelled');}
+function doDispatch(id){const t=S.transfers.find(x=>x.id===id);callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);}
+function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
+function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);callRpc('receive_order',{p_id:id},'Order received',o?{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)}:null);}
+async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function pushAll(){toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}toast('Pushed '+n+' location(s) to Square');}
 
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
@@ -867,13 +943,13 @@ document.addEventListener('click',e=>{
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
-  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation}[k]||(()=>{}))();return;}
-  const ap=e.target.closest('[data-approve]');if(ap){callRpc('approve_transfer',{p_id:ap.dataset.approve},'Approved');return;}
-  const cx=e.target.closest('[data-cancel]');if(cx){callRpc('cancel_transfer',{p_id:cx.dataset.cancel},'Cancelled');return;}
-  const dp=e.target.closest('[data-dispatch]');if(dp){callRpc('dispatch_transfer',{p_id:dp.dataset.dispatch},'Dispatched to transit');return;}
+  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'push-all':pushAll}[k]||(()=>{}))();return;}
+  const ap=e.target.closest('[data-approve]');if(ap){doApprove(ap.dataset.approve);return;}
+  const cx=e.target.closest('[data-cancel]');if(cx){doCancel(cx.dataset.cancel);return;}
+  const dp=e.target.closest('[data-dispatch]');if(dp){doDispatch(dp.dataset.dispatch);return;}
   const rc=e.target.closest('[data-receive]');if(rc){openReceive(rc.dataset.receive);return;}
-  const os=e.target.closest('[data-oship]');if(os){callRpc('ship_order',{p_id:os.dataset.oship},'Marked shipped');return;}
-  const orr=e.target.closest('[data-orecv]');if(orr){callRpc('receive_order',{p_id:orr.dataset.orecv},'Order received');return;}
+  const os=e.target.closest('[data-oship]');if(os){doShipOrder(os.dataset.oship);return;}
+  const orr=e.target.closest('[data-orecv]');if(orr){doReceiveOrder(orr.dataset.orecv);return;}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlay();});
 document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
