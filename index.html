@@ -149,7 +149,9 @@
   <div class="box">
     <div class="brand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Stock Transfer Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
     <h2>Sign in</h2>
-    <p id="loginMsg">Enter your work email and we’ll send you a one-time sign-in link.</p>
+    <p id="loginMsg">Sign in with your work Google account, or get a one-time link by email.</p>
+    <button class="btn" id="googleBtn" style="width:100%;justify-content:center;gap:9px;font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg> Continue with Google</button>
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--faint);font-size:12px"><div style="flex:1;height:1px;background:var(--border)"></div>or<div style="flex:1;height:1px;background:var(--border)"></div></div>
     <div class="field"><label for="email">Work email</label><input id="email" type="email" placeholder="you@au.baps.org" autocomplete="email"></div>
     <button class="btn primary" id="sendLink" style="width:100%;justify-content:center">Email me a sign-in link</button>
     <div id="cfgWarn" hidden style="margin-top:16px" class="banner crit"></div>
@@ -623,7 +625,8 @@ function vLocations(v){
 }
 function vUsers(v){
   const badge=r=>({user:'p-draft',admin:'p-appr',national_admin:'p-partial',super_admin:'p-transit'}[r]||'p-draft');
-  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and (for User/Admin) a home centre. Change a value below and it saves.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and (for User/Admin) a home centre. Change a value below and it saves. Use <b>Sync team from Square</b> to pull everyone in your Square team in automatically (matched by email, with their Square location as their home centre).</div></div>
+    ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Home centre</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
       <td>${can('*')?`<select data-uhome="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="">— none —</option>${S.locations.map(l=>`<option value="${l.id}" ${u.home_centre===l.id?'selected':''}>${l.code}</option>`).join('')}</select>`:((u.role==='national_admin'||u.role==='super_admin')?'<span class="tag">All</span>':loc(u.home_centre).code)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -647,6 +650,13 @@ async function runSync(){
   toast('Syncing with Square…');
   try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;toast('Synced'+(data&&data.itemsUpserted!=null?` — ${data.itemsUpserted} items`:''));refresh();}
   catch(e){toast('Sync failed: '+(e.message||e),true);}
+}
+async function runTeamSync(){
+  toast('Importing team from Square…');
+  try{const{data,error}=await sb.functions.invoke('square-team-sync');if(error)throw error;
+    if(data&&data.error){toast('Team sync: '+data.error,true);return;}
+    toast(`Team imported — ${data?data.created:0} new, ${data?data.updated:0} updated`);refresh();}
+  catch(e){toast('Team sync failed: '+(e.message||e),true);}
 }
 
 /* ---------- RPC wrapper ---------- */
@@ -675,7 +685,7 @@ document.addEventListener('click',e=>{
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
-  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync}[k]||(()=>{}))();return;}
+  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync}[k]||(()=>{}))();return;}
   const ap=e.target.closest('[data-approve]');if(ap){callRpc('approve_transfer',{p_id:ap.dataset.approve},'Approved');return;}
   const cx=e.target.closest('[data-cancel]');if(cx){callRpc('cancel_transfer',{p_id:cx.dataset.cancel},'Cancelled');return;}
   const dp=e.target.closest('[data-dispatch]');if(dp){callRpc('dispatch_transfer',{p_id:dp.dataset.dispatch},'Dispatched to transit');return;}
@@ -688,6 +698,11 @@ document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
 document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
 document.getElementById('themeBtn').onclick=()=>{const r=document.documentElement,c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':(c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark')));};
 document.getElementById('signout').onclick=async()=>{await sb.auth.signOut();location.reload();};
+document.getElementById('googleBtn').onclick=async()=>{
+  if(!sb){document.getElementById('loginMsg').textContent='Set your Supabase URL and key in index.html first.';return;}
+  const{error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
+  if(error){const m=document.getElementById('loginMsg');m.textContent=error.message;m.style.color='var(--crit)';}
+};
 document.getElementById('sendLink').onclick=async()=>{
   const email=document.getElementById('email').value.trim();if(!email)return;
   const btn=document.getElementById('sendLink');btn.disabled=true;btn.textContent='Sending…';
