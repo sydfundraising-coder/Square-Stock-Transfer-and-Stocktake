@@ -284,6 +284,10 @@ function downloadCSV(filename,header,rows){
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
+function downloadJSON(filename,obj){
+  const blob=new Blob([JSON.stringify(obj)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
 function parseCSV(text){
   const rows=[];let f='',row=[],q=false;text=String(text).replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   for(let i=0;i<text.length;i++){const c=text[i];
@@ -1368,7 +1372,14 @@ function vLocations(v){
   v.innerHTML=`
     ${can('sync.run')?`<div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="new-location">${svg(I.plus,16)} Add location</button>`:''}<button class="btn primary" data-act="link-locs">${svg(I.sync,16)} Pull locations from Square</button></div>`:''}
     ${!S.locations.length?`<div class="banner info">${svg(I.info,17)}<div>No locations yet. Click <b>Pull locations from Square</b> to bring them in automatically.</div></div>`:(unlinked?`<div class="banner warn">${svg(I.alert,17)}<div><b>${unlinked} location(s) not linked to Square yet</b> — stock won’t sync for them. Click <b>Pull locations from Square</b>. If a centre isn’t in Square (e.g. a stockroom), that’s fine — just leave it.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>All locations are linked to Square.</div></div>`)}
-    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th></tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th>${ROLE==='super_admin'?'<th></th>':''}</tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td>${ROLE==='super_admin'?`<td style="text-align:right">${l.is_hub?'<span style="font-size:12px;color:var(--faint)">default source</span>':`<button class="btn sm" data-sethub="${l.id}">Set as hub</button>`}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+}
+async function setHub(id){
+  const l=S.locations.find(x=>x.id===id);if(!l)return;
+  if(!window.confirm('Make '+l.name+' the default transfer source (Hub)? Any other hub will be cleared.'))return;
+  let r=await sb.from('locations').update({is_hub:false}).neq('id',id);if(r.error)return toast(r.error.message,true);
+  r=await sb.from('locations').update({is_hub:true}).eq('id',id);if(r.error)return toast(r.error.message,true);
+  toast(l.name+' is now the Hub');refresh();
 }
 function newLocation(){
   modal('Add location','For a warehouse / stockroom not in Square',`<div class="grid2"><div class="field"><label>Code</label><input id="lc-code" placeholder="e.g. WH" maxlength="8"></div><div class="field"><label>Name</label><input id="lc-name" placeholder="Central Warehouse"></div></div><div class="grid2"><div class="field"><label>City</label><input id="lc-city"></div><div class="field"><label>Type</label><select id="lc-hub"><option value="false">Store</option><option value="true">Hub / Warehouse (default transfer source)</option></select></div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Add</button>`);
@@ -1566,7 +1577,35 @@ function vSettings(v){
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
     <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks). Transfers, receipts and stock takes are pushed <b>back</b> to Square as they happen, so both stay in step.</div></div>
     ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update sales history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
-    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Update sales history” pulls Square POS sales/waste/returns into each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
+    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Update sales history” pulls Square POS sales/waste/returns into each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
+    ${ROLE==='super_admin'?`<div class="card pad" style="margin-top:16px"><div class="sq-title" style="font-size:15px">${svg(I.receipt,18)} Backups</div>
+      <div style="font-size:13px;color:var(--muted);margin:10px 0 12px">A full snapshot is saved automatically every night (the last 7 are kept). You can also back up now, and download a copy to your computer for off-site safety.</div>
+      <div id="bk-status" style="font-size:13px;margin-bottom:12px;color:var(--muted)">Loading…</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="bk-now">${svg(I.check,16)} Back up now</button><button class="btn" id="bk-dl">${svg(I.box,16)} Download latest (JSON)</button></div>
+      <div id="bk-list" style="margin-top:14px"></div></div>`:''}`;
+  if(ROLE==='super_admin'){
+    const bn=document.getElementById('bk-now');if(bn)bn.onclick=runBackupNow;
+    const bd=document.getElementById('bk-dl');if(bd)bd.onclick=()=>downloadBackup();
+    loadBackupList();
+  }
+}
+async function loadBackupList(){
+  const el=document.getElementById('bk-list'),st=document.getElementById('bk-status');if(!el)return;
+  const{data,error}=await sb.from('backups').select('id,created_at,label').order('created_at',{ascending:false}).limit(7);
+  if(error){if(st)st.textContent='Backups aren’t set up yet — run 13_backups.sql in Supabase.';el.innerHTML='';return;}
+  if(st)st.innerHTML=data.length?`Latest backup: <b>${fmtDT(data[0].created_at)}</b> · ${data.length} kept`:'No backups yet — click “Back up now”.';
+  el.innerHTML=data.length?`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Type</th><th></th></tr></thead><tbody>${data.map(b=>`<tr><td>${fmtDT(b.created_at)}</td><td>${esc(b.label||'auto')}</td><td style="text-align:right"><button class="btn sm" data-bkdl="${b.id}">Download</button></td></tr>`).join('')}</tbody></table></div>`:'';
+  el.querySelectorAll('[data-bkdl]').forEach(btn=>btn.onclick=()=>downloadBackup(btn.dataset.bkdl));
+}
+async function runBackupNow(){toast('Creating backup…');const{error}=await sb.rpc('make_backup',{p_label:'manual'});if(error)return toast(error.message||'Backup failed',true);toast('Backup saved');loadBackupList();}
+async function downloadBackup(id){
+  toast('Preparing download…');
+  let qy=sb.from('backups').select('created_at,snapshot');
+  qy = id ? qy.eq('id',id).single() : qy.order('created_at',{ascending:false}).limit(1).maybeSingle();
+  const{data,error}=await qy;
+  if(error||!data)return toast('No backup found — click “Back up now” first',true);
+  downloadJSON('shayona-backup_'+String(data.created_at||today()).slice(0,10)+'.json',{created_at:data.created_at,data:data.snapshot});
+  toast('Backup downloaded');
 }
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
@@ -1639,6 +1678,7 @@ document.addEventListener('click',e=>{
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
   const oi=e.target.closest('[data-openitem]');if(oi){openItem(oi.dataset.openitem);return;}
+  const sh=e.target.closest('[data-sethub]');if(sh){setHub(sh.dataset.sethub);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
   const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'ledger':runLedger,'push-all':pushAll}[k]||(()=>{}))();return;}
   const ap=e.target.closest('[data-approve]');if(ap){doApprove(ap.dataset.approve);return;}
