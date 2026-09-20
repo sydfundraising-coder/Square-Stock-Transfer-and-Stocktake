@@ -463,6 +463,7 @@ function renderRoleChip(prof){
 const NAV=[
   {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
+  {id:'insights',label:'Centre Insights',icon:I.chart,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
   {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length},
@@ -493,13 +494,13 @@ function renderNav(){
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,receipts:vReceipts,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,receipts:vReceipts,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -956,7 +957,10 @@ let dLines=[],tfExceed=false;
 function newTransfer(presetItem){
   dLines=[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
-  const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location</label><select id="tf-to">${opts}</select></div></div>
+  // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
+  const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
+  const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="tf-rec">${svg(I.chart,14)} Fill recommended (2-month cover)</button><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
@@ -964,8 +968,9 @@ function newTransfer(presetItem){
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
   modal('New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Submit request</button>`);
   const hub=S.locations.find(l=>l.is_hub);const from=document.getElementById('tf-from'),to=document.getElementById('tf-to');
-  if(scoped()){to.value=HOME;from.value=(hub&&hub.id!==HOME)?hub.id:S.locations.find(l=>l.id!==HOME).id;}
-  else{if(hub)from.value=hub.id;to.value=(S.locations.find(l=>l.id!==(hub?hub.id:''))||{}).id;}
+  // From = Central Warehouse (hub) by default; To = the user's centre.
+  if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
+  else{if(hub)from.value=hub.id;to.value=(destLocs.find(l=>l.id!==(hub?hub.id:''))||destLocs[0]||{}).id;}
   edLines();from.onchange=sum;to.onchange=sum;
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
@@ -1004,7 +1009,7 @@ async function submitTransfer(){
   const from=document.getElementById('tf-from').value,to=document.getElementById('tf-to').value,notes=document.getElementById('tf-notes').value.trim();
   const lines=dLines.filter(l=>l.item&&l.qty>0);
   if(from===to)return toast('Source and destination must differ',true);
-  if(scoped()&&!mine(from)&&!mine(to))return toast('One of your centres must be the source or destination',true);
+  if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
   if(!lines.length)return toast('Add an item',true);
   if(tfExceed)return toast('Reduce quantities over available',true);
   await callRpc('create_transfer',{p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Request submitted');
@@ -1415,6 +1420,59 @@ function editUserCentres(id){
     closeOverlay();toast('Centres updated');refresh();
   };
 }
+/* ---------- Centre Insights: top sellers + movers ---------- */
+let insCentre=null;
+async function fetchCentreSales(locId){
+  const since=new Date();since.setMonth(since.getMonth()-12);
+  let rows=[],from=0;const size=1000;
+  for(;;){const{data,error}=await sb.from('stock_ledger').select('item_id,qty_delta,ts').eq('location_id',locId).eq('kind','sale').gte('ts',since.toISOString()).range(from,from+size-1);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}
+  return rows;
+}
+function vInsights(v){
+  const centres=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+  if(!centres.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available.</div></div>`;return;}
+  if(!insCentre||!centres.find(c=>c.id===insCentre))insCentre=(HOME&&centres.find(c=>c.id===HOME))?HOME:centres[0].id;
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.chart,17)}<div>Best sellers and busiest items for a centre over the <b>last 12 months</b>. Sales come from Square — keep them current with <b>Square Sync → Update sales history</b>.</div></div>
+      <div class="rep-actions no-print"><select class="filter" id="ins-c">${centres.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.code})</option>`).join('')}</select><button class="btn" id="ins-csv">${svg(I.receipt,15)} CSV</button></div>
+    </div><div id="ins-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
+  document.getElementById('ins-c').value=insCentre;document.getElementById('ins-c').onchange=e=>{insCentre=e.target.value;renderInsights();};
+  document.getElementById('ins-csv').onclick=exportInsights;
+  renderInsights();
+}
+async function renderInsights(){
+  const el=document.getElementById('ins-body');if(!el)return;const centre=insCentre;
+  let sales;try{sales=await fetchCentreSales(centre);}catch(e){el.innerHTML=`<div class="card empty">${svg(I.alert,30)}<div>Could not load sales: ${esc(e.message||e)}</div></div>`;return;}
+  const soldU={},soldByCat={};let totU=0,totV=0;
+  sales.forEach(r=>{const units=r.qty_delta<0?-r.qty_delta:0;if(!units)return;const it=item(r.item_id);soldU[r.item_id]=(soldU[r.item_id]||0)+units;const c=it.category||'Uncategorised';soldByCat[c]=(soldByCat[c]||0)+units;totU+=units;totV+=units*(it.price||0);});
+  const topItems=Object.entries(soldU).sort((a,b)=>b[1]-a[1]).slice(0,50);
+  const topCats=Object.entries(soldByCat).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const catMax=topCats.length?topCats[0][1]:0;
+  const movers={};S.transfers.filter(t=>t.to_location===centre&&['received','partially_received'].includes(t.status)).forEach(t=>(t.lines||[]).forEach(l=>{const m=(movers[l.item_id]=movers[l.item_id]||{count:0,units:0});m.count++;m.units+=(l.qty_received||0);}));
+  const topMovers=Object.entries(movers).sort((a,b)=>b[1].count-a[1].count||b[1].units-a[1].units).slice(0,20);
+  window._insData={centre,topItems,topCats,topMovers};
+  const bar=(label,val,max)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${val.toLocaleString()}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:linear-gradient(90deg,var(--accent),var(--accent-ink));border-radius:6px"></div></div></div>`;
+  el.innerHTML=`
+    <div class="tiles">
+      <div class="tile accent"><div class="lbl">${svg(I.box,14)} Units sold (12mo)</div><div class="val tnum">${totU.toLocaleString()}</div><div class="meta">${loc(centre).name}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.cost,14)} Sales value</div><div class="val tnum">${money0(totV)}</div><div class="meta">at retail price</div></div>
+      <div class="tile"><div class="lbl">${svg(I.catalog,14)} Distinct items sold</div><div class="val tnum">${topItems.length>=50?'50+':Object.keys(soldU).length}</div><div class="meta">last 12 months</div></div>
+      <div class="tile"><div class="lbl">${svg(I.chart,14)} Top category</div><div class="val tnum" style="font-size:18px">${topCats.length?esc(topCats[0][0]):'—'}</div><div class="meta">${topCats.length?topCats[0][1].toLocaleString()+' units':''}</div></div>
+    </div>
+    ${!sales.length?`<div class="banner warn">${svg(I.alert,17)}<div>No sales history yet for this centre. Run <b>Square Sync → Update sales history</b> to pull Square POS sales.</div></div>`:''}
+    <div class="grid2" style="align-items:start">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Top 5 categories sold</h3>${topCats.length?topCats.map(([c,u])=>bar(c,u,catMax)).join(''):'<div style="color:var(--faint);font-size:13px">No data.</div>'}</div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Most frequently received (transfers in)</h3>${topMovers.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Times</th><th class="num">Units</th></tr></thead><tbody>${topMovers.map(([id,m])=>`<tr><td>${esc(item(id).name)}</td><td class="num tnum">${m.count}</td><td class="num tnum">${m.units}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No transfer receipts yet.</div>'}</div>
+    </div>
+    <div class="section-head" style="margin-top:8px"><h2>Top 50 items sold (12 months)</h2></div>
+    ${topItems.length?`<div class="tablewrap"><table><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th></tr></thead><tbody>${topItems.map(([id,u],ix)=>{const it=item(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum">${u.toLocaleString()}</td><td class="num tnum">${money(u*(it.price||0))}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No sales recorded for this centre yet.</div></div>`}`;
+}
+function exportInsights(){
+  const d=window._insData;if(!d)return;const cn=loc(d.centre).code;const stamp=today();
+  downloadCSV(`top-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)'],d.topItems.map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,(u*(item(id).price||0)).toFixed(2)]));
+  setTimeout(()=>downloadCSV(`most-received_${cn}_${stamp}.csv`,['Item','Product code','Times received','Units received'],d.topMovers.map(([id,m])=>[item(id).name,item(id).sku||'',m.count,m.units])),400);
+  toast('Exported top items + most-received');
+}
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
 function vAdjustments(v){
@@ -1546,7 +1604,7 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   (affectedLocs||[]).filter(Boolean).forEach(lc=>sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:itemIds}}).catch(e=>console.error('square-push',e)));
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
-async function runLedger(){toast('Pulling sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:60}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}sb.rpc('log_system_event',{p_action:'Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)'}).catch(()=>{});toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}sb.rpc('log_system_event',{p_action:'Pushed all stock to Square ('+n+' locations)'}).catch(()=>{});toast('Pushed '+n+' location(s) to Square');}
 
