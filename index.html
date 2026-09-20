@@ -13,6 +13,7 @@
   window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJucHlxYW9rYnZ3a3R5eWphcmtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3OTQ2NzEsImV4cCI6MjEwNTM3MDY3MX0.SE_S5_PLTmNl4SGixoIVz5pXqge_heUJ_h7CJZIzuqc";
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -143,6 +144,37 @@
   }
   @media (max-width:440px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tile .val{font-size:22px}.topbar h1{font-size:16px}}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  /* ---- Reports ---- */
+  .rep-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .rep-actions{display:flex;align-items:center;gap:8px;flex:none}
+  .rep-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-6px 0 16px}
+  .rep-hint{display:flex;align-items:center;gap:7px;margin:-6px 0 16px;color:var(--muted);font-size:12.5px}
+  .fchip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent-ink);border-radius:20px;padding:4px 6px 4px 12px;font-size:12.5px}
+  .fchip button{display:grid;place-items:center;border:none;background:rgba(0,0,0,.08);color:inherit;border-radius:50%;width:18px;height:18px;cursor:pointer;padding:0}
+  .fchip button:hover{background:rgba(0,0,0,.18)}
+  .chint{font-weight:400;color:var(--faint);font-size:11.5px}
+  .chart-card canvas{cursor:pointer}
+  .chart-card h3{font-size:14px;margin-bottom:12px}
+  .chart-card{margin-bottom:16px}
+  .chart-box{position:relative;height:280px}
+  .grid2 .chart-box{height:260px}
+  .print-only{display:none}
+  #rep-print-head h1{font-size:20px;font-family:var(--disp)}
+  #rep-print-head .ph-sub{color:var(--muted);font-size:13px;margin-top:2px}
+  @media (max-width:700px){.chart-box{height:240px}.rep-actions{width:100%}.rep-actions .btn,.rep-actions .filter{flex:1}}
+  @media print{
+    @page{margin:14mm}
+    .sidebar,.topbar,.mobile-tabs,.sidebar-scrim,.no-print,.rep-actions{display:none!important}
+    .app,.main,.content,.content-inner{display:block!important;overflow:visible!important;height:auto!important;max-height:none!important;padding:0!important;margin:0!important}
+    .print-only{display:block}
+    body{background:#fff}
+    :root{--surface:#fff;--bg:#fff;--ink:#111;--muted:#444;--border:#ccc}
+    .card,.tile{box-shadow:none!important;border:1px solid #ddd!important;break-inside:avoid}
+    .chart-card,.tablewrap,.tiles{break-inside:avoid}
+    .section-head{break-after:avoid}
+    .chart-box{height:230px!important}
+    canvas{max-width:100%!important}
+  }
 </style>
 </head>
 <body>
@@ -424,6 +456,7 @@ function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSideba
 /* ---------- views ---------- */
 const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
+  destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
@@ -449,62 +482,245 @@ function vDash(v){
     <div class="section-head"><h2>Recent transfers</h2><div class="spacer"></div>${can('transfer.create')?`<button class="btn primary sm" data-act="new-transfer">${svg(I.plus,15)} New transfer</button>`:''}</div>
     ${recent.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th>Updated</th></tr></thead><tbody>${recent.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(t.received_at||t.dispatched_at||t.approved_at||t.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers yet.</div></div>`}`;
 }
-/* Reports */
-function repBar(label,val,max,color){const pct=max>0?Math.round(val/max*100):0;return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${val}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${pct}%;background:${color||'var(--accent)'};border-radius:6px"></div></div></div>`;}
-function vReports(v){
-  const visT=S.transfers.filter(canSee);
+/* ============================ Reports ============================ */
+/* ---- chart plumbing: destroy-on-rerender + theme colours from CSS vars ---- */
+let CHARTS=[];
+function destroyCharts(){CHARTS.forEach(c=>{try{c.destroy();}catch(e){}});CHARTS=[];}
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||'#888';}
+function chartTheme(){return {ink:cssVar('--ink'),muted:cssVar('--muted'),grid:cssVar('--border'),surface:cssVar('--surface'),
+  accent:cssVar('--accent'),transit:cssVar('--transit'),good:cssVar('--good'),warn:cssVar('--warn'),crit:cssVar('--crit')};}
+function palette(){const t=chartTheme();return [t.accent,t.transit,t.warn,t.good,t.crit,'#0891b2','#c026d3','#65a30d','#e11d48','#7c3aed','#0284c7','#ca8a04'];}
+function mkChart(id,cfg){const el=document.getElementById(id);if(!el||!window.Chart)return;const t=chartTheme();
+  Chart.defaults.font.family='"Public Sans",system-ui,sans-serif';Chart.defaults.color=t.muted;
+  cfg.options=cfg.options||{};cfg.options.responsive=true;cfg.options.maintainAspectRatio=false;
+  cfg.options.animation={duration:300};
+  cfg.options.plugins=Object.assign({legend:{labels:{color:t.muted,boxWidth:12,font:{size:11}}}},cfg.options.plugins||{});
+  const c=new Chart(el.getContext('2d'),cfg);CHARTS.push(c);return c;}
+function axes(){const t=chartTheme();return {x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid},beginAtZero:true}};}
+
+/* ---- reporting period + click-to-filter state ---- */
+let repRange='12m', repCentre=null, repCat=null;
+const matchCat=itemId=>!repCat||(item(itemId).category||'Uncategorised')===repCat;
+const matchCentreT=t=>!repCentre||t.from_location===repCentre||t.to_location===repCentre;
+const tHasCat=t=>!repCat||(t.lines||[]).some(l=>matchCat(l.item_id));
+const stHasCat=s=>!repCat||(s.lines||[]).some(l=>l.counted_qty!=null&&matchCat(l.item_id));
+function repStart(){const n=new Date();if(repRange==='30d')return new Date(n.getTime()-30*864e5);if(repRange==='90d')return new Date(n.getTime()-90*864e5);if(repRange==='12m'){const d=new Date(n);d.setMonth(d.getMonth()-11);d.setDate(1);d.setHours(0,0,0,0);return d;}return new Date('2000-01-01');}
+const inRange=d=>{if(!d)return false;const s=repStart();return new Date(d)>=s;};
+function monthKeys(){const s=repStart(),n=new Date(),out=[];if(repRange==='30d'||repRange==='90d'){/* day buckets weekly */}
+  let cur=new Date(s.getFullYear(),s.getMonth(),1);const end=new Date(n.getFullYear(),n.getMonth(),1);
+  if(repRange==='all'){/* start from earliest data */let earliest=end;const all=[...S.transfers,...S.stocktakes,...S.orders];all.forEach(x=>{const d=x.created_at||x.started_at;if(d){const dd=new Date(d);if(dd<earliest)earliest=dd;}});cur=new Date(earliest.getFullYear(),earliest.getMonth(),1);}
+  while(cur<=end){out.push(cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0'));cur.setMonth(cur.getMonth()+1);}
+  return out.slice(-24);}
+const mKey=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0');};
+const mLabel=k=>{const[y,m]=k.split('-');return new Date(y,m-1,1).toLocaleDateString('en-AU',{month:'short',year:'2-digit'});};
+
+/* ---- gather all report data for the current scope + period (used by charts, tables and exports) ---- */
+function reportData(){
+  const visT=S.transfers.filter(canSee).filter(t=>inRange(t.created_at)).filter(matchCentreT).filter(tHasCat);
   const done=visT.filter(t=>t.status==='received');
-  const inTr=visT.filter(t=>t.status==='in_transit'||t.status==='partially_received');
-  const disc=done.filter(t=>trShortU(t)>0);
+  const inTr=S.transfers.filter(canSee).filter(t=>t.status==='in_transit'||t.status==='partially_received').filter(matchCentreT).filter(tHasCat);
+  const trDisc=done.filter(t=>trShortU(t)>0);
   const trDays=done.filter(t=>t.received_at&&t.created_at).map(t=>(new Date(t.received_at)-new Date(t.created_at))/864e5);
   const avgTr=trDays.length?(trDays.reduce((a,b)=>a+b,0)/trDays.length):null;
-  const itemU={},catU={};
-  visT.forEach(t=>(t.lines||[]).forEach(l=>{const u=l.qty_dispatched||l.qty_requested||0;if(!u)return;itemU[l.item_id]=(itemU[l.item_id]||0)+u;const c=item(l.item_id).category||'—';catU[c]=(catU[c]||0)+u;}));
-  const topItems=Object.entries(itemU).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const topCats=Object.entries(catU).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const visO=S.orders.filter(o=>!scoped()||mine(o.location_id));
+  const visO=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&inRange(o.created_at)&&(!repCentre||o.location_id===repCentre));
   const ordRecv=visO.filter(o=>o.status==='received'&&o.received_at&&o.created_at);
   const ordDays=ordRecv.map(o=>(new Date(o.received_at)-new Date(o.created_at))/864e5);
   const avgOrd=ordDays.length?(ordDays.reduce((a,b)=>a+b,0)/ordDays.length):null;
-  const visST=S.stocktakes.filter(s=>!scoped()||mine(s.location_id));
+  const visST=S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&inRange(s.started_at||s.created_at)&&(!repCentre||s.location_id===repCentre)).filter(stHasCat);
   const stDone=visST.filter(s=>s.status==='completed');
-  let counted=0,stVar=0,stVarLines=0;
-  stDone.forEach(s=>(s.lines||[]).forEach(l=>{if(l.counted_qty!=null){counted++;const d=Math.abs((l.counted_qty)-(l.system_qty||0));if(d>0){stVar+=d;stVarLines++;}}}));
-  const scopeLabel=scoped()?(MYLOCS.map(id=>loc(id).code).join(', ')||'your centres'):'all centres';
-  v.innerHTML=`
-    <div class="banner info">${svg(I.chart,17)}<div>Performance for <b>${esc(scopeLabel)}</b>. ${scoped()?'Covers transfers where your centre is involved, plus your orders and stock takes.':'Across every centre.'}</div></div>
-
-    <div class="section-head"><h2>Transfers</h2></div>
-    <div class="tiles">
-      <div class="tile accent"><div class="lbl">${svg(I.transfer,14)} Performed</div><div class="val tnum">${visT.length}</div><div class="meta">${done.length} completed</div></div>
-      <div class="tile transit"><div class="lbl">${svg(I.truck,14)} In transit</div><div class="val tnum">${money0(inTr.reduce((s,t)=>s+trTransit(t),0))}</div><div class="meta">${inTr.length} moving</div></div>
-      <div class="tile ${disc.length?'crit':''}"><div class="lbl">${svg(I.alert,14)} Discrepancies</div><div class="val tnum">${disc.length}</div><div class="meta">${money0(disc.reduce((s,t)=>s+trShortV(t),0))} lost</div></div>
-      <div class="tile"><div class="lbl">${svg(I.calendar,14)} Avg days to receive</div><div class="val tnum">${avgTr==null?'—':avgTr.toFixed(1)}</div><div class="meta">created → received</div></div>
-    </div>
-
-    <div class="grid2" style="align-items:start">
-      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Top items moved</h3>${topItems.length?topItems.map(([id,u])=>repBar(item(id).name,u,topItems[0][1])).join(''):'<div style="color:var(--faint);font-size:13px">No data yet.</div>'}</div>
-      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Top categories</h3>${topCats.length?topCats.map(([c,u])=>repBar(c,u,topCats[0][1],'var(--transit)')).join(''):'<div style="color:var(--faint);font-size:13px">No data yet.</div>'}</div>
-    </div>
-
-    <div class="section-head" style="margin-top:24px"><h2>Supplier orders</h2></div>
-    <div class="tiles">
-      <div class="tile"><div class="lbl">${svg(I.order,14)} Received</div><div class="val tnum">${ordRecv.length}</div><div class="meta">of ${visO.length} placed</div></div>
-      <div class="tile accent"><div class="lbl">${svg(I.calendar,14)} Avg days to fulfil</div><div class="val tnum">${avgOrd==null?'—':avgOrd.toFixed(1)}</div><div class="meta">placed → received</div></div>
-      <div class="tile transit"><div class="lbl">${svg(I.truck,14)} Incoming now</div><div class="val tnum">${visO.filter(o=>o.status==='placed'||o.status==='shipped').length}</div><div class="meta">${money0(visO.filter(o=>o.status==='placed'||o.status==='shipped').reduce((s,o)=>s+oValue(o),0))} on the way</div></div>
-      <div class="tile"><div class="lbl">${svg(I.cost,14)} Received value</div><div class="val tnum">${money0(ordRecv.reduce((s,o)=>s+oValue(o),0))}</div><div class="meta">at cost</div></div>
-    </div>
-
-    <div class="section-head" style="margin-top:24px"><h2>Stock takes</h2></div>
-    <div class="tiles">
-      <div class="tile accent"><div class="lbl">${svg(I.stocktake,14)} Performed</div><div class="val tnum">${stDone.length}</div><div class="meta">${visST.filter(s=>s.status==='open').length} in progress</div></div>
-      <div class="tile"><div class="lbl">${svg(I.box,14)} Items counted</div><div class="val tnum">${counted}</div><div class="meta">across completed counts</div></div>
-      <div class="tile ${stVar>0?'crit':''}"><div class="lbl">${svg(I.alert,14)} Count discrepancies</div><div class="val tnum">${stVarLines}</div><div class="meta">${stVar} units off</div></div>
-      <div class="tile"><div class="lbl">${svg(I.check,14)} Accuracy</div><div class="val tnum">${counted?Math.round((1-stVarLines/counted)*100)+'%':'—'}</div><div class="meta">lines matching system</div></div>
-    </div>
-    ${(()=>{const byLoc={};stDone.forEach(s=>(s.lines||[]).forEach(l=>{if(l.counted_qty!=null&&l.system_qty!=null){const d=l.counted_qty-(l.system_qty||0);if(d!==0){const k=s.location_id;(byLoc[k]=byLoc[k]||{u:0,v:0});byLoc[k].u+=Math.abs(d);byLoc[k].v+=Math.abs(d)*item(l.item_id).unit_cost;}}}));const rows=Object.entries(byLoc).sort((a,b)=>b[1].v-a[1].v);
-      return `<div class="section-head" style="margin-top:8px"><h3 style="font-size:14px">Stock take variance by centre</h3></div><div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">Variance units</th><th class="num">Variance value</th></tr></thead><tbody>${rows.length?rows.map(([k,v])=>`<tr><td>${esc(loc(k).name)}</td><td class="num tnum">${v.u}</td><td class="num tnum">${money(v.v)}</td></tr>`).join(''):`<tr><td colspan="3" style="color:var(--faint)">No variances recorded yet.</td></tr>`}</tbody></table></div>`;})()}`;
+  // movement aggregates (respect category filter at line level)
+  const itemU={},catU={},routeU={},moveByMonth={},valByMonth={},moveByMonthCat={};
+  visT.forEach(t=>{const mk=mKey(t.created_at);(t.lines||[]).forEach(l=>{if(!matchCat(l.item_id))return;const u=l.qty_dispatched||l.qty_requested||0;if(!u)return;const val=u*item(l.item_id).unit_cost;
+    itemU[l.item_id]=(itemU[l.item_id]||0)+u;const c=item(l.item_id).category||'Uncategorised';catU[c]=(catU[c]||0)+u;
+    const rk=loc(t.from_location).code+' → '+loc(t.to_location).code;routeU[rk]=(routeU[rk]||0)+u;
+    moveByMonth[mk]=(moveByMonth[mk]||0)+u;valByMonth[mk]=(valByMonth[mk]||0)+val;
+    (moveByMonthCat[c]=moveByMonthCat[c]||{})[mk]=(moveByMonthCat[c][mk]||0)+u;});});
+  // stock take aggregates
+  let counted=0,stVarLines=0,stVarUnits=0,stVarValAbs=0,stShortUnits=0,stShortVal=0,stOverUnits=0;
+  const stByLoc={},stByMonth={};
+  stDone.forEach(s=>{const mk=mKey(s.finalized_at||s.started_at||s.created_at);(s.lines||[]).forEach(l=>{if(l.counted_qty==null||!matchCat(l.item_id))return;counted++;const sysq=l.system_qty||0;const d=l.counted_qty-sysq;if(d!==0){stVarLines++;stVarUnits+=Math.abs(d);const val=Math.abs(d)*item(l.item_id).unit_cost;stVarValAbs+=val;const k=s.location_id;(stByLoc[k]=stByLoc[k]||{u:0,v:0,lines:0,counted:0});stByLoc[k].u+=Math.abs(d);stByLoc[k].v+=val;stByLoc[k].lines++;(stByMonth[mk]=stByMonth[mk]||{short:0,over:0});if(d<0){stShortUnits+=-d;stShortVal+=(-d)*item(l.item_id).unit_cost;stByMonth[mk].short+=-d;}else{stOverUnits+=d;stByMonth[mk].over+=d;}}const k2=s.location_id;(stByLoc[k2]=stByLoc[k2]||{u:0,v:0,lines:0,counted:0});stByLoc[k2].counted++;});});
+  // combined discrepancy log (transfers short on receipt + stock-take shortfalls)
+  const discLog=[];
+  trDisc.forEach(t=>(t.lines||[]).forEach(l=>{if(!matchCat(l.item_id))return;const sh=Math.max(0,l.qty_dispatched-l.qty_received);if(sh>0)discLog.push({date:t.received_at||t.dispatched_at,type:'Transfer short',ref:t.code,centre:loc(t.to_location).name,itemId:l.item_id,item:item(l.item_id).name,sku:item(l.item_id).sku,expected:l.qty_dispatched,actual:l.qty_received,diff:-sh,value:sh*item(l.item_id).unit_cost});}));
+  stDone.forEach(s=>(s.lines||[]).forEach(l=>{if(l.counted_qty==null||!matchCat(l.item_id))return;const d=l.counted_qty-(l.system_qty||0);if(d!==0)discLog.push({date:s.finalized_at||s.started_at,type:d<0?'Count short':'Count over',ref:s.code||'ST',centre:loc(s.location_id).name,itemId:l.item_id,item:item(l.item_id).name,sku:item(l.item_id).sku,expected:l.system_qty||0,actual:l.counted_qty,diff:d,value:d*item(l.item_id).unit_cost});}));
+  discLog.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  return {visT,done,inTr,trDisc,avgTr,visO,ordRecv,avgOrd,visST,stDone,itemU,catU,routeU,moveByMonth,valByMonth,moveByMonthCat,
+    counted,stVarLines,stVarUnits,stVarValAbs,stShortUnits,stShortVal,stOverUnits,stByLoc,stByMonth,discLog};
 }
+
+function vReports(v){
+  const R=reportData();
+  const scopeLabel=scoped()?(MYLOCS.map(id=>loc(id).code).join(', ')||'your centres'):'all centres';
+  const rangeLabel={'30d':'Last 30 days','90d':'Last 90 days','12m':'Last 12 months','all':'All time'}[repRange];
+  const trLoss=R.trDisc.reduce((s,t)=>s+trShortV(t),0);
+  const totalLossVal=trLoss+R.stShortVal;
+  v.innerHTML=`
+    <div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.chart,17)}<div><b>${esc(scopeLabel)}</b> · ${rangeLabel}. ${scoped()?'Transfers involving your centre, plus your orders and stock takes.':'Across every centre.'}</div></div>
+      <div class="rep-actions no-print">
+        <select class="filter" id="rep-range" title="Reporting period">
+          <option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option>
+        </select>
+        <button class="btn" id="rep-csv" title="Download the data as CSV for Excel">${svg(I.receipt,15)} CSV</button>
+        <button class="btn primary" id="rep-pdf" title="Print or save the full report as PDF">${svg(I.chart,15)} Print / PDF</button>
+      </div>
+    </div>
+
+    <div id="rep-print-head" class="print-only"><h1>Shayona Stock Transfer &amp; Stock Take Hub — Report</h1><div class="ph-sub">${esc(scopeLabel)} · ${rangeLabel}${repCentre?' · Centre: '+esc(loc(repCentre).name):''}${repCat?' · Category: '+esc(repCat):''} · generated ${fmtDate(today())}</div></div>
+
+    ${(repCentre||repCat)?`<div class="rep-filters no-print">${svg(I.filter||I.search,14)}<span style="color:var(--muted);font-size:12.5px">Filtered:</span>
+      ${repCentre?`<span class="fchip">Centre: <b>${esc(loc(repCentre).name)}</b> <button data-clearc title="Clear">${svg(I.x,12)}</button></span>`:''}
+      ${repCat?`<span class="fchip">Category: <b>${esc(repCat)}</b> <button data-clearcat title="Clear">${svg(I.x,12)}</button></span>`:''}
+      <button class="btn sm" data-clearall>Clear all</button></div>`:`<div class="rep-hint no-print">${svg(I.info,14)}<span>Tip: click a centre, category or item in any chart to filter the whole report. Click a row in the discrepancy log to drill into that item.</span></div>`}
+
+    <!-- ===== MISSING / DISCREPANCY (lead section) ===== -->
+    <div class="section-head"><h2>${svg(I.alert,17)} Missing &amp; discrepancies</h2></div>
+    <div class="tiles">
+      <div class="tile ${R.trDisc.length?'crit':''}"><div class="lbl">${svg(I.truck,14)} Transfer shortfalls</div><div class="val tnum">${R.trDisc.length}</div><div class="meta">${money0(trLoss)} short on receipt</div></div>
+      <div class="tile ${R.stShortUnits?'crit':''}"><div class="lbl">${svg(I.stocktake,14)} Count shortfalls</div><div class="val tnum">${R.stShortUnits}</div><div class="meta">${money0(R.stShortVal)} missing at count</div></div>
+      <div class="tile ${totalLossVal>0?'crit':''}"><div class="lbl">${svg(I.cost,14)} Total loss value</div><div class="val tnum">${money0(totalLossVal)}</div><div class="meta">transfers + counts</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Count overages</div><div class="val tnum">${R.stOverUnits}</div><div class="meta">found above system</div></div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad chart-card"><h3>Shortfall value over time</h3><div class="chart-box"><canvas id="ch-loss"></canvas></div></div>
+      <div class="card pad chart-card"><h3>Top items missing (value)</h3><div class="chart-box"><canvas id="ch-topmiss"></canvas></div></div>
+    </div>
+    <div class="section-head" style="margin-top:6px"><h3 style="font-size:14px">Discrepancy log</h3><div class="spacer"></div><span style="font-size:12px;color:var(--muted)" class="no-print">${R.discLog.length} record(s) · click a row to drill in · export in CSV</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th><th>Ref</th><th>Centre</th><th>Item</th><th class="num">Expected</th><th class="num">Actual</th><th class="num">Diff</th><th class="num">Value</th></tr></thead><tbody>
+      ${R.discLog.length?R.discLog.slice(0,60).map(d=>`<tr class="clickable" data-drill="${d.itemId}"><td style="white-space:nowrap">${fmtDate(d.date)}</td><td>${esc(d.type)}</td><td class="mono">${esc(d.ref)}</td><td>${esc(d.centre)}</td><td>${esc(d.item)}</td><td class="num tnum">${d.expected}</td><td class="num tnum">${d.actual}</td><td class="num tnum" style="color:${d.diff<0?'var(--crit)':'var(--good)'};font-weight:600">${d.diff>0?'+':''}${d.diff}</td><td class="num tnum" style="color:${d.value<0?'var(--crit)':'var(--muted)'}">${money(Math.abs(d.value))}</td></tr>`).join(''):`<tr><td colspan="9" style="color:var(--faint)">No discrepancies in this period. 🎉</td></tr>`}
+    </tbody></table></div>
+    ${R.discLog.length>60?`<div style="font-size:12px;color:var(--faint);margin-top:8px" class="no-print">Showing latest 60 of ${R.discLog.length}. Use <b>CSV</b> for the full log.</div>`:''}
+
+    <!-- ===== STOCK MOVEMENT ===== -->
+    <div class="section-head" style="margin-top:26px"><h2>${svg(I.transfer,17)} Stock movement</h2></div>
+    <div class="tiles">
+      <div class="tile accent"><div class="lbl">${svg(I.transfer,14)} Transfers</div><div class="val tnum">${R.visT.length}</div><div class="meta">${R.done.length} completed</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Units moved</div><div class="val tnum">${Object.values(R.itemU).reduce((a,b)=>a+b,0).toLocaleString()}</div><div class="meta">dispatched/requested</div></div>
+      <div class="tile transit"><div class="lbl">${svg(I.truck,14)} In transit now</div><div class="val tnum">${money0(R.inTr.reduce((s,t)=>s+trTransit(t),0))}</div><div class="meta">${R.inTr.length} moving</div></div>
+      <div class="tile"><div class="lbl">${svg(I.calendar,14)} Avg days to receive</div><div class="val tnum">${R.avgTr==null?'—':R.avgTr.toFixed(1)}</div><div class="meta">created → received</div></div>
+    </div>
+    <div class="card pad chart-card"><h3>Movement over time ${repCat?'· '+esc(repCat):'· stacked by category'}</h3><div class="chart-box"><canvas id="ch-move"></canvas></div></div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad chart-card"><h3>Top items moved (units) <span class="chint no-print">· click to drill in</span></h3><div class="chart-box"><canvas id="ch-items"></canvas></div></div>
+      <div class="card pad chart-card"><h3>Movement by category (units) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-cats"></canvas></div></div>
+    </div>
+    <div class="card pad chart-card"><h3>Busiest routes (units)</h3><div class="chart-box"><canvas id="ch-routes"></canvas></div></div>
+
+    <!-- ===== STOCK TAKE ===== -->
+    <div class="section-head" style="margin-top:26px"><h2>${svg(I.stocktake,17)} Stock take</h2></div>
+    <div class="tiles">
+      <div class="tile accent"><div class="lbl">${svg(I.stocktake,14)} Counts done</div><div class="val tnum">${R.stDone.length}</div><div class="meta">${R.visST.filter(s=>s.status==='open').length} in progress</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Items counted</div><div class="val tnum">${R.counted.toLocaleString()}</div><div class="meta">completed counts</div></div>
+      <div class="tile ${R.stVarLines?'crit':''}"><div class="lbl">${svg(I.alert,14)} Count variances</div><div class="val tnum">${R.stVarLines}</div><div class="meta">${R.stVarUnits} units off</div></div>
+      <div class="tile"><div class="lbl">${svg(I.check,14)} Accuracy</div><div class="val tnum">${R.counted?Math.round((1-R.stVarLines/R.counted)*100)+'%':'—'}</div><div class="meta">lines matching system</div></div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad chart-card"><h3>Count accuracy by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-acc"></canvas></div></div>
+      <div class="card pad chart-card"><h3>Variance value by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-stvar"></canvas></div></div>
+    </div>
+  `;
+  document.getElementById('rep-range').value=repRange;
+  document.getElementById('rep-range').onchange=e=>{repRange=e.target.value;renderView();};
+  document.getElementById('rep-csv').onclick=()=>exportReportCSV(R);
+  document.getElementById('rep-pdf').onclick=()=>window.print();
+  const bc=v.querySelector('[data-clearc]');if(bc)bc.onclick=()=>{repCentre=null;renderView();};
+  const bk=v.querySelector('[data-clearcat]');if(bk)bk.onclick=()=>{repCat=null;renderView();};
+  const ba=v.querySelector('[data-clearall]');if(ba)ba.onclick=()=>{repCentre=null;repCat=null;renderView();};
+  v.querySelectorAll('[data-drill]').forEach(row=>row.onclick=()=>openItemDrill(row.dataset.drill));
+  renderReportCharts(R);
+}
+
+function renderReportCharts(R){
+  if(!window.Chart){return;} const t=chartTheme(),pal=palette();
+  const mk=monthKeys();
+  const codeToId={};S.locations.forEach(l=>codeToId[l.code]=l.id);
+  const onClickIndex=(cb)=>(e,els)=>{if(els&&els.length)cb(els[0].index);};
+
+  // ----- SHORTFALL VALUE OVER TIME (line) -----
+  const lossM={};mk.forEach(k=>lossM[k]=0);
+  R.discLog.forEach(d=>{if(d.diff<0){const k=mKey(d.date);if(k in lossM)lossM[k]+=Math.abs(d.value);}});
+  mkChart('ch-loss',{type:'line',data:{labels:mk.map(mLabel),datasets:[{label:'Shortfall value ($)',data:mk.map(k=>Math.round(lossM[k])),borderColor:t.crit,backgroundColor:'rgba(180,35,29,.12)',fill:true,tension:.3,pointRadius:3,pointBackgroundColor:t.crit}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+  // ----- TOP ITEMS MISSING (value) — click to drill -----
+  const missByItem={};R.discLog.forEach(d=>{if(d.diff<0)missByItem[d.itemId]=(missByItem[d.itemId]||0)+Math.abs(d.value);});
+  const tm=Object.entries(missByItem).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  mkChart('ch-topmiss',{type:'bar',data:{labels:tm.map(([id])=>item(id).name),datasets:[{label:'Missing value ($)',data:tm.map(([,vv])=>Math.round(vv)),backgroundColor:t.crit,borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>tm[i]&&openItemDrill(tm[i][0])),plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
+
+  // ----- MOVEMENT OVER TIME — stacked bars by category + value line -----
+  const topCatNames=Object.entries(R.catU).sort((a,b)=>b[1]-a[1]).slice(0,6).map(e=>e[0]);
+  const catSet=new Set(topCatNames);const otherByMonth={};
+  Object.entries(R.moveByMonthCat).forEach(([c,mm])=>{if(catSet.has(c))return;Object.entries(mm).forEach(([m,u])=>otherByMonth[m]=(otherByMonth[m]||0)+u);});
+  const catDatasets=topCatNames.map((c,i)=>({label:c,data:mk.map(m=>(R.moveByMonthCat[c]&&R.moveByMonthCat[c][m])||0),backgroundColor:pal[i%pal.length],stack:'u',yAxisID:'y',borderRadius:2}));
+  if(Object.keys(otherByMonth).length)catDatasets.push({label:'Other',data:mk.map(m=>otherByMonth[m]||0),backgroundColor:t.muted,stack:'u',yAxisID:'y',borderRadius:2});
+  catDatasets.push({label:'Value ($)',data:mk.map(m=>Math.round(R.valByMonth[m]||0)),type:'line',borderColor:t.ink,backgroundColor:t.ink,tension:.3,yAxisID:'y1',pointRadius:2,order:0});
+  mkChart('ch-move',{type:'bar',data:{labels:mk.map(mLabel),datasets:catDatasets},
+    options:{interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:t.muted,boxWidth:11,font:{size:10}}}},
+      scales:{x:{stacked:true,ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},
+        y:{stacked:true,position:'left',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid},title:{display:true,text:'Units',color:t.muted}},
+        y1:{position:'right',beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+(v/1000).toFixed(0)+'k'},grid:{drawOnChartArea:false},title:{display:true,text:'Value',color:t.muted}}}}});
+  // ----- TOP ITEMS MOVED — click to drill -----
+  const ti=Object.entries(R.itemU).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  mkChart('ch-items',{type:'bar',data:{labels:ti.map(([id])=>item(id).name),datasets:[{label:'Units',data:ti.map(([,u])=>u),backgroundColor:t.accent,borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>ti[i]&&openItemDrill(ti[i][0])),plugins:{legend:{display:false}},scales:axes()}});
+  // ----- MOVEMENT BY CATEGORY — horizontal bar, click to filter -----
+  const tc=Object.entries(R.catU).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  mkChart('ch-cats',{type:'bar',data:{labels:tc.map(([c])=>c),datasets:[{label:'Units',data:tc.map(([,u])=>u),backgroundColor:tc.map((_,i)=>pal[i%pal.length]),borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>{if(tc[i]){repCat=(repCat===tc[i][0])?null:tc[i][0];renderView();}}),plugins:{legend:{display:false}},scales:axes()}});
+  // ----- BUSIEST ROUTES -----
+  const tr=Object.entries(R.routeU).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  mkChart('ch-routes',{type:'bar',data:{labels:tr.map(([r])=>r),datasets:[{label:'Units',data:tr.map(([,u])=>u),backgroundColor:t.transit,borderRadius:4}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false}},scales:axes()}});
+
+  // ----- ACCURACY BY CENTRE — click to filter -----
+  const accRows=Object.entries(R.stByLoc).filter(([,x])=>x.counted>0).map(([k,x])=>[loc(k).code,Math.round((1-(x.lines/x.counted))*100)]).sort((a,b)=>a[1]-b[1]);
+  mkChart('ch-acc',{type:'bar',data:{labels:accRows.map(r=>r[0]),datasets:[{label:'Accuracy %',data:accRows.map(r=>r[1]),backgroundColor:accRows.map(r=>r[1]>=98?t.good:r[1]>=95?t.warn:t.crit),borderRadius:4}]},
+    options:{onClick:onClickIndex(i=>{const id=codeToId[accRows[i]&&accRows[i][0]];if(id){repCentre=(repCentre===id)?null:id;renderView();}}),plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,max:100,ticks:{color:t.muted,font:{size:11},callback:v=>v+'%'},grid:{color:t.grid}}}}});
+  // ----- VARIANCE VALUE BY CENTRE — click to filter -----
+  const vv=Object.entries(R.stByLoc).map(([k,x])=>[loc(k).code,Math.round(x.v)]).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('ch-stvar',{type:'bar',data:{labels:vv.map(r=>r[0]),datasets:[{label:'Variance $',data:vv.map(r=>r[1]),backgroundColor:t.warn,borderRadius:4}]},
+    options:{onClick:onClickIndex(i=>{const id=codeToId[vv[i]&&vv[i][0]];if(id){repCentre=(repCentre===id)?null:id;renderView();}}),plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+}
+
+/* ---- per-item drill-down: stock by centre + movement history + discrepancies ---- */
+function openItemDrill(itemId){
+  if(!itemId)return;const it=item(itemId);
+  const stockRows=S.locations.filter(l=>!scoped()||mine(l.id)).map(l=>({loc:l,q:onHand(l.id,itemId)})).filter(r=>r.q>0);
+  const totalOH=stockRows.reduce((s,r)=>s+r.q,0);
+  const moves=S.transfers.filter(canSee).filter(t=>(t.lines||[]).some(l=>l.item_id===itemId)).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20);
+  const R=reportData();const discs=R.discLog.filter(d=>d.itemId===itemId);
+  const stockTbl=stockRows.length?`<div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">On hand</th></tr></thead><tbody>${stockRows.sort((a,b)=>b.q-a.q).map(r=>`<tr><td>${esc(r.loc.name)} <span class="mono" style="color:var(--faint)">${r.loc.code}</span></td><td class="num tnum">${r.q}</td></tr>`).join('')}<tr style="font-weight:700"><td>Total</td><td class="num tnum">${totalOH}</td></tr></tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No stock on hand in your centres.</div>';
+  const moveTbl=moves.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Ref</th><th>Route</th><th>Status</th><th class="num">Qty</th></tr></thead><tbody>${moves.map(t=>{const l=(t.lines||[]).find(x=>x.item_id===itemId);const qty=l?(l.qty_dispatched||l.qty_requested||0):0;return `<tr><td style="white-space:nowrap">${fmtDate(t.created_at)}</td><td class="mono">${esc(t.code)}</td><td>${loc(t.from_location).code} → ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${qty}</td></tr>`;}).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No transfers for this item in view.</div>';
+  const discTbl=discs.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th><th>Centre</th><th class="num">Diff</th><th class="num">Value</th></tr></thead><tbody>${discs.map(d=>`<tr><td style="white-space:nowrap">${fmtDate(d.date)}</td><td>${esc(d.type)}</td><td>${esc(d.centre)}</td><td class="num tnum" style="color:${d.diff<0?'var(--crit)':'var(--good)'};font-weight:600">${d.diff>0?'+':''}${d.diff}</td><td class="num tnum">${money(Math.abs(d.value))}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No discrepancies for this item in the selected period. 🎉</div>';
+  const mv=discs.filter(d=>d.diff<0).reduce((s,d)=>s+Math.abs(d.value),0);
+  const body=`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Product code</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Category</dt><dd>${esc(it.category||'—')}</dd><dt>Unit cost</dt><dd class="tnum">${money(it.unit_cost||0)}</dd><dt>Total on hand</dt><dd class="tnum">${totalOH}</dd>${mv>0?`<dt>Loss (period)</dt><dd class="tnum" style="color:var(--crit)">${money(mv)}</dd>`:''}</dl></div>
+    <h3 style="font-size:13px;margin:12px 0 8px">Stock by centre</h3>${stockTbl}
+    <h3 style="font-size:13px;margin:16px 0 8px">Discrepancies</h3>${discTbl}
+    <h3 style="font-size:13px;margin:16px 0 8px">Recent movement</h3>${moveTbl}`;
+  slideover(it.name,'Item insight'+(repRange?' · '+({'30d':'30 days','90d':'90 days','12m':'12 months','all':'all time'}[repRange]):''),body,`<button class="btn" data-close>Close</button>`);
+}
+
+function exportReportCSV(R){
+  R=R||reportData();
+  const scopeLabel=(scoped()?(MYLOCS.map(id=>loc(id).code).join('-')||'centres'):'all-centres').replace(/[^A-Za-z0-9_-]/g,'');
+  const stamp=today();
+  // 1) Discrepancy log (the key audit artifact)
+  downloadCSV(`discrepancy-log_${scopeLabel}_${stamp}.csv`,
+    ['Date','Type','Reference','Centre','Item','Product code','Expected','Actual','Difference','Value (AUD)'],
+    R.discLog.map(d=>[fmtDate(d.date),d.type,d.ref,d.centre,d.item,d.sku||'',d.expected,d.actual,d.diff,(d.value).toFixed(2)]));
+  // 2) Stock movement by item
+  const mv=Object.entries(R.itemU).sort((a,b)=>b[1]-a[1]).map(([id,u])=>[item(id).name,item(id).sku||'',item(id).category||'',u,(u*item(id).unit_cost).toFixed(2)]);
+  setTimeout(()=>downloadCSV(`stock-movement_${scopeLabel}_${stamp}.csv`,['Item','Product code','Category','Units moved','Value moved (AUD)'],mv),400);
+  // 3) Stock-take variance by centre
+  const st=Object.entries(R.stByLoc).map(([k,x])=>[loc(k).name,x.counted,x.lines,x.u,x.v.toFixed(2),x.counted?Math.round((1-x.lines/x.counted)*100)+'%':'—']);
+  setTimeout(()=>downloadCSV(`stocktake-variance_${scopeLabel}_${stamp}.csv`,['Centre','Items counted','Variance lines','Variance units','Variance value (AUD)','Accuracy'],st),800);
+  toast('Downloaded 3 CSV files: discrepancy log, movement, stock-take variance');
+}
+/* Charts draw to canvas with the colours present at creation time — so before printing we force the
+   light palette and redraw, then restore afterwards, so the PDF is always crisp on white paper. */
+let _prePrintTheme;
+window.addEventListener('beforeprint',()=>{ if(route!=='reports')return; _prePrintTheme=document.documentElement.getAttribute('data-theme'); document.documentElement.setAttribute('data-theme','light'); try{destroyCharts();renderReportCharts(reportData());}catch(e){} });
+window.addEventListener('afterprint',()=>{ if(route!=='reports')return; if(_prePrintTheme)document.documentElement.setAttribute('data-theme',_prePrintTheme);else document.documentElement.removeAttribute('data-theme'); try{destroyCharts();renderReportCharts(reportData());}catch(e){} });
 
 /* Transfers */
 let trFilter='all',trSearch='';
