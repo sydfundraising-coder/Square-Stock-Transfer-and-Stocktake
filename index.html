@@ -285,6 +285,8 @@ const trShortV=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qt
 
 const STATUS={requested:{label:'Requested',cls:'p-req'},approved:{label:'Approved',cls:'p-appr'},in_transit:{label:'In Transit',cls:'p-transit'},partially_received:{label:'Partially Received',cls:'p-partial'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
 const sPill=s=>`<span class="pill ${(STATUS[s]||STATUS.requested).cls}">${(STATUS[s]||{label:s}).label}</span>`;
+function tStat(t){ if(t.status==='approved'&&t.picking_started_at) return {label:'Picking in progress',cls:'p-partial'}; return STATUS[t.status]||{label:t.status,cls:'p-draft'}; }
+const sPillT=t=>`<span class="pill ${tStat(t).cls}">${tStat(t).label}</span>`;
 const OSTATUS={draft:{label:'Draft',cls:'p-draft'},placed:{label:'Placed',cls:'p-req'},shipped:{label:'Shipped',cls:'p-transit'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
 const oPill=s=>`<span class="pill ${(OSTATUS[s]||OSTATUS.placed).cls}">${(OSTATUS[s]||{label:s}).label}</span>`;
 function daysUntil(d){if(!d)return null;return Math.round((new Date(d+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);}
@@ -413,7 +415,7 @@ function vDash(v){
     ${transitList.length?`<div class="banner transit">${svg(I.truck,17)}<div><b>${transitList.length} in transit</b> — ${money(transitVal)} between sites, held until received.</div></div>`:''}
     ${inc.length?`<div class="banner info" style="cursor:pointer" data-route="orders">${svg(I.order,17)}<div><b>${inc.length} supplier order(s) incoming.</b> Next: ${(()=>{const n=inc.slice().sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on))[0];return n.code+' — '+etaText(n.expected_on);})()}. Tap to view.</div></div>`:''}
     <div class="section-head"><h2>Recent transfers</h2><div class="spacer"></div>${can('transfer.create')?`<button class="btn primary sm" data-act="new-transfer">${svg(I.plus,15)} New transfer</button>`:''}</div>
-    ${recent.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th>Updated</th></tr></thead><tbody>${recent.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPill(t.status)}</td><td class="num tnum">${money(trValue(t))}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(t.received_at||t.dispatched_at||t.approved_at||t.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers yet.</div></div>`}`;
+    ${recent.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th>Updated</th></tr></thead><tbody>${recent.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(t.received_at||t.dispatched_at||t.approved_at||t.created_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers yet.</div></div>`}`;
 }
 /* Reports */
 function repBar(label,val,max,color){const pct=max>0?Math.round(val/max*100):0;return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${val}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${pct}%;background:${color||'var(--accent)'};border-radius:6px"></div></div></div>`;}
@@ -488,7 +490,7 @@ function trList(){
   if(trFilter!=='all')list=list.filter(t=>t.status===trFilter);
   if(q)list=list.filter(t=>t.code.toLowerCase().includes(q)||loc(t.from_location).name.toLowerCase().includes(q)||loc(t.to_location).name.toLowerCase().includes(q));
   const el=document.getElementById('list');
-  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPill(t.status)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers match.</div></div>`;
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers match.</div></div>`;
 }
 function openTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
@@ -496,17 +498,82 @@ function openTransfer(id){
   const cur=t.status==='cancelled'?-1:(t.status==='partially_received'?2:steps.indexOf(t.status));
   const stepHtml=t.status==='cancelled'?`<div class="banner crit">${svg(I.x,17)}<div>Cancelled.</div></div>`:`<div class="steps">${steps.map((s,i)=>`<div class="step ${i<cur?'done':''} ${i===cur?'cur':''}"><span class="n">${i<cur?'✓':i+1}</span>${STATUS[s].label}</div>${i<3?`<span>${svg(I.arrow,13)}</span>`:''}`).join('')}</div>`;
   const du=trShortU(t),dv=trShortV(t);
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);const sh=Math.max(0,l.qty_dispatched-l.qty_received);const shown=['received','partially_received'].includes(t.status);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty_requested}</td><td class="num tnum">${l.qty_dispatched||'—'}</td><td class="num tnum">${shown?l.qty_received:(t.status==='in_transit'?'—':'')}</td><td class="num tnum" style="color:${sh>0&&shown?'var(--crit)':'var(--faint)'}">${sh>0&&shown?'−'+sh:'—'}</td></tr>`;}).join('');
+  const picking=t.status==='approved'&&!!t.picking_started_at;
+  const pickedLines=(t.lines||[]).filter(l=>(l.qty_picked||0)>0).length;
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);const sh=Math.max(0,l.qty_dispatched-l.qty_received);const shown=['received','partially_received'].includes(t.status);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></td><td class="num tnum">${l.qty_requested}</td><td class="num tnum">${picking?(l.qty_picked||0):'—'}</td><td class="num tnum">${l.qty_dispatched||'—'}</td><td class="num tnum">${shown?l.qty_received:(t.status==='in_transit'?'—':'')}</td><td class="num tnum" style="color:${sh>0&&shown?'var(--crit)':'var(--faint)'}">${sh>0&&shown?'−'+sh:'—'}</td></tr>`;}).join('');
   let actions='';
-  if(t.status==='requested')actions=canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`;
-  else if(t.status==='approved')actions=canDispatchT(t)?`<button class="btn" data-cancel="${t.id}">Cancel</button><button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch to transit</button>`:`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;
+  const notDisp=t.status==='requested'||t.status==='approved';
+  const atSource=!scoped()||mine(t.from_location);
+  const editDel=notDisp?`<button class="btn" data-tedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button>`:'';
+  if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`);
+  else if(t.status==='approved'){let a=editDel;if(atSource)a+=`<button class="btn" data-print="${t.id}">${svg(I.receipt,16)} Pick list</button><button class="btn" data-pick="${t.id}">${svg(I.box,16)} Pick items</button>`;if(canDispatchT(t))a+=`<button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch</button>`;else if(!atSource)a+=`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;actions=a;}
   else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
   const body=`${stepHtml}
+    ${picking?`<div class="banner warn">${svg(I.box,17)}<div><b>Picking in progress</b> at ${esc(loc(t.from_location).name)} — ${pickedLines} of ${(t.lines||[]).length} item(s) picked so far.</div></div>`:''}
     ${(t.status==='in_transit'||t.status==='partially_received')?`<div class="banner transit">${svg(I.truck,17)}<div><b>${money(trTransit(t))} in transit</b> from ${esc(loc(t.from_location).name)} to ${esc(loc(t.to_location).name)}.</div></div>`:''}
     ${du>0&&t.status==='received'?`<div class="banner crit">${svg(I.alert,17)}<div><b>Discrepancy: ${du} short (${money(dv)}).</b></div></div>`:''}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Route</dt><dd>${esc(loc(t.from_location).name)} → ${esc(loc(t.to_location).name)}</dd><dt>Value</dt><dd class="tnum">${money(trValue(t))}</dd><dt>Created by</dt><dd>${esc(pname(t.created_by))} · ${fmtDate(t.created_at)}</dd>${t.approved_by?`<dt>Approved</dt><dd>${esc(pname(t.approved_by))}</dd>`:''}${t.dispatched_at?`<dt>Dispatched</dt><dd>${fmtDate(t.dispatched_at)}</dd>`:''}${t.received_at?`<dt>Received</dt><dd>${fmtDate(t.received_at)}</dd>`:''}</dl>${t.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)"><b style="color:var(--ink)">Notes:</b> ${esc(t.notes)}</div>`:''}</div>
-    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Req</th><th class="num">Disp</th><th class="num">Recv</th><th class="num">Short</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Req</th><th class="num">Pick</th><th class="num">Disp</th><th class="num">Recv</th><th class="num">Short</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   slideover(t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,body,actions);
+}
+/* delete / edit a not-yet-dispatched transfer */
+function doDeleteTransfer(id){const t=S.transfers.find(x=>x.id===id);if(!window.confirm('Delete transfer '+(t?t.code:'')+'? This cannot be undone.'))return;callRpc('delete_transfer',{p_id:id},'Transfer deleted');}
+function openEditTransfer(id){
+  const t=S.transfers.find(x=>x.id===id);if(!t)return;
+  dLines=(t.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested}));
+  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const body=`<div class="grid2"><div class="field"><label>From (fixed)</label><select id="tf-from" disabled>${opts}</select></div><div class="field"><label>To (fixed)</label><select id="tf-to" disabled>${opts}</select></div></div>
+    <div class="field"><label>Items</label><div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
+    <div class="banner info" id="sum">${svg(I.info,17)}<div>Adjust items and quantities.</div></div>`;
+  modal('Edit '+t.code,'Change items / quantities',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save changes</button>`);
+  document.getElementById('tf-from').value=t.from_location;document.getElementById('tf-to').value=t.to_location;
+  edLines();
+  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
+  document.getElementById('go').onclick=async()=>{const lines=dLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add at least one item',true);await callRpc('edit_transfer',{p_id:id,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Transfer updated');};
+}
+/* pick list (print → also "Save as PDF" from the print dialog) */
+function printPickList(t){
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td>${esc(it.name)}</td><td>${esc(it.sku||'')}</td><td>${esc(it.barcode||'')}</td><td style="text-align:right">${l.qty_requested}</td><td style="width:70px">&nbsp;</td></tr>`;}).join('');
+  const w=window.open('','_blank');if(!w){toast('Allow pop-ups to print/download',true);return;}
+  w.document.write(`<html><head><title>Pick list ${esc(t.code)}</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:14px;font-size:13px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#eee}</style></head><body><h1>Pick list — ${esc(t.code)}</h1><div>From <b>${esc(loc(t.from_location).name)}</b> &rarr; ${esc(loc(t.to_location).name)}</div><div style="color:#666;font-size:12px">Printed ${new Date().toLocaleString('en-AU')}</div><table><thead><tr><th>Item</th><th>Code</th><th>Barcode</th><th style="text-align:right">Requested</th><th>Picked</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:22px;font-size:12px">Picked by: __________________ &nbsp; Checked by: __________________ &nbsp; Date: __________</p></body></html>`);
+  w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);
+}
+/* picking (shared, scan-to-pick) */
+let pkCounts={}, pkId=null, pkSaveT=null, pkDirty=new Set();
+function pkArray(){return [...pkDirty].map(k=>({line:k,qty:Math.max(0,+pkCounts[k]||0)}));}
+function openPicking(id){
+  const t=S.transfers.find(x=>x.id===id);if(!t)return;
+  pkId=id; pkCounts={}; pkDirty=new Set(); (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);});
+  const camOk=('BarcodeDetector' in window);
+  const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Scan each item (USB scanner or camera) or search, and enter the quantity you're sending. Progress is shared and saved — others can pick alongside you. An Admin dispatches when done.</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="pk-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="pk-cam">${svg(I.box,16)} Camera</button>`:''}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px"><span id="pk-prog"></span></div>`;
+  const foot=`<button class="btn" data-close>Close</button><button class="btn" id="pk-save">Save</button>${canDispatchT(t)?`<button class="btn primary" id="pk-disp">${svg(I.truck,16)} Dispatch</button>`:''}`;
+  slideover('Pick '+t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,`${head}<div id="pkList">${renderPkRows(t,'')}</div>`,foot);
+  const scan=document.getElementById('pk-scan');
+  scan.oninput=()=>renderPkList(t);
+  scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();pkScan(t,scan.value.trim());scan.value='';renderPkList(t);scan.focus();}};
+  setTimeout(()=>scan.focus(),60);
+  bindPkInputs(t);updatePkProg(t);
+  const cam=document.getElementById('pk-cam');if(cam)cam.onclick=()=>openPkScanner(t);
+  document.getElementById('pk-save').onclick=()=>savePicks(t,true);
+  const d=document.getElementById('pk-disp');if(d)d.onclick=async()=>{await savePicks(t,false);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',{location_id:t.from_location,item_ids:txItems(t)});};
+}
+function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=t.lines||[];if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];return `<div class="recv-row" style="grid-template-columns:1fr 50px 88px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Req</div><div class="tnum" style="font-weight:600">${l.qty_requested}</div></div><div><div class="cap">Picking</div><input type="number" min="0" inputmode="numeric" value="${c==null||c===0?'':c}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div></div>`;}).join('');}
+function renderPkList(t){const el=document.getElementById('pkList');if(!el)return;const f=(document.getElementById('pk-scan')||{}).value||'';el.innerHTML=renderPkRows(t,f);bindPkInputs(t);updatePkProg(t);}
+function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(inp=>{inp.oninput=e=>{pkCounts[e.target.dataset.pk]=e.target.value===''?0:Math.max(0,+e.target.value);pkDirty.add(e.target.dataset.pk);updatePkProg(t);};inp.onchange=()=>savePicks(t,false);});}
+function updatePkProg(t){const el=document.getElementById('pk-prog');if(!el)return;const total=(t.lines||[]).length;const done=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0).length;el.textContent=done+' of '+total+' items picked';}
+function pkScan(t,code){if(!code)return;const cl=code.toLowerCase();const line=(t.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this transfer: '+code,true);return;}const cur=+pkCounts[line.id]||0;pkCounts[line.id]=cur+1;pkDirty.add(line.id);toast('+1 '+item(line.item_id).name+' = '+(cur+1));savePicks(t,false);updatePkProg(t);}
+function savePicks(t,announce){const picks=pkArray();if(!picks.length&&!announce)return;clearTimeout(pkSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_picks',{p_id:t.id,p_picks:picks});if(announce)toast(error?('Save failed: '+error.message):'Picking saved',!!error);};if(announce)doSave();else pkSaveT=setTimeout(doSave,700);}
+async function openPkScanner(t){
+  if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
+  window._scanReturn=()=>openPicking(t.id);
+  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan to pick</h2><div class="sub">Each scan adds 1</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center"><video id="scanVid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="scanMsg" style="margin-top:10px;color:var(--muted);font-size:13px">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
+  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let stream=null,running=true,last='',lastT=0;const det=new window.BarcodeDetector();
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();msg.textContent='Point the camera at a barcode';}catch(err){msg.textContent='Could not open camera: '+(err.message||err);}
+  window._stopScan=()=>{running=false;if(stream)stream.getTracks().forEach(x=>x.stop());};
+  const loop=async()=>{if(!running)return;try{const codes=await det.detect(vid);if(codes&&codes.length){const val=String(codes[0].rawValue||'').trim();const now=Date.now();if(val&&(val!==last||now-lastT>1400)){last=val;lastT=now;pkScan(t,val);if(navigator.vibrate)navigator.vibrate(60);msg.textContent='Scanned: '+val;}}}catch(e){}if(running)requestAnimationFrame(loop);};
+  requestAnimationFrame(loop);
 }
 /* New transfer */
 let dLines=[],tfExceed=false;
@@ -725,6 +792,7 @@ function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const l
 function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce)toast(error?('Save failed: '+error.message):'Progress saved',!!error);};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
 async function openScanner(st){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
+  window._scanReturn=()=>openStock(st.id);
   overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan barcodes</h2><div class="sub">Point at a barcode — each scan adds 1</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center"><video id="scanVid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="scanMsg" style="margin-top:10px;color:var(--muted);font-size:13px">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
   const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let stream=null,running=true,last='',lastT=0;const det=new window.BarcodeDetector();
   try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();msg.textContent='Point the camera at a barcode';}catch(err){msg.textContent='Could not open camera: '+(err.message||err);}
@@ -732,7 +800,7 @@ async function openScanner(st){
   const loop=async()=>{if(!running)return;try{const codes=await det.detect(vid);if(codes&&codes.length){const val=String(codes[0].rawValue||'').trim();const now=Date.now();if(val&&(val!==last||now-lastT>1400)){last=val;lastT=now;stScanCode(st,val);if(navigator.vibrate)navigator.vibrate(60);msg.textContent='Scanned: '+val;}}}catch(e){}if(running)requestAnimationFrame(loop);};
   requestAnimationFrame(loop);
 }
-function stopScannerAndReturn(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}openStock(stCurrentId);}
+function stopScannerAndReturn(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const f=window._scanReturn;window._scanReturn=null;if(f)f();else openStock(stCurrentId);}
 async function deleteStocktake(id){
   const st=S.stocktakes.find(x=>x.id===id);
   if(!window.confirm('Delete stock take '+(st?st.code:'')+'? This cannot be undone.'))return;
@@ -948,6 +1016,10 @@ document.addEventListener('click',e=>{
   const cx=e.target.closest('[data-cancel]');if(cx){doCancel(cx.dataset.cancel);return;}
   const dp=e.target.closest('[data-dispatch]');if(dp){doDispatch(dp.dataset.dispatch);return;}
   const rc=e.target.closest('[data-receive]');if(rc){openReceive(rc.dataset.receive);return;}
+  const td=e.target.closest('[data-tdel]');if(td){doDeleteTransfer(td.dataset.tdel);return;}
+  const te=e.target.closest('[data-tedit]');if(te){openEditTransfer(te.dataset.tedit);return;}
+  const pp=e.target.closest('[data-print]');if(pp){const t=S.transfers.find(x=>x.id===pp.dataset.print);if(t)printPickList(t);return;}
+  const pk=e.target.closest('[data-pick]');if(pk){openPicking(pk.dataset.pick);return;}
   const os=e.target.closest('[data-oship]');if(os){doShipOrder(os.dataset.oship);return;}
   const orr=e.target.closest('[data-orecv]');if(orr){doReceiveOrder(orr.dataset.orecv);return;}
 });
