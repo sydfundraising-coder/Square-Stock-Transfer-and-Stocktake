@@ -954,6 +954,13 @@ async function openPkScanner(t){
 }
 /* New transfer */
 let dLines=[],tfExceed=false;
+/* Source availability for ANY centre (works even for centres the user can't otherwise read) */
+let tfSrc={loc:null,avail:{},onhand:{}};
+async function loadTfSrc(locId){
+  tfSrc={loc:locId,avail:{},onhand:{}};
+  try{const{data,error}=await sb.rpc('centre_stock',{p_loc:locId});if(!error&&data)data.forEach(r=>{tfSrc.avail[r.item_id]=r.available;tfSrc.onhand[r.item_id]=r.on_hand;});}catch(e){console.error('centre_stock',e);}
+  if(document.getElementById('sum'))sum();
+}
 function newTransfer(presetItem){
   dLines=[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
@@ -971,7 +978,8 @@ function newTransfer(presetItem){
   // From = Central Warehouse (hub) by default; To = the user's centre.
   if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
   else{if(hub)from.value=hub.id;to.value=(destLocs.find(l=>l.id!==(hub?hub.id:''))||destLocs[0]||{}).id;}
-  edLines();from.onchange=sum;to.onchange=sum;
+  edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=sum;
+  loadTfSrc(from.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
@@ -998,7 +1006,7 @@ function edLines(){
 }
 function sum(){
   const from=document.getElementById('tf-from').value,to=(document.getElementById('tf-to')||{}).value,btn=document.getElementById('go');let val=0;tfExceed=false;const rows=[];
-  dLines.forEach(l=>{if(l.item){const it=item(l.item);val+=l.qty*it.unit_cost;const av=availAt(from,l.item),rs=reservedAt(from,l.item),over=l.qty>av;if(over)tfExceed=true;const mc=monthsCover(to,l.item);const low=isLow(to,l.item);const destNote=mc==null?'':` · <span style="color:${low?'var(--crit)':'var(--muted)'}">${loc(to).code} ${mc.toFixed(1)}mo${low?' ⚠ low':''}</span>`;rows.push(`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;${over?'color:var(--crit);font-weight:700':''}"><span>${esc(it.name)}</span><span class="tnum">need ${l.qty} · avail ${av}${rs>0?` (−${rs} reserved)`:''}${over?' ⚠':''}${destNote}</span></div>`);}});
+  dLines.forEach(l=>{if(l.item){const it=item(l.item);val+=l.qty*it.unit_cost;const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);const oh=(tfSrc.loc===from&&tfSrc.onhand[l.item]!=null)?tfSrc.onhand[l.item]:onHand(from,l.item);const rs=Math.max(0,oh-av),over=l.qty>av;if(over)tfExceed=true;const mc=monthsCover(to,l.item);const low=isLow(to,l.item);const destNote=mc==null?'':` · <span style="color:${low?'var(--crit)':'var(--muted)'}">${loc(to).code} ${mc.toFixed(1)}mo${low?' ⚠ low':''}</span>`;rows.push(`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;${over?'color:var(--crit);font-weight:700':''}"><span>${esc(it.name)}</span><span class="tnum">need ${l.qty} · avail ${av}${rs>0?` (−${rs} reserved)`:''}${over?' ⚠':''}${destNote}</span></div>`);}});
   const s=document.getElementById('sum');
   if(!rows.length)s.className='banner info',s.innerHTML=`${svg(I.info,17)}<div>Add items to see availability at <b>${esc(loc(from).code)}</b>.</div>`;
   else if(tfExceed)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>More than available at ${esc(loc(from).code)}.</b> Reserved stock (open requests) doesn’t count. Reduce to submit.<div style="margin-top:7px;display:grid;gap:3px">${rows.join('')}</div></div>`;
@@ -1563,7 +1571,7 @@ function vSettings(v){
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
   toast('Syncing with Square…');
-  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);sb.rpc('log_system_event',{p_action:`Square full sync — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock, ${data.categoriesLoaded||0} categories, ${data.createdLocations||0} new location(s)`}).catch(()=>{});toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
+  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);logEvent(`Square full sync — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock, ${data.categoriesLoaded||0} categories, ${data.createdLocations||0} new location(s)`);toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
   catch(e){toast('Sync failed: '+(e.message||e),true);}
 }
 async function runTeamSync(){
@@ -1605,8 +1613,10 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
 async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
-async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}sb.rpc('log_system_event',{p_action:'Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)'}).catch(()=>{});toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
-async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}sb.rpc('log_system_event',{p_action:'Pushed all stock to Square ('+n+' locations)'}).catch(()=>{});toast('Pushed '+n+' location(s) to Square');}
+async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}logEvent('Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)');toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}logEvent('Pushed all stock to Square ('+n+' locations)');toast('Pushed '+n+' location(s) to Square');}
+/* fire-and-forget system-event log; tolerant of the function not existing yet */
+function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(p&&typeof p.then==='function')p.then(()=>{},()=>{});}catch(e){}}
 
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
