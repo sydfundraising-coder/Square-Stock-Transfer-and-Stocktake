@@ -323,6 +323,35 @@ async function loadAll(){
   }catch(e){ toast('Could not load data: '+(e.message||e),true); console.error(e); return false; }
 }
 async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView(); }
+/* Fast refresh after an action: reload only the small operational tables and
+   the stock for the location(s) that actually changed — NOT the whole catalog
+   and all ~35k stock rows. Keeps items/velocity cached (they only change on Sync). */
+async function loadOps(){
+  const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
+  try{
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs]=await Promise.all([
+      q(sb.from('locations').select('*').order('code')),
+      q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
+      q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
+      q(sb.from('purchase_orders').select('*, lines:purchase_order_lines(*)').order('created_at',{ascending:false})),
+      q(sb.from('stocktakes').select('*, lines:stocktake_lines(*)').order('started_at',{ascending:false})),
+      q(sb.from('profiles').select('*')),
+      q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
+      q(sb.from('profile_locations').select('*')).catch(()=>[]),
+    ]);
+    S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[];
+    return true;
+  }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
+}
+async function reloadStockFor(locs){
+  const uniq=[...new Set((locs||[]).filter(Boolean))]; if(!uniq.length)return;
+  let rows=[],from=0;const size=1000;
+  for(;;){const{data,error}=await sb.from('stock').select('*').in('location_id',uniq).range(from,from+size-1);if(error){console.error(error);break;}rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}
+  for(const k of Object.keys(S.stock)){ if(uniq.includes(k.split('__')[0])) delete S.stock[k]; }
+  rows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
+}
+async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); renderNav(); renderSq(); renderView(); }
 
 /* ---------- auth ---------- */
 async function boot(){
@@ -981,8 +1010,11 @@ async function runTeamSync(){
 async function callRpc(fn,args,okMsg,push){
   const{error}=await sb.rpc(fn,args);
   if(error){toast(error.message||'Action failed',true);return;}
-  if(push&&push.location_id){ try{ await sb.functions.invoke('square-push',{body:push}); }catch(e){} }
-  closeOverlay();toast(okMsg||'Done');await refresh();
+  closeOverlay();toast(okMsg||'Done');
+  // Push the new count to Square in the BACKGROUND — don't make the user wait on it.
+  if(push&&push.location_id){ sb.functions.invoke('square-push',{body:push}).catch(e=>console.error('square-push',e)); }
+  // Refresh only what changed: operational tables + the affected location's stock.
+  await refreshOps(push&&push.location_id?[push.location_id]:[]);
 }
 function txItems(t){return (t.lines||[]).map(l=>l.item_id);}
 function doApprove(id){callRpc('approve_transfer',{p_id:id},'Approved');}
