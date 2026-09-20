@@ -970,6 +970,7 @@ function newTransfer(presetItem){
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
+  if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
@@ -1442,10 +1443,8 @@ function editUserCentres(id){
 /* ---------- Centre Insights: top sellers + movers ---------- */
 let insCentre=null;
 async function fetchCentreSales(locId){
-  const since=new Date();since.setMonth(since.getMonth()-12);
-  let rows=[],from=0;const size=1000;
-  for(;;){const{data,error}=await sb.from('stock_ledger').select('item_id,qty_delta,ts').eq('location_id',locId).eq('kind','sale').gte('ts',since.toISOString()).range(from,from+size-1);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}
-  return rows;
+  const{data,error}=await sb.from('item_sales_12m').select('item_id,qty,revenue').eq('location_id',locId);
+  if(error)throw error;return data||[];
 }
 function vInsights(v){
   const centres=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
@@ -1462,33 +1461,33 @@ function vInsights(v){
 async function renderInsights(){
   const el=document.getElementById('ins-body');if(!el)return;const centre=insCentre;
   let sales;try{sales=await fetchCentreSales(centre);}catch(e){el.innerHTML=`<div class="card empty">${svg(I.alert,30)}<div>Could not load sales: ${esc(e.message||e)}</div></div>`;return;}
-  const soldU={},soldByCat={};let totU=0,totV=0;
-  sales.forEach(r=>{const units=r.qty_delta<0?-r.qty_delta:0;if(!units)return;const it=item(r.item_id);soldU[r.item_id]=(soldU[r.item_id]||0)+units;const c=it.category||'Uncategorised';soldByCat[c]=(soldByCat[c]||0)+units;totU+=units;totV+=units*(it.price||0);});
+  const soldU={},soldV={},soldByCat={};let totU=0,totV=0;
+  sales.forEach(r=>{const units=Number(r.qty)||0;if(units<=0)return;const rev=Number(r.revenue)||0;const it=item(r.item_id);soldU[r.item_id]=(soldU[r.item_id]||0)+units;soldV[r.item_id]=(soldV[r.item_id]||0)+rev;const c=it.category||'Uncategorised';soldByCat[c]=(soldByCat[c]||0)+units;totU+=units;totV+=rev;});
   const topItems=Object.entries(soldU).sort((a,b)=>b[1]-a[1]).slice(0,50);
   const topCats=Object.entries(soldByCat).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const catMax=topCats.length?topCats[0][1]:0;
   const movers={};S.transfers.filter(t=>t.to_location===centre&&['received','partially_received'].includes(t.status)).forEach(t=>(t.lines||[]).forEach(l=>{const m=(movers[l.item_id]=movers[l.item_id]||{count:0,units:0});m.count++;m.units+=(l.qty_received||0);}));
   const topMovers=Object.entries(movers).sort((a,b)=>b[1].count-a[1].count||b[1].units-a[1].units).slice(0,20);
-  window._insData={centre,topItems,topCats,topMovers};
+  window._insData={centre,topItems,topCats,topMovers,soldV};
   const bar=(label,val,max)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${val.toLocaleString()}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:linear-gradient(90deg,var(--accent),var(--accent-ink));border-radius:6px"></div></div></div>`;
   el.innerHTML=`
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.box,14)} Units sold (12mo)</div><div class="val tnum">${totU.toLocaleString()}</div><div class="meta">${loc(centre).name}</div></div>
-      <div class="tile"><div class="lbl">${svg(I.cost,14)} Sales value</div><div class="val tnum">${money0(totV)}</div><div class="meta">at retail price</div></div>
+      <div class="tile"><div class="lbl">${svg(I.cost,14)} Sales value</div><div class="val tnum">${money0(totV)}</div><div class="meta">gross sales</div></div>
       <div class="tile"><div class="lbl">${svg(I.catalog,14)} Distinct items sold</div><div class="val tnum">${topItems.length>=50?'50+':Object.keys(soldU).length}</div><div class="meta">last 12 months</div></div>
       <div class="tile"><div class="lbl">${svg(I.chart,14)} Top category</div><div class="val tnum" style="font-size:18px">${topCats.length?esc(topCats[0][0]):'—'}</div><div class="meta">${topCats.length?topCats[0][1].toLocaleString()+' units':''}</div></div>
     </div>
-    ${!sales.length?`<div class="banner warn">${svg(I.alert,17)}<div>No sales history yet for this centre. Run <b>Square Sync → Update sales history</b> to pull Square POS sales.</div></div>`:''}
+    ${!sales.length?`<div class="banner warn">${svg(I.alert,17)}<div>No sales yet for this centre. Run <b>Square Sync → Update sales data</b> to pull 12 months of Square sales.</div></div>`:''}
     <div class="grid2" style="align-items:start">
       <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Top 5 categories sold</h3>${topCats.length?topCats.map(([c,u])=>bar(c,u,catMax)).join(''):'<div style="color:var(--faint);font-size:13px">No data.</div>'}</div>
       <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Most frequently received (transfers in)</h3>${topMovers.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Times</th><th class="num">Units</th></tr></thead><tbody>${topMovers.map(([id,m])=>`<tr><td>${esc(item(id).name)}</td><td class="num tnum">${m.count}</td><td class="num tnum">${m.units}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No transfer receipts yet.</div>'}</div>
     </div>
     <div class="section-head" style="margin-top:8px"><h2>Top 50 items sold (12 months)</h2></div>
-    ${topItems.length?`<div class="tablewrap"><table><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th></tr></thead><tbody>${topItems.map(([id,u],ix)=>{const it=item(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum">${u.toLocaleString()}</td><td class="num tnum">${money(u*(it.price||0))}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No sales recorded for this centre yet.</div></div>`}`;
+    ${topItems.length?`<div class="tablewrap"><table><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th></tr></thead><tbody>${topItems.map(([id,u],ix)=>{const it=item(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum">${u.toLocaleString()}</td><td class="num tnum">${money((window._insData&&window._insData.soldV&&window._insData.soldV[id])||0)}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No sales recorded for this centre yet.</div></div>`}`;
 }
 function exportInsights(){
   const d=window._insData;if(!d)return;const cn=loc(d.centre).code;const stamp=today();
-  downloadCSV(`top-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)'],d.topItems.map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,(u*(item(id).price||0)).toFixed(2)]));
+  downloadCSV(`top-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)'],d.topItems.map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,((d.soldV&&d.soldV[id])||0).toFixed(2)]));
   setTimeout(()=>downloadCSV(`most-received_${cn}_${stamp}.csv`,['Item','Product code','Times received','Units received'],d.topMovers.map(([id,m])=>[item(id).name,item(id).sku||'',m.count,m.units])),400);
   toast('Exported top items + most-received');
 }
@@ -1577,7 +1576,7 @@ function vSettings(v){
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
     <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks). Transfers, receipts and stock takes are pushed <b>back</b> to Square as they happen, so both stay in step.</div></div>
     ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update sales history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
-    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Update sales history” pulls Square POS sales/waste/returns into each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
+    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” pulls 12 months of Square sales for Centre Insights and the 2-month transfer recommendations. “Update sales history” adds Square POS sales/waste/returns to each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
     ${ROLE==='super_admin'?`<div class="card pad" style="margin-top:16px"><div class="sq-title" style="font-size:15px">${svg(I.receipt,18)} Backups</div>
       <div style="font-size:13px;color:var(--muted);margin:10px 0 12px">A full snapshot is saved automatically every night (the last 7 are kept). You can also back up now, and download a copy to your computer for off-site safety.</div>
       <div id="bk-status" style="font-size:13px;margin-bottom:12px;color:var(--muted)">Loading…</div>
@@ -1652,7 +1651,8 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
 async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
-async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}logEvent('Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)');toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function fnErr(error){try{if(error&&error.context&&typeof error.context.json==='function'){const b=await error.context.json();return b.error||JSON.stringify(b);}}catch(e){}return (error&&error.message)||'failed';}
+async function runVelocity(){toast('Reading 12 months of sales from Square…');try{const{data,error}=await sb.functions.invoke('square-sales');if(error){toast('Sales update failed: '+await fnErr(error),true);return;}if(data&&data.error){toast(data.error,true);return;}toast('Sales updated — '+((data&&data.itemsWithSales)||0)+' item lines from '+((data&&data.orders)||0)+' orders');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}logEvent('Pushed all stock to Square ('+n+' locations)');toast('Pushed '+n+' location(s) to Square');}
 /* fire-and-forget system-event log; tolerant of the function not existing yet */
 function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(p&&typeof p.then==='function')p.then(()=>{},()=>{});}catch(e){}}
