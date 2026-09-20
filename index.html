@@ -756,7 +756,8 @@ function openTransfer(id){
   if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`);
   else if(t.status==='approved'){let a=editDel;if(atSource)a+=`<button class="btn" data-print="${t.id}">${svg(I.receipt,16)} Pick list</button><button class="btn" data-pick="${t.id}">${svg(I.box,16)} Pick items</button>`;if(canDispatchT(t))a+=`<button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch</button>`;else if(!atSource)a+=`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;actions=a;}
   else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
-  const body=`${stepHtml}
+  if(ROLE==='super_admin'&&!t.reversed_at&&['in_transit','partially_received','received'].includes(t.status))actions+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-treverse="${t.id}">${svg(I.alert,15)} Reverse</button>`;
+  const body=`${t.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(t.reversed_at)}${t.reverse_reason?` — ${esc(t.reverse_reason)}`:''}. Stock was restored to source, removed from destination, and pushed to Square.</div></div>`:''}${stepHtml}
     ${picking?`<div class="banner warn">${svg(I.box,17)}<div><b>Picking in progress</b> at ${esc(loc(t.from_location).name)} — ${pickedLines} of ${(t.lines||[]).length} item(s) picked so far.</div></div>`:''}
     ${(t.status==='in_transit'||t.status==='partially_received')?`<div class="banner transit">${svg(I.truck,17)}<div><b>${money(trTransit(t))} in transit</b> from ${esc(loc(t.from_location).name)} to ${esc(loc(t.to_location).name)}.</div></div>`:''}
     ${du>0&&t.status==='received'?`<div class="banner crit">${svg(I.alert,17)}<div><b>Discrepancy: ${du} short (${money(dv)}).</b></div></div>`:''}
@@ -911,7 +912,8 @@ function openOrder(id){
   let act='';
   if(o.status==='placed'&&can('order.receive'))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
   else if(o.status==='shipped'&&can('order.receive'))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
-  const body=`${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
+  if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
+  const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,body,act);
@@ -1071,7 +1073,9 @@ function rcList(){
 function openReceipt(id){
   const r=S.receipts.find(x=>x.id===id);if(!r)return;
   const rows=(r.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
-  slideover(r.code,r.supplier||'',`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(r.supplier||'—')}</dd><dt>Reference</dt><dd class="mono">${esc(r.reference||'—')}</dd><dt>Into</dt><dd>${esc(loc(r.location_id).name)}</dd><dt>Date</dt><dd>${fmtDate(r.received_on)}</dd><dt>By</dt><dd>${esc(pname(r.created_by))}</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`,'');
+  const rbanner=r.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(r.reversed_at)}${r.reverse_reason?` — ${esc(r.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:'';
+  const ract=(ROLE==='super_admin'&&!r.reversed_at)?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-rreverse="${r.id}">${svg(I.alert,15)} Reverse</button>`:'';
+  slideover(r.code,r.supplier||'',`${rbanner}<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(r.supplier||'—')}</dd><dt>Reference</dt><dd class="mono">${esc(r.reference||'—')}</dd><dt>Into</dt><dd>${esc(loc(r.location_id).name)}</dd><dt>Date</dt><dd>${fmtDate(r.received_on)}</dd><dt>By</dt><dd>${esc(pname(r.created_by))}</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`,ract);
 }
 let recLines=[];
 function newReceipt(){
@@ -1197,9 +1201,38 @@ function editUserCentres(id){
     closeOverlay();toast('Centres updated');refresh();
   };
 }
+let auRange='90d',auSearch='';
+const auName=a=>a.actor?pname(a.actor):'System · Square';
+async function fetchAudit(){
+  const n=new Date();const start=auRange==='30d'?new Date(n-30*864e5):auRange==='90d'?new Date(n-90*864e5):auRange==='12m'?(()=>{const d=new Date(n);d.setMonth(d.getMonth()-12);return d;})():new Date('2000-01-01');
+  let rows=[],from=0;const size=1000;
+  for(;;){const{data,error}=await sb.from('audit_log').select('*').gte('ts',start.toISOString()).order('ts',{ascending:false}).range(from,from+size-1);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}
+  return rows;
+}
 function vAudit(v){
-  let list=S.audit;if(scoped())list=list.filter(a=>mine(a.location_id));
-  v.innerHTML=`<div class="tablewrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th></tr></thead><tbody>${list.map(a=>`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12.5px">${fmtDT(a.ts)}</td><td style="font-weight:600;white-space:nowrap">${esc(pname(a.actor))}</td><td>${esc(a.action)}</td></tr>`).join('')}</tbody></table></div>`;
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.info,17)}<div>Every action processed in the system — who, when and what. ${scoped()?'Showing your centre(s).':'System &amp; Square events included.'}</div></div>
+      <div class="rep-actions no-print">
+        <div class="search">${svg(I.search,16)}<input id="au-q" placeholder="Search action or person…" value="${esc(auSearch)}"></div>
+        <select class="filter" id="au-range"><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="12m">Last 12 months</option><option value="all">All time</option></select>
+        <button class="btn" id="au-csv">${svg(I.receipt,15)} CSV</button>
+      </div>
+    </div>
+    <div id="au-list"><div class="card empty">${svg(I.audit||I.receipt,34)}<div>Loading…</div></div></div>`;
+  document.getElementById('au-range').value=auRange;
+  document.getElementById('au-range').onchange=e=>{auRange=e.target.value;renderAuditList();};
+  document.getElementById('au-q').oninput=e=>{auSearch=e.target.value;renderAuditList();};
+  document.getElementById('au-csv').onclick=()=>{const rows=window._auRows||[];downloadCSV('audit-log_'+today()+'.csv',['When','Who','Action','Centre'],rows.map(a=>[fmtDT(a.ts),auName(a),a.action,a.location_id?loc(a.location_id).name:'']));toast('Audit log exported ('+rows.length+' rows)');};
+  renderAuditList();
+}
+async function renderAuditList(){
+  const el=document.getElementById('au-list');if(!el)return;
+  let rows;try{rows=await fetchAudit();}catch(e){el.innerHTML=`<div class="card empty">${svg(I.alert,30)}<div>Could not load audit log: ${esc(e.message||e)}</div></div>`;return;}
+  if(scoped())rows=rows.filter(a=>a.location_id&&mine(a.location_id));
+  const q=auSearch.toLowerCase();
+  if(q)rows=rows.filter(a=>String(a.action||'').toLowerCase().includes(q)||auName(a).toLowerCase().includes(q));
+  window._auRows=rows;
+  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} record(s)</div><div class="tablewrap"><table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Centre</th></tr></thead><tbody>${rows.map(a=>`<tr><td style="white-space:nowrap;color:var(--muted);font-size:12.5px">${fmtDT(a.ts)}</td><td style="font-weight:600;white-space:nowrap">${a.actor?esc(pname(a.actor)):'<span style="color:var(--transit)">System · Square</span>'}</td><td>${esc(a.action)}</td><td style="color:var(--muted);font-size:12.5px;white-space:nowrap">${a.location_id?esc(loc(a.location_id).code):'—'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.audit||I.receipt,34)}<div>No matching entries.</div></div>`;
 }
 function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
@@ -1211,7 +1244,7 @@ function vSettings(v){
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
   toast('Syncing with Square…');
-  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
+  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);sb.rpc('log_system_event',{p_action:`Square full sync — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock, ${data.categoriesLoaded||0} categories, ${data.createdLocations||0} new location(s)`}).catch(()=>{});toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
   catch(e){toast('Sync failed: '+(e.message||e),true);}
 }
 async function runTeamSync(){
@@ -1238,8 +1271,19 @@ function doCancel(id){callRpc('cancel_transfer',{p_id:id},'Cancelled');}
 function doDispatch(id){const t=S.transfers.find(x=>x.id===id);callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);}
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);callRpc('receive_order',{p_id:id},'Order received',o?{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)}:null);}
-async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
-async function pushAll(){toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}toast('Pushed '+n+' location(s) to Square');}
+/* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
+async function doReverse(fn,id,label,affectedLocs,itemIds){
+  const reason=window.prompt('Reason for reversing '+label+'? (required — this will be recorded in the audit log)');
+  if(reason===null)return; if(!reason.trim()){toast('A reason is required to reverse',true);return;}
+  if(!window.confirm('Reverse '+label+'?\n\nThis will correct stock in the system and push the correction to LIVE Square. It cannot be undone (though you can re-enter the transaction if needed).'))return;
+  const{error}=await sb.rpc(fn,{p_id:id,p_reason:reason.trim()});
+  if(error){toast(error.message||'Reversal failed',true);return;}
+  closeOverlay();toast(label.charAt(0).toUpperCase()+label.slice(1)+' reversed');
+  (affectedLocs||[]).filter(Boolean).forEach(lc=>sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:itemIds}}).catch(e=>console.error('square-push',e)));
+  await refreshOps((affectedLocs||[]).filter(Boolean));
+}
+async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}sb.rpc('log_system_event',{p_action:'Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)'}).catch(()=>{});toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}sb.rpc('log_system_event',{p_action:'Pushed all stock to Square ('+n+' locations)'}).catch(()=>{});toast('Pushed '+n+' location(s) to Square');}
 
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
@@ -1273,6 +1317,9 @@ document.addEventListener('click',e=>{
   const pk=e.target.closest('[data-pick]');if(pk){openPicking(pk.dataset.pick);return;}
   const os=e.target.closest('[data-oship]');if(os){doShipOrder(os.dataset.oship);return;}
   const orr=e.target.closest('[data-orecv]');if(orr){doReceiveOrder(orr.dataset.orecv);return;}
+  const trv=e.target.closest('[data-treverse]');if(trv){const t=S.transfers.find(x=>x.id===trv.dataset.treverse);if(t)doReverse('reverse_transfer',t.id,'transfer '+t.code,[t.from_location,t.to_location],txItems(t));return;}
+  const rrv=e.target.closest('[data-rreverse]');if(rrv){const r=S.receipts.find(x=>x.id===rrv.dataset.rreverse);if(r)doReverse('reverse_receipt',r.id,'receipt '+r.code,[r.location_id],(r.lines||[]).map(l=>l.item_id));return;}
+  const orv=e.target.closest('[data-oreverse]');if(orv){const o=S.orders.find(x=>x.id===orv.dataset.oreverse);if(o)doReverse('reverse_order',o.id,'order '+o.code,[o.location_id],(o.lines||[]).map(l=>l.item_id));return;}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlay();});
 document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
