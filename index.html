@@ -966,7 +966,7 @@ function vSettings(v){
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
   toast('Syncing with Square…');
-  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock counts, ${data.createdLocations||0} new locations`);refresh();}
+  try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
   catch(e){toast('Sync failed: '+(e.message||e),true);}
 }
 async function runTeamSync(){
