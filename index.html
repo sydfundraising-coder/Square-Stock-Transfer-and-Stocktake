@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Shayona Stock Transfer and Stock Take Hub</title>
+<title>Shayona Stock Control Hub</title>
 <!-- ====================================================================
      EDIT THESE TWO LINES with the values from Supabase → Project Settings → API
      (Project URL, and the "anon public" key). Then save & redeploy.
@@ -14,6 +14,13 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  /* Logo loader: tries several file names/extensions, falls back to the "S" mark + text.
+     Put your logo file next to index.html (same folder) named one of these. */
+  window.LOGO_CANDIDATES=['shayona-logo.png','shayona-logo.jpg','shayona-logo.jpeg','shayona-logo.svg','shayona-logo.webp','logo.png','logo.jpg','logo.svg'];
+  function logoOk(img){img.style.display='block';var h=img.getAttribute('data-hide');if(h){var b=document.getElementById(h);if(b)b.style.display='none';}}
+  function nextLogo(img){var i=(+img.getAttribute('data-i')||0)+1;if(i<window.LOGO_CANDIDATES.length){img.setAttribute('data-i',i);img.src=window.LOGO_CANDIDATES[i];}else{img.style.display='none';}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -144,6 +151,31 @@
   }
   @media (max-width:440px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tile .val{font-size:22px}.topbar h1{font-size:16px}}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  /* ---- modern refresh (dashboard + reports) ---- */
+  .content-inner{max-width:1180px;margin:0 auto}
+  .tile{position:relative;overflow:hidden;border-radius:14px;transition:transform .13s ease,box-shadow .13s ease}
+  .tile:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  .tile.accent,.tile.transit,.tile.crit,.tile.warn{border-left:1px solid var(--border)}
+  .tile.accent::before,.tile.transit::before,.tile.crit::before,.tile.warn::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px}
+  .tile.accent::before{background:linear-gradient(var(--accent),var(--accent-ink))}
+  .tile.transit::before{background:var(--transit)}
+  .tile.crit::before{background:var(--crit)}
+  .tile.warn::before{background:var(--warn)}
+  .tile .val{font-size:26px}
+  .section-head h2{position:relative;padding-left:13px;display:flex;align-items:center;gap:8px}
+  .section-head h2::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:4px;border-radius:3px;background:linear-gradient(var(--accent),var(--accent-ink))}
+  .card,.tablewrap{border-radius:14px}
+  .chart-card{transition:box-shadow .13s ease,transform .13s ease}
+  .chart-card:hover{box-shadow:var(--shadow-lg)}
+  .hero{position:relative;overflow:hidden;border-radius:16px;padding:22px 24px;margin-bottom:18px;color:#fff;background:linear-gradient(135deg,var(--accent) 0%,var(--accent-ink) 100%);box-shadow:var(--shadow)}
+  .hero h2{font-family:var(--disp);font-weight:800;font-size:22px;letter-spacing:-.02em;margin:0}
+  .hero .sub{opacity:.9;font-size:13px;margin-top:4px}
+  .hero .hero-actions{margin-top:15px;display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:1}
+  .hero .btn{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.3);color:#fff}
+  .hero .btn:hover{background:rgba(255,255,255,.28)}
+  .hero::after{content:"";position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.09)}
+  .hero::before{content:"";position:absolute;right:60px;bottom:-70px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.06)}
+  @media (max-width:600px){.hero{padding:18px}.hero h2{font-size:19px}}
   /* ---- Reports ---- */
   .rep-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
   .rep-actions{display:flex;align-items:center;gap:8px;flex:none}
@@ -182,8 +214,8 @@
 <!-- login screen -->
 <div class="login" id="login" hidden>
   <div class="box">
-    <img id="loginLogo" class="applogo" src="shayona-logo.png" alt="Shayona Vegetarian" style="max-height:60px;margin:0 0 16px;display:none" onload="this.style.display='block';var b=document.getElementById('loginBrand');if(b)b.style.display='none'" onerror="if(!this.dataset.r){this.dataset.r=1;this.src='shayona-logo.jpg'}else{this.style.display='none'}">
-    <div class="brand" id="loginBrand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Transfer &amp; Stock Take Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
+    <img id="loginLogo" class="applogo" data-i="0" data-hide="loginBrand" src="shayona-logo.png" alt="Shayona" style="max-height:64px;margin:0 0 16px;display:none" onload="logoOk(this)" onerror="nextLogo(this)">
+    <div class="brand" id="loginBrand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
     <h2>Sign in</h2>
     <p id="loginMsg">Use the email you have in Square — sign in with Google, or get a one-time link by email. Access is limited to your Square team.</p>
     <button class="btn" id="googleBtn" style="width:100%;justify-content:center;gap:9px;font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg> Continue with Google</button>
@@ -197,7 +229,7 @@
 <div class="app" id="app" hidden>
   <div class="sidebar-scrim" id="sidebarScrim"></div>
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><img id="sideLogo" class="applogo" src="shayona-logo.png" alt="Shayona" style="max-height:30px;display:none" onload="this.style.display='block';var b=document.getElementById('sideBrandText');if(b)b.style.display='none'" onerror="if(!this.dataset.r){this.dataset.r=1;this.src='shayona-logo.jpg'}else{this.style.display='none'}"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Transfer &amp; Stock Take Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
+    <div class="brand"><img id="sideLogo" class="applogo" data-i="0" data-hide="sideBrandText" src="shayona-logo.png" alt="Shayona" style="max-height:36px;display:none" onload="logoOk(this)" onerror="nextLogo(this)"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="sq-status" id="sqStatus"></div>
   </aside>
@@ -476,8 +508,13 @@ function vDash(v){
   const disc=visT.filter(t=>trShortU(t)>0&&t.status==='received');
   const inc=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped'));
   const recent=visT.slice(0,6);
+  const who=(S.profiles.find(p=>p.id===(ME&&ME.id))||{});const fname=String(who.full_name||who.email||'there').split(' ')[0].split('@')[0];
+  const hr=new Date().getHours();const daypart=hr<12?'morning':hr<17?'afternoon':'evening';
+  const scopeLbl=scoped()?(MYLOCS.map(id=>loc(id).code).join(', ')||'no centre yet'):('all '+S.locations.length+' centres');
   v.innerHTML=`
-    ${scoped()?`<div class="banner info">${svg(I.location,17)}<div>You’re scoped to <b>${esc(MYLOCS.map(id=>loc(id).name).join(', ')||'no centre yet')}</b> — you see stock, transfers and receipts involving your centre${MYLOCS.length>1?'s':''}.</div></div>`:''}
+    <div class="hero"><h2>Good ${daypart}, ${esc(fname.charAt(0).toUpperCase()+fname.slice(1))}</h2><div class="sub">${esc(roleDef().name)} · ${esc(scopeLbl)} · ${fmtDate(today())}</div>
+      <div class="hero-actions">${can('transfer.create')?`<button class="btn" data-act="new-transfer">${svg(I.plus,15)} New transfer</button>`:''}<button class="btn" data-route="reports">${svg(I.chart,15)} Reports</button>${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,15)} Sync now</button>`:''}</div></div>
+    ${scoped()&&!MYLOCS.length?`<div class="banner info">${svg(I.location,17)}<div>No centre assigned yet — ask a Super Admin.</div></div>`:''}
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.box,14)} On-hand value</div><div class="val tnum">${money0(invValueFor(locs))}</div><div class="meta">${scoped()?(MYLOCS.length>1?MYLOCS.length+' centres':(loc(HOME).name)):'all '+S.locations.length+' sites'}</div></div>
       <div class="tile transit"><div class="lbl">${svg(I.truck,14)} In transit</div><div class="val tnum">${money0(transitVal)}</div><div class="meta">${transitList.length} moving</div></div>
@@ -561,9 +598,17 @@ function reportData(){
     dmgByItem[r.item_id]=(dmgByItem[r.item_id]||0)+val;
     const mk2=mKey(r.decided_at||r.requested_at);(dmgByMonth[mk2]=dmgByMonth[mk2]||{damage:0,expire:0});dmgByMonth[mk2][r.kind]+=val;});
   const pendingVal=adjPending.reduce((s,r)=>s+r.qty*(item(r.item_id).unit_cost||0),0);
+  // purchases (goods receipts + received supplier orders both live in receipts) by centre / month / category
+  const visRcpt=S.receipts.filter(r=>(!scoped()||mine(r.location_id))&&(!repCentre||r.location_id===repCentre)&&inRange(r.received_on));
+  let purchUnits=0,purchVal=0; const purchByLoc={},purchByMonth={},purchByCat={};
+  visRcpt.forEach(r=>{const mk2=mKey(r.received_on);(r.lines||[]).forEach(l=>{if(!matchCat(l.item_id))return;const val=l.qty*(l.unit_cost||0);purchUnits+=l.qty;purchVal+=val;
+    (purchByLoc[r.location_id]=purchByLoc[r.location_id]||{u:0,v:0});purchByLoc[r.location_id].u+=l.qty;purchByLoc[r.location_id].v+=val;
+    purchByMonth[mk2]=(purchByMonth[mk2]||0)+val;
+    const c=item(l.item_id).category||'Uncategorised';purchByCat[c]=(purchByCat[c]||0)+val;});});
   return {visT,done,inTr,trDisc,avgTr,visO,ordRecv,avgOrd,visST,stDone,itemU,catU,routeU,moveByMonth,valByMonth,moveByMonthCat,
     counted,stVarLines,stVarUnits,stVarValAbs,stShortUnits,stShortVal,stOverUnits,stByLoc,stByMonth,discLog,
-    adjApproved,adjPending,dmgUnits,dmgVal,expUnits,expVal,dmgByLoc,dmgByItem,dmgByMonth,pendingVal};
+    adjApproved,adjPending,dmgUnits,dmgVal,expUnits,expVal,dmgByLoc,dmgByItem,dmgByMonth,pendingVal,
+    visRcpt,purchUnits,purchVal,purchByLoc,purchByMonth,purchByCat};
 }
 
 function vReports(v){
@@ -584,7 +629,7 @@ function vReports(v){
       </div>
     </div>
 
-    <div id="rep-print-head" class="print-only"><h1>Shayona Stock Transfer &amp; Stock Take Hub — Report</h1><div class="ph-sub">${esc(scopeLabel)} · ${rangeLabel}${repCentre?' · Centre: '+esc(loc(repCentre).name):''}${repCat?' · Category: '+esc(repCat):''} · generated ${fmtDate(today())}</div></div>
+    <div id="rep-print-head" class="print-only"><h1>Shayona Stock Control Hub — Report</h1><div class="ph-sub">${esc(scopeLabel)} · ${rangeLabel}${repCentre?' · Centre: '+esc(loc(repCentre).name):''}${repCat?' · Category: '+esc(repCat):''} · generated ${fmtDate(today())}</div></div>
 
     ${(repCentre||repCat)?`<div class="rep-filters no-print">${svg(I.filter||I.search,14)}<span style="color:var(--muted);font-size:12.5px">Filtered:</span>
       ${repCentre?`<span class="fchip">Centre: <b>${esc(loc(repCentre).name)}</b> <button data-clearc title="Clear">${svg(I.x,12)}</button></span>`:''}
@@ -623,6 +668,20 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Movement by category (units) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-cats"></canvas></div></div>
     </div>
     <div class="card pad chart-card"><h3>Busiest routes (units)</h3><div class="chart-box"><canvas id="ch-routes"></canvas></div></div>
+
+    <!-- ===== PURCHASES ===== -->
+    <div class="section-head" style="margin-top:26px"><h2>${svg(I.order,17)} Purchases</h2></div>
+    <div class="tiles">
+      <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Purchased value</div><div class="val tnum">${money0(R.purchVal)}</div><div class="meta">at cost</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Units purchased</div><div class="val tnum">${R.purchUnits.toLocaleString()}</div><div class="meta">received into stock</div></div>
+      <div class="tile"><div class="lbl">${svg(I.receipt,14)} Receipts</div><div class="val tnum">${R.visRcpt.length}</div><div class="meta">goods received</div></div>
+      <div class="tile"><div class="lbl">${svg(I.calendar,14)} Avg / month</div><div class="val tnum">${money0(R.purchVal/Math.max(1,monthKeys().length))}</div><div class="meta">over the period</div></div>
+    </div>
+    <div class="card pad chart-card"><h3>Purchases by month (value)</h3><div class="chart-box"><canvas id="ch-purmonth"></canvas></div></div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad chart-card"><h3>Purchases by centre (value) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-purloc"></canvas></div></div>
+      <div class="card pad chart-card"><h3>Purchases by category (value) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-purcat"></canvas></div></div>
+    </div>
 
     <!-- ===== STOCK TAKE ===== -->
     <div class="section-head" style="margin-top:26px"><h2>${svg(I.stocktake,17)} Stock take</h2></div>
@@ -704,6 +763,18 @@ function renderReportCharts(R){
   mkChart('ch-routes',{type:'bar',data:{labels:tr.map(([r])=>r),datasets:[{label:'Units',data:tr.map(([,u])=>u),backgroundColor:t.transit,borderRadius:4}]},
     options:{indexAxis:'y',plugins:{legend:{display:false}},scales:axes()}});
 
+  // ----- PURCHASES by month -----
+  mkChart('ch-purmonth',{type:'bar',data:{labels:mk.map(mLabel),datasets:[{label:'Purchases $',data:mk.map(k=>Math.round(R.purchByMonth[k]||0)),backgroundColor:t.good,borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+  // ----- PURCHASES by centre — click to filter -----
+  const pl=Object.entries(R.purchByLoc).map(([k,x])=>[loc(k).code,Math.round(x.v)]).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  mkChart('ch-purloc',{type:'bar',data:{labels:pl.map(r=>r[0]),datasets:[{label:'Purchases $',data:pl.map(r=>r[1]),backgroundColor:t.good,borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>{const id=codeToId[pl[i]&&pl[i][0]];if(id){repCentre=(repCentre===id)?null:id;renderView();}}),plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
+  // ----- PURCHASES by category — click to filter -----
+  const pc=Object.entries(R.purchByCat).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  mkChart('ch-purcat',{type:'bar',data:{labels:pc.map(r=>r[0]),datasets:[{label:'Purchases $',data:pc.map(r=>Math.round(r[1])),backgroundColor:pc.map((_,i)=>pal[i%pal.length]),borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>{if(pc[i]){repCat=(repCat===pc[i][0])?null:pc[i][0];renderView();}}),plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
+
   // ----- ACCURACY BY CENTRE — click to filter -----
   const accRows=Object.entries(R.stByLoc).filter(([,x])=>x.counted>0).map(([k,x])=>[loc(k).code,Math.round((1-(x.lines/x.counted))*100)]).sort((a,b)=>a[1]-b[1]);
   mkChart('ch-acc',{type:'bar',data:{labels:accRows.map(r=>r[0]),datasets:[{label:'Accuracy %',data:accRows.map(r=>r[1]),backgroundColor:accRows.map(r=>r[1]>=98?t.good:r[1]>=95?t.warn:t.crit),borderRadius:4}]},
@@ -765,7 +836,12 @@ function exportReportCSV(R){
   const dm=[...R.adjApproved,...R.adjPending].sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at))
     .map(r=>[fmtDate(r.decided_at||r.requested_at),r.code||'',r.status,r.kind,loc(r.location_id).name,item(r.item_id).name,item(r.item_id).sku||'',r.qty,(r.qty*(item(r.item_id).unit_cost||0)).toFixed(2),pname(r.requested_by),r.reason||'']);
   setTimeout(()=>downloadCSV(`damage-expiry_${scopeLabel}_${stamp}.csv`,['Date','Ref','Status','Type','Centre','Item','Product code','Qty','Value (AUD)','Requested by','Reason'],dm),1200);
-  toast('Downloaded 4 CSV files: discrepancy log, movement, stock-take variance, damage/expiry');
+  // 5) Purchases by centre / month / category
+  const pAgg={};
+  (R.visRcpt||[]).forEach(r=>{const mo=mKey(r.received_on);(r.lines||[]).forEach(l=>{const c=item(l.item_id).category||'Uncategorised';const key=r.location_id+'|'+mo+'|'+c;(pAgg[key]=pAgg[key]||{u:0,v:0});pAgg[key].u+=l.qty;pAgg[key].v+=l.qty*(l.unit_cost||0);});});
+  const pRows=Object.entries(pAgg).map(([k,x])=>{const[lc,mo,c]=k.split('|');return [loc(lc).name,mLabel(mo),c,x.u,x.v.toFixed(2)];}).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));
+  setTimeout(()=>downloadCSV(`purchases_${scopeLabel}_${stamp}.csv`,['Centre','Month','Category','Units','Value (AUD)'],pRows),1600);
+  toast('Downloaded 5 CSV files: discrepancies, movement, stock-take, damage/expiry, purchases');
 }
 /* Charts draw to canvas with the colours present at creation time — so before printing we force the
    light palette and redraw, then restore afterwards, so the PDF is always crisp on white paper. */
