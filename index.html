@@ -697,7 +697,7 @@ function openItemDrill(itemId){
     <h3 style="font-size:13px;margin:12px 0 8px">Stock by centre</h3>${stockTbl}
     <h3 style="font-size:13px;margin:16px 0 8px">Discrepancies</h3>${discTbl}
     <h3 style="font-size:13px;margin:16px 0 8px">Recent movement</h3>${moveTbl}`;
-  slideover(it.name,'Item insight'+(repRange?' · '+({'30d':'30 days','90d':'90 days','12m':'12 months','all':'all time'}[repRange]):''),body,`<button class="btn" data-close>Close</button>`);
+  slideover(it.name,'Item insight'+(repRange?' · '+({'30d':'30 days','90d':'90 days','12m':'12 months','all':'all time'}[repRange]):''),body,`<button class="btn" data-openitem="${itemId}">${svg(I.box,15)} Full history &amp; adjust</button><button class="btn" data-close>Close</button>`);
 }
 
 function exportReportCSV(R){
@@ -886,10 +886,11 @@ async function submitTransfer(){
 function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div></div>`;}).join('');
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
-    await callRpc('receive_transfer',{p_id:id,p_recv:recv},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});
+    const note=(document.getElementById('rc-note')||{}).value||'';
+    await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});
   };
 }
 /* Orders */
@@ -1118,10 +1119,58 @@ function catList(){
   const oh=scoped()?('On hand ('+(MYLOCS.length>1?'your centres':loc(HOME).code)+')'):'Total on hand';
   document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${oh}</th></tr></thead><tbody>${list.map(i=>{let t=0;if(scoped())t=MYLOCS.reduce((a,l)=>a+onHand(l,i.id),0);else for(const k in S.stock)if(k.endsWith('__'+i.id))t+=S.stock[k];return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
+/* ---- per-item stock ledger (history) ---- */
+const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
+const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
+let ihKind='all',ihItem=null;
+const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
+async function fetchItemLedger(itemId,limit){let qy=sb.from('stock_ledger').select('*').eq('item_id',itemId).order('ts',{ascending:false}).limit(limit||300);if(scoped()&&MYLOCS.length)qy=qy.in('location_id',MYLOCS);const{data,error}=await qy;if(error)throw error;return data||[];}
+async function renderItemHistory(itemId){
+  const el=document.getElementById('ih-list');if(!el)return;
+  let rows;try{rows=await fetchItemLedger(itemId);}catch(e){el.innerHTML=`<div style="color:var(--faint);font-size:13px">Could not load history: ${esc(e.message||e)}</div>`;return;}
+  window._ihRows=rows;
+  let show=rows;if(ihKind!=='all')show=rows.filter(r=>r.kind===ihKind);
+  if(!show.length){el.innerHTML=`<div style="color:var(--faint);font-size:13px;padding:8px 0">No movements${ihKind!=='all'?' of this type':''} recorded yet. History builds from now on; Square sales appear after a “Update sales history” pull.</div>`;return;}
+  el.innerHTML=`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Type</th><th>Centre</th><th class="num">Qty</th><th>Ref / note</th></tr></thead><tbody>${show.map(r=>{const k=lkind(r.kind);return `<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${fmtDT(r.ts)}</td><td><span style="color:${k.c};font-weight:600">${esc(k.l)}</span></td><td style="font-size:12.5px">${r.location_id?esc(loc(r.location_id).code):'—'}</td><td class="num tnum" style="color:${r.qty_delta<0?'var(--crit)':'var(--good)'};font-weight:600">${r.qty_delta>0?'+':''}${r.qty_delta}</td><td style="font-size:12px;color:var(--muted)">${esc(r.reference||'')}${r.note?' · '+esc(r.note):''}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
 function openItem(id){
-  const it=S.items.find(x=>x.id===id);if(!it)return;
+  const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
   const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>`<tr><td>${esc(l.name)} <span class="tag">${l.code}</span></td><td class="num tnum">${onHand(l.id,id)}</td><td class="num tnum">${money(onHand(l.id,id)*it.unit_cost)}</td></tr>`).join('');
-  slideover(it.name,it.sku||'',`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th class="num">On hand</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>`,'');
+  const kinds=['all','sale','transfer_in','transfer_out','purchase','stocktake','damage','write_off','found','correction','return','reversal'];
+  const body=`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Category</dt><dd>${esc(it.category||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div>
+    <h3 style="font-size:13px;margin:0 0 8px">Stock by location</h3>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th class="num">On hand</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px"><h3 style="font-size:13px;margin:0">History</h3><div class="spacer"></div>
+      <select class="filter" id="ih-kind" style="height:32px;padding:4px 8px">${kinds.map(k=>`<option value="${k}">${k==='all'?'All movements':esc(lkind(k).l)}</option>`).join('')}</select>
+      <button class="btn sm" id="ih-csv">${svg(I.receipt,14)} CSV</button></div>
+    <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>`;
+  const foot=`<button class="btn" data-close>Close</button>${canAdjust()?`<button class="btn" id="ih-adjust" style="color:var(--warn);border-color:var(--warn)">${svg(I.alert,15)} Record damage / adjustment</button>`:''}`;
+  slideover(it.name,it.sku||'',body,foot);
+  document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
+  document.getElementById('ih-csv').onclick=()=>{const rows=(window._ihRows||[]);downloadCSV('item-history_'+(it.sku||it.name).replace(/[^A-Za-z0-9_-]/g,'')+'_'+today()+'.csv',['When','Type','Centre','Qty','Reference','Note'],rows.map(r=>[fmtDT(r.ts),lkind(r.kind).l,r.location_id?loc(r.location_id).name:'',r.qty_delta,r.reference||'',r.note||'']));toast('Item history exported ('+rows.length+' rows)');};
+  const adj=document.getElementById('ih-adjust');if(adj)adj.onclick=()=>openAdjust(id);
+  renderItemHistory(id);
+}
+function openAdjust(itemId){
+  if(!canAdjust())return toast('Admins only',true);
+  const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
+  modal('Record damage / adjustment',it.name,`<div class="grid2"><div class="field"><label>Centre</label><select id="aj-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="field"><label>Type</label><select id="aj-kind"><option value="damage">Damage</option><option value="write_off">Write-off</option><option value="found">Found (add to stock)</option><option value="correction">Correction</option></select></div></div>
+    <div class="field"><label>Quantity</label><input id="aj-qty" type="number" value="1"><div class="hint">Damage / Write-off remove stock. Found adds. Correction: type a negative number to remove, positive to add.</div></div>
+    <div class="field"><label>Reason / note (saved to the item’s history &amp; audit log)</label><textarea id="aj-note" rows="2" placeholder="e.g. water damage in storeroom; expired stock"></textarea></div>
+    <div class="banner warn">${svg(I.alert,17)}<div>This changes on-hand stock and pushes the correction to <b>live Square</b>.</div></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Record</button>`);
+  document.getElementById('go').onclick=async()=>{
+    const lc=document.getElementById('aj-loc').value,kind=document.getElementById('aj-kind').value;let qty=parseInt(document.getElementById('aj-qty').value,10);const note=document.getElementById('aj-note').value.trim();
+    if(!qty)return toast('Enter a quantity',true);
+    let delta=kind==='correction'?qty:(kind==='found'?Math.abs(qty):-Math.abs(qty));
+    if(!delta)return toast('Quantity cannot be zero',true);
+    const{error}=await sb.rpc('record_adjustment',{p_loc:lc,p_item:itemId,p_delta:delta,p_kind:kind,p_note:note||null});
+    if(error)return toast(error.message||'Failed',true);
+    closeOverlay();toast('Adjustment recorded');
+    sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:[itemId]}}).catch(e=>console.error('square-push',e));
+    await refreshOps([lc]);
+  };
 }
 /* Suppliers */
 function vSuppliers(v){
@@ -1238,8 +1287,8 @@ function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
     <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks). Transfers, receipts and stock takes are pushed <b>back</b> to Square as they happen, so both stay in step.</div></div>
-    ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
-    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
+    ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update sales history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
+    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” refreshes the 90-day sales used for transfer recommendations. “Update sales history” pulls Square POS sales/waste/returns into each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}`;
 }
 function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
 async function runSync(){
@@ -1270,7 +1319,10 @@ function doApprove(id){callRpc('approve_transfer',{p_id:id},'Approved');}
 function doCancel(id){callRpc('cancel_transfer',{p_id:id},'Cancelled');}
 function doDispatch(id){const t=S.transfers.find(x=>x.id===id);callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);}
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
-function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);callRpc('receive_order',{p_id:id},'Order received',o?{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)}:null);}
+function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost.</div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  document.getElementById('go').onclick=()=>{const note=(document.getElementById('po-rnote')||{}).value||'';callRpc('receive_order',{p_id:id,p_note:note.trim()||null},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});};
+}
 /* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
 async function doReverse(fn,id,label,affectedLocs,itemIds){
   const reason=window.prompt('Reason for reversing '+label+'? (required — this will be recorded in the audit log)');
@@ -1282,6 +1334,7 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   (affectedLocs||[]).filter(Boolean).forEach(lc=>sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:itemIds}}).catch(e=>console.error('square-push',e)));
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
+async function runLedger(){toast('Pulling sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:60}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function runVelocity(){toast('Reading sales history from Square…');try{const{data,error}=await sb.functions.invoke('square-velocity');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}sb.rpc('log_system_event',{p_action:'Updated sales data ('+((data&&data.itemsWithSales)||0)+' items)'}).catch(()=>{});toast('Sales data updated ('+((data&&data.itemsWithSales)||0)+' items)');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}sb.rpc('log_system_event',{p_action:'Pushed all stock to Square ('+n+' locations)'}).catch(()=>{});toast('Pushed '+n+' location(s) to Square');}
 
@@ -1305,8 +1358,9 @@ document.addEventListener('click',e=>{
   const scc=e.target.closest('[data-scan-close]');if(scc){stopScannerAndReturn();return;}
   const rp=e.target.closest('[data-rcpt]');if(rp){openReceipt(rp.dataset.rcpt);return;}
   const it=e.target.closest('[data-itm]');if(it){openItem(it.dataset.itm);return;}
+  const oi=e.target.closest('[data-openitem]');if(oi){openItem(oi.dataset.openitem);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
-  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'push-all':pushAll}[k]||(()=>{}))();return;}
+  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'ledger':runLedger,'push-all':pushAll}[k]||(()=>{}))();return;}
   const ap=e.target.closest('[data-approve]');if(ap){doApprove(ap.dataset.approve);return;}
   const cx=e.target.closest('[data-cancel]');if(cx){doCancel(cx.dataset.cancel);return;}
   const dp=e.target.closest('[data-dispatch]');if(dp){doDispatch(dp.dataset.dispatch);return;}
