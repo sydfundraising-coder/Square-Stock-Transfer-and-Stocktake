@@ -296,11 +296,14 @@ const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
 /* ---------- data loading ---------- */
 async function loadAll(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
+  // Supabase caps a query at 1000 rows — page through to get EVERYTHING (items, stock, velocity can be huge).
+  const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
+    const stockFilter = (scoped()&&MYLOCS.length) ? (qy)=>qy.in('location_id',MYLOCS) : null;
     const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,velocity,plocs]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
-      q(sb.from('items').select('*').order('name')),
-      q(sb.from('stock').select('*')),
+      pageAll('items','*','name'),
+      pageAll('stock','*',null,stockFilter),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
       q(sb.from('suppliers').select('*').order('name')),
@@ -308,7 +311,7 @@ async function loadAll(){
       q(sb.from('stocktakes').select('*, lines:stocktake_lines(*)').order('started_at',{ascending:false})),
       q(sb.from('profiles').select('*')),
       q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
-      q(sb.from('velocity').select('*')).catch(()=>[]),
+      pageAll('velocity','*',null,stockFilter).catch(()=>[]),
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
