@@ -294,13 +294,13 @@ const canReceiveT=t=>can('transfer.receive')&&(!scoped()||mine(t.to_location));
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[]};
 const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
 const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
 const onHand=(l,i)=>S.stock[l+'__'+i]||0;
 const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.email):'—';};
-function reservedAt(l,it){return S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);}
+function reservedAt(l,it){const tr=S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);const adj=(S.adjReq||[]).filter(r=>r.location_id===l&&r.item_id===it&&r.status==='pending').reduce((s,r)=>s+(r.qty||0),0);return tr+adj;}
 const availAt=(l,it)=>onHand(l,it)-reservedAt(l,it);
 /* demand-based recommendation: hold 2 months + cover the gap until next receipt (~20th next month) */
 const monthlyAvg=(l,it)=>(S.vel&&S.vel[l+'__'+it])||0;
@@ -332,7 +332,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     const stockFilter = (scoped()&&MYLOCS.length) ? (qy)=>qy.in('location_id',MYLOCS) : null;
-    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,velocity,plocs]=await Promise.all([
+    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,velocity,plocs,adjreq]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       pageAll('stock','*',null,stockFilter),
@@ -345,9 +345,11 @@ async function loadAll(){
       q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
       pageAll('velocity','*',null,stockFilter).catch(()=>[]),
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
+      q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
+    S.adjReq=adjreq||[];
     S.stock={}; stockRows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
     S.vel={}; (velocity||[]).forEach(r=>{S.vel[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});
     S.plocs=plocs||[];
@@ -361,7 +363,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -370,9 +372,10 @@ async function loadOps(){
       q(sb.from('profiles').select('*')),
       q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
+      q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -431,6 +434,7 @@ const NAV=[
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
   {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length},
+  {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
   {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
   {id:'catalog',label:'Catalog',icon:I.catalog,group:'Operations'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
@@ -444,23 +448,26 @@ let route='dashboard';
 function navVisible(n){ if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'; return can(n.need); }
 function myActionCount(){return S.transfers.filter(t=>{if(!canSee(t))return false;if(t.status==='requested'&&canApproveT(t))return true;if(t.status==='approved'&&canDispatchT(t))return true;if((t.status==='in_transit'||t.status==='partially_received')&&canReceiveT(t))return true;return false;}).length;}
 function incomingCount(){return S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).length;}
+function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&&(!scoped()||mine(r.location_id))).length;}
+const ADJST={pending:{l:'Pending',c:'p-req'},approved:{l:'Approved',c:'p-done'},rejected:{l:'Rejected',c:'p-cancel'},cancelled:{l:'Cancelled',c:'p-cancel'}};
+const adjPill=s=>`<span class="pill ${(ADJST[s]||{c:'p-draft'}).c}">${(ADJST[s]||{l:s}).l}</span>`;
 function renderNav(){
   let html='',g='';
   NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['receipts','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','receipts','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
 }
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],receipts:['Goods Receipts','Record supplier deliveries'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,transfers:vTransfers,orders:vOrders,stocktake:vStock,receipts:vReceipts,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,receipts:vReceipts,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -544,8 +551,19 @@ function reportData(){
   trDisc.forEach(t=>(t.lines||[]).forEach(l=>{if(!matchCat(l.item_id))return;const sh=Math.max(0,l.qty_dispatched-l.qty_received);if(sh>0)discLog.push({date:t.received_at||t.dispatched_at,type:'Transfer short',ref:t.code,centre:loc(t.to_location).name,itemId:l.item_id,item:item(l.item_id).name,sku:item(l.item_id).sku,expected:l.qty_dispatched,actual:l.qty_received,diff:-sh,value:sh*item(l.item_id).unit_cost});}));
   stDone.forEach(s=>(s.lines||[]).forEach(l=>{if(l.counted_qty==null||!matchCat(l.item_id))return;const d=l.counted_qty-(l.system_qty||0);if(d!==0)discLog.push({date:s.finalized_at||s.started_at,type:d<0?'Count short':'Count over',ref:s.code||'ST',centre:loc(s.location_id).name,itemId:l.item_id,item:item(l.item_id).name,sku:item(l.item_id).sku,expected:l.system_qty||0,actual:l.counted_qty,diff:d,value:d*item(l.item_id).unit_cost});}));
   discLog.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  // damage / expire (from approved requests, in period + scope/centre/category filters)
+  const visAdj=(S.adjReq||[]).filter(r=>(!scoped()||mine(r.location_id))&&(!repCentre||r.location_id===repCentre)&&matchCat(r.item_id));
+  const adjApproved=visAdj.filter(r=>r.status==='approved'&&inRange(r.decided_at||r.requested_at));
+  const adjPending=visAdj.filter(r=>r.status==='pending');
+  let dmgUnits=0,dmgVal=0,expUnits=0,expVal=0; const dmgByLoc={},dmgByItem={},dmgByMonth={};
+  adjApproved.forEach(r=>{const val=r.qty*(item(r.item_id).unit_cost||0);if(r.kind==='damage'){dmgUnits+=r.qty;dmgVal+=val;}else{expUnits+=r.qty;expVal+=val;}
+    (dmgByLoc[r.location_id]=dmgByLoc[r.location_id]||{u:0,v:0}).u+=r.qty;dmgByLoc[r.location_id].v+=val;
+    dmgByItem[r.item_id]=(dmgByItem[r.item_id]||0)+val;
+    const mk2=mKey(r.decided_at||r.requested_at);(dmgByMonth[mk2]=dmgByMonth[mk2]||{damage:0,expire:0});dmgByMonth[mk2][r.kind]+=val;});
+  const pendingVal=adjPending.reduce((s,r)=>s+r.qty*(item(r.item_id).unit_cost||0),0);
   return {visT,done,inTr,trDisc,avgTr,visO,ordRecv,avgOrd,visST,stDone,itemU,catU,routeU,moveByMonth,valByMonth,moveByMonthCat,
-    counted,stVarLines,stVarUnits,stVarValAbs,stShortUnits,stShortVal,stOverUnits,stByLoc,stByMonth,discLog};
+    counted,stVarLines,stVarUnits,stVarValAbs,stShortUnits,stShortVal,stOverUnits,stByLoc,stByMonth,discLog,
+    adjApproved,adjPending,dmgUnits,dmgVal,expUnits,expVal,dmgByLoc,dmgByItem,dmgByMonth,pendingVal};
 }
 
 function vReports(v){
@@ -618,6 +636,20 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Count accuracy by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-acc"></canvas></div></div>
       <div class="card pad chart-card"><h3>Variance value by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-stvar"></canvas></div></div>
     </div>
+
+    <!-- ===== DAMAGE & EXPIRY ===== -->
+    <div class="section-head" style="margin-top:26px"><h2>${svg(I.alert,17)} Damage &amp; expiry</h2></div>
+    <div class="tiles">
+      <div class="tile ${R.dmgVal>0?'crit':''}"><div class="lbl">${svg(I.box,14)} Damaged</div><div class="val tnum">${R.dmgUnits}</div><div class="meta">${money0(R.dmgVal)} written off</div></div>
+      <div class="tile ${R.expVal>0?'crit':''}"><div class="lbl">${svg(I.calendar,14)} Expired</div><div class="val tnum">${R.expUnits}</div><div class="meta">${money0(R.expVal)} written off</div></div>
+      <div class="tile ${(R.dmgVal+R.expVal)>0?'crit':''}"><div class="lbl">${svg(I.cost,14)} Total loss</div><div class="val tnum">${money0(R.dmgVal+R.expVal)}</div><div class="meta">damage + expiry</div></div>
+      <div class="tile ${R.adjPending.length?'warn':''}"><div class="lbl">${svg(I.alert,14)} Pending approval</div><div class="val tnum">${R.adjPending.length}</div><div class="meta">${money0(R.pendingVal)} reserved</div></div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad chart-card"><h3>Damage vs expiry over time (value)</h3><div class="chart-box"><canvas id="ch-dmgtime"></canvas></div></div>
+      <div class="card pad chart-card"><h3>Loss by centre (value)</h3><div class="chart-box"><canvas id="ch-dmgloc"></canvas></div></div>
+    </div>
+    <div class="card pad chart-card"><h3>Top items lost to damage/expiry (value) <span class="chint no-print">· click to drill in</span></h3><div class="chart-box"><canvas id="ch-dmgitem"></canvas></div></div>
   `;
   document.getElementById('rep-range').value=repRange;
   document.getElementById('rep-range').onchange=e=>{repRange=e.target.value;renderView();};
@@ -680,6 +712,21 @@ function renderReportCharts(R){
   const vv=Object.entries(R.stByLoc).map(([k,x])=>[loc(k).code,Math.round(x.v)]).sort((a,b)=>b[1]-a[1]).slice(0,10);
   mkChart('ch-stvar',{type:'bar',data:{labels:vv.map(r=>r[0]),datasets:[{label:'Variance $',data:vv.map(r=>r[1]),backgroundColor:t.warn,borderRadius:4}]},
     options:{onClick:onClickIndex(i=>{const id=codeToId[vv[i]&&vv[i][0]];if(id){repCentre=(repCentre===id)?null:id;renderView();}}),plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+
+  // ----- DAMAGE vs EXPIRY over time (stacked value) -----
+  const dm=mk;
+  mkChart('ch-dmgtime',{type:'bar',data:{labels:dm.map(mLabel),datasets:[
+    {label:'Damage',data:dm.map(k=>Math.round((R.dmgByMonth[k]&&R.dmgByMonth[k].damage)||0)),backgroundColor:t.crit,stack:'d',borderRadius:2},
+    {label:'Expiry',data:dm.map(k=>Math.round((R.dmgByMonth[k]&&R.dmgByMonth[k].expire)||0)),backgroundColor:t.warn,stack:'d',borderRadius:2}
+  ]},options:{plugins:{legend:{labels:{color:t.muted,boxWidth:11,font:{size:10}}}},scales:{x:{stacked:true,ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{stacked:true,beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+  // ----- Loss by centre -----
+  const dl=Object.entries(R.dmgByLoc).map(([k,x])=>[loc(k).code,Math.round(x.v)]).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('ch-dmgloc',{type:'bar',data:{labels:dl.map(r=>r[0]),datasets:[{label:'Loss $',data:dl.map(r=>r[1]),backgroundColor:t.crit,borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}}}}});
+  // ----- Top items lost (value) — click to drill -----
+  const di=Object.entries(R.dmgByItem).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  mkChart('ch-dmgitem',{type:'bar',data:{labels:di.map(([id])=>item(id).name),datasets:[{label:'Loss $',data:di.map(([,vv2])=>Math.round(vv2)),backgroundColor:t.crit,borderRadius:4}]},
+    options:{indexAxis:'y',onClick:onClickIndex(i=>di[i]&&openItemDrill(di[i][0])),plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
 }
 
 /* ---- per-item drill-down: stock by centre + movement history + discrepancies ---- */
@@ -714,7 +761,11 @@ function exportReportCSV(R){
   // 3) Stock-take variance by centre
   const st=Object.entries(R.stByLoc).map(([k,x])=>[loc(k).name,x.counted,x.lines,x.u,x.v.toFixed(2),x.counted?Math.round((1-x.lines/x.counted)*100)+'%':'—']);
   setTimeout(()=>downloadCSV(`stocktake-variance_${scopeLabel}_${stamp}.csv`,['Centre','Items counted','Variance lines','Variance units','Variance value (AUD)','Accuracy'],st),800);
-  toast('Downloaded 3 CSV files: discrepancy log, movement, stock-take variance');
+  // 4) Damage & expiry log (approved + pending)
+  const dm=[...R.adjApproved,...R.adjPending].sort((a,b)=>new Date(b.requested_at)-new Date(a.requested_at))
+    .map(r=>[fmtDate(r.decided_at||r.requested_at),r.code||'',r.status,r.kind,loc(r.location_id).name,item(r.item_id).name,item(r.item_id).sku||'',r.qty,(r.qty*(item(r.item_id).unit_cost||0)).toFixed(2),pname(r.requested_by),r.reason||'']);
+  setTimeout(()=>downloadCSV(`damage-expiry_${scopeLabel}_${stamp}.csv`,['Date','Ref','Status','Type','Centre','Item','Product code','Qty','Value (AUD)','Requested by','Reason'],dm),1200);
+  toast('Downloaded 4 CSV files: discrepancy log, movement, stock-take variance, damage/expiry');
 }
 /* Charts draw to canvas with the colours present at creation time — so before printing we force the
    light palette and redraw, then restore afterwards, so the PDF is always crisp on white paper. */
@@ -826,8 +877,8 @@ async function openPkScanner(t){
 }
 /* New transfer */
 let dLines=[],tfExceed=false;
-function newTransfer(){
-  dLines=[{item:'',qty:1}];
+function newTransfer(presetItem){
+  dLines=[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location</label><select id="tf-to">${opts}</select></div></div>
     <div class="field"><label>Items</label>
@@ -1120,7 +1171,7 @@ function catList(){
   document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${oh}</th></tr></thead><tbody>${list.map(i=>{let t=0;if(scoped())t=MYLOCS.reduce((a,l)=>a+onHand(l,i.id),0);else for(const k in S.stock)if(k.endsWith('__'+i.id))t+=S.stock[k];return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 /* ---- per-item stock ledger (history) ---- */
-const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
+const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null;
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -1135,43 +1186,81 @@ async function renderItemHistory(itemId){
 }
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
-  const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>`<tr><td>${esc(l.name)} <span class="tag">${l.code}</span></td><td class="num tnum">${onHand(l.id,id)}</td><td class="num tnum">${money(onHand(l.id,id)*it.unit_cost)}</td></tr>`).join('');
-  const kinds=['all','sale','transfer_in','transfer_out','purchase','stocktake','damage','write_off','found','correction','return','reversal'];
+  const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);return `<tr><td>${esc(l.name)} <span class="tag">${l.code}</span></td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
+  const kinds=['all','sale','transfer_in','transfer_out','purchase','stocktake','damage','expire','write_off','found','correction','return','reversal'];
+  const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
+  const isApprover=['national_admin','super_admin'].includes(ROLE);
+  const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Ref</th><th>Centre</th><th>Type</th><th class="num">Qty</th><th>By</th><th></th></tr></thead><tbody>${preq.map(r=>`<tr><td class="mono">${esc(r.code||'')}</td><td>${loc(r.location_id).code}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'')}</td></tr>`).join('')}</tbody></table></div>`:'';
   const body=`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Category</dt><dd>${esc(it.category||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div>
     <h3 style="font-size:13px;margin:0 0 8px">Stock by location</h3>
-    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th class="num">On hand</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${preqHtml}
     <div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px"><h3 style="font-size:13px;margin:0">History</h3><div class="spacer"></div>
       <select class="filter" id="ih-kind" style="height:32px;padding:4px 8px">${kinds.map(k=>`<option value="${k}">${k==='all'?'All movements':esc(lkind(k).l)}</option>`).join('')}</select>
       <button class="btn sm" id="ih-csv">${svg(I.receipt,14)} CSV</button></div>
     <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>`;
-  const foot=`<button class="btn" data-close>Close</button>${canAdjust()?`<button class="btn" id="ih-adjust" style="color:var(--warn);border-color:var(--warn)">${svg(I.alert,15)} Record damage / adjustment</button>`:''}`;
+  const foot=`<button class="btn" data-close>Close</button>`
+    +(ROLE==='super_admin'?`<button class="btn" id="it-transfer">${svg(I.transfer,15)} Transfer</button><button class="btn" id="it-recount">${svg(I.stocktake,15)} Recount</button>`:'')
+    +`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
   slideover(it.name,it.sku||'',body,foot);
   document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
   document.getElementById('ih-csv').onclick=()=>{const rows=(window._ihRows||[]);downloadCSV('item-history_'+(it.sku||it.name).replace(/[^A-Za-z0-9_-]/g,'')+'_'+today()+'.csv',['When','Type','Centre','Qty','Reference','Note'],rows.map(r=>[fmtDT(r.ts),lkind(r.kind).l,r.location_id?loc(r.location_id).name:'',r.qty_delta,r.reference||'',r.note||'']));toast('Item history exported ('+rows.length+' rows)');};
-  const adj=document.getElementById('ih-adjust');if(adj)adj.onclick=()=>openAdjust(id);
+  const bt=document.getElementById('it-transfer');if(bt)bt.onclick=()=>newTransfer(id);
+  const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
+  const bd=document.getElementById('it-dmg');if(bd)bd.onclick=()=>openDamageRequest(id);
+  overlayEl().querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
+  overlayEl().querySelectorAll('[data-areq-rj]').forEach(b=>b.onclick=()=>decideAdjust('reject_adjustment',b.dataset.areqRj,false));
+  overlayEl().querySelectorAll('[data-areq-cx]').forEach(b=>b.onclick=()=>{if(confirm('Cancel this request?'))cancelAdjust(b.dataset.areqCx);});
   renderItemHistory(id);
 }
-function openAdjust(itemId){
-  if(!canAdjust())return toast('Admins only',true);
+/* All users: raise a damage/expire request (reserves qty, needs approval) */
+function openDamageRequest(itemId){
   const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
-  modal('Record damage / adjustment',it.name,`<div class="grid2"><div class="field"><label>Centre</label><select id="aj-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
-    <div class="field"><label>Type</label><select id="aj-kind"><option value="damage">Damage</option><option value="write_off">Write-off</option><option value="found">Found (add to stock)</option><option value="correction">Correction</option></select></div></div>
-    <div class="field"><label>Quantity</label><input id="aj-qty" type="number" value="1"><div class="hint">Damage / Write-off remove stock. Found adds. Correction: type a negative number to remove, positive to add.</div></div>
-    <div class="field"><label>Reason / note (saved to the item’s history &amp; audit log)</label><textarea id="aj-note" rows="2" placeholder="e.g. water damage in storeroom; expired stock"></textarea></div>
-    <div class="banner warn">${svg(I.alert,17)}<div>This changes on-hand stock and pushes the correction to <b>live Square</b>.</div></div>`,
-    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Record</button>`);
+  if(!locs.length)return toast('No centre available',true);
+  modal('Report damage / expired',it.name,`<div class="banner info">${svg(I.info,17)}<div>This raises a request to <b>National / Super Admin</b>. The quantity is <b>reserved</b> (can’t be transferred) until they approve or reject it.</div></div>
+    <div class="grid2"><div class="field"><label>Centre</label><select id="dr-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="field"><label>Type</label><select id="dr-kind"><option value="damage">Damaged</option><option value="expire">Expired</option></select></div></div>
+    <div class="field"><label>Quantity</label><input id="dr-qty" type="number" min="1" value="1"></div>
+    <div class="field"><label>Reason / details</label><textarea id="dr-note" rows="2" placeholder="e.g. packet torn, best-before passed on 12 Aug"></textarea></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Submit request</button>`);
   document.getElementById('go').onclick=async()=>{
-    const lc=document.getElementById('aj-loc').value,kind=document.getElementById('aj-kind').value;let qty=parseInt(document.getElementById('aj-qty').value,10);const note=document.getElementById('aj-note').value.trim();
-    if(!qty)return toast('Enter a quantity',true);
-    let delta=kind==='correction'?qty:(kind==='found'?Math.abs(qty):-Math.abs(qty));
-    if(!delta)return toast('Quantity cannot be zero',true);
-    const{error}=await sb.rpc('record_adjustment',{p_loc:lc,p_item:itemId,p_delta:delta,p_kind:kind,p_note:note||null});
+    const lc=document.getElementById('dr-loc').value,kind=document.getElementById('dr-kind').value,qty=parseInt(document.getElementById('dr-qty').value,10)||0,note=document.getElementById('dr-note').value.trim();
+    if(qty<=0)return toast('Enter a quantity',true);
+    const{error}=await sb.rpc('request_adjustment',{p_loc:lc,p_item:itemId,p_qty:qty,p_kind:kind,p_reason:note||null});
     if(error)return toast(error.message||'Failed',true);
-    closeOverlay();toast('Adjustment recorded');
+    closeOverlay();toast('Request submitted for approval');await refreshOps([lc]);
+  };
+}
+/* Super Admin: quick single-item recount */
+function openRecount(itemId){
+  const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
+  modal('Recount '+it.name,'Set the true on-hand at a centre',`<div class="field"><label>Centre</label><select id="rc-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="field"><label>Counted on hand</label><input id="rc-cnt" type="number" min="0" value="0"><div class="hint" id="rc-cur"></div></div>
+    <div class="banner warn">${svg(I.alert,17)}<div>Sets stock to this number and pushes it to <b>live Square</b>.</div></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save count</button>`);
+  const showCur=()=>{const lc=document.getElementById('rc-loc').value;document.getElementById('rc-cur').textContent='System now shows '+onHand(lc,itemId)+' at '+loc(lc).code;};
+  document.getElementById('rc-loc').onchange=showCur;showCur();
+  document.getElementById('go').onclick=async()=>{
+    const lc=document.getElementById('rc-loc').value,cnt=parseInt(document.getElementById('rc-cnt').value,10);
+    if(isNaN(cnt)||cnt<0)return toast('Enter a valid count',true);
+    const{error}=await sb.rpc('recount_item',{p_loc:lc,p_item:itemId,p_counted:cnt});
+    if(error)return toast(error.message||'Failed',true);
+    closeOverlay();toast('Recount saved');
     sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:[itemId]}}).catch(e=>console.error('square-push',e));
     await refreshOps([lc]);
   };
 }
+async function decideAdjust(fn,id,ask){
+  const note=ask?(window.prompt('Optional note for this decision:')||''):(window.prompt('Reason for rejecting (optional):')||'');
+  const req=(S.adjReq||[]).find(r=>r.id===id);
+  const{error}=await sb.rpc(fn,{p_id:id,p_note:note.trim()||null});
+  if(error)return toast(error.message||'Failed',true);
+  closeOverlay();toast(fn==='approve_adjustment'?'Approved — stock removed':'Rejected');
+  if(fn==='approve_adjustment'&&req){sb.functions.invoke('square-push',{body:{location_id:req.location_id,item_ids:[req.item_id]}}).catch(e=>console.error('square-push',e));}
+  await refreshOps(req?[req.location_id]:[]);
+}
+async function cancelAdjust(id){const req=(S.adjReq||[]).find(r=>r.id===id);const{error}=await sb.rpc('cancel_adjustment',{p_id:id});if(error)return toast(error.message||'Failed',true);closeOverlay();toast('Request cancelled');await refreshOps(req?[req.location_id]:[]);}
 /* Suppliers */
 function vSuppliers(v){
   v.innerHTML=`<div class="toolbar"><div class="spacer"></div>${can('supplier.manage')?`<button class="btn primary" data-act="new-supplier">${svg(I.plus,16)} Add supplier</button>`:''}</div><div class="tablewrap"><table><thead><tr><th>Supplier</th><th>Country</th><th>Contact</th><th class="num">Lead time</th><th class="num">Open orders</th></tr></thead><tbody>${S.suppliers.map(s=>{const open=S.orders.filter(o=>o.supplier_id===s.id&&(o.status==='placed'||o.status==='shipped')).length;return `<tr><td style="font-weight:600">${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.country||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(s.contact||'—')}</td><td class="num tnum">${s.lead_days||'—'} days</td><td class="num tnum">${open}</td></tr>`;}).join('')}</tbody></table></div>`;
@@ -1248,6 +1337,53 @@ function editUserCentres(id){
     if(checked.length){const{error:e2}=await sb.from('profile_locations').insert(checked.map(l=>({profile_id:id,location_id:l})));if(e2){toast(e2.message,true);return;}}
     await sb.from('profiles').update({home_centre:checked[0]||null}).eq('id',id);
     closeOverlay();toast('Centres updated');refresh();
+  };
+}
+/* ---------- Damage / Expiry requests ---------- */
+let ajFilter='pending';
+function vAdjustments(v){
+  const isApprover=['national_admin','super_admin'].includes(ROLE);
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Report <b>damaged</b> or <b>expired</b> stock. A request reserves the quantity (it can’t be transferred) and needs ${isApprover?'approval by a National/Super Admin (you can approve here)':'National / Super Admin approval'} before stock is removed and pushed to Square.</div></div>
+      <div class="rep-actions no-print"><select class="filter" id="aj-f"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected/Cancelled</option><option value="all">All</option></select><button class="btn primary" id="aj-new">${svg(I.plus,15)} Report damage/expired</button></div>
+    </div><div id="aj-list"></div>`;
+  document.getElementById('aj-f').value=ajFilter;document.getElementById('aj-f').onchange=e=>{ajFilter=e.target.value;renderAdjList();};
+  document.getElementById('aj-new').onclick=()=>newAdjustRequest();
+  renderAdjList();
+}
+function renderAdjList(){
+  const el=document.getElementById('aj-list');if(!el)return;
+  const isApprover=['national_admin','super_admin'].includes(ROLE);
+  let list=(S.adjReq||[]).filter(r=>!scoped()||mine(r.location_id));
+  if(ajFilter==='pending')list=list.filter(r=>r.status==='pending');
+  else if(ajFilter==='approved')list=list.filter(r=>r.status==='approved');
+  else if(ajFilter==='rejected')list=list.filter(r=>r.status==='rejected'||r.status==='cancelled');
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Ref</th><th>Date</th><th>Centre</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Value</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>${list.map(r=>{const it=item(r.item_id);const val=r.qty*(it.unit_cost||0);return `<tr><td class="mono">${esc(r.code||'')}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(r.requested_at)}</td><td>${loc(r.location_id).code}</td><td>${esc(it.name)}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td class="num tnum">${money(val)}</td><td>${adjPill(r.status)}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'—')):(r.decision_note?`<span style="font-size:12px;color:var(--muted)">${esc(r.decision_note)}</span>`:'')}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.alert,34)}<div>No ${ajFilter==='all'?'':esc(ajFilter)+' '}requests.</div></div>`;
+  el.querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
+  el.querySelectorAll('[data-areq-rj]').forEach(b=>b.onclick=()=>decideAdjust('reject_adjustment',b.dataset.areqRj,false));
+  el.querySelectorAll('[data-areq-cx]').forEach(b=>b.onclick=()=>{if(confirm('Cancel this request?'))cancelAdjust(b.dataset.areqCx);});
+}
+function newAdjustRequest(){
+  const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
+  if(!locs.length)return toast('No centre available',true);
+  modal('Report damage / expired','Reserve stock for approval',`
+    <div class="field"><label>Item</label><input id="ar-item" list="ar-items" placeholder="Search name or code…" autocomplete="off"><datalist id="ar-items">${S.items.filter(i=>i.active!==false).slice(0,4000).map(i=>`<option value="${esc(i.name)} — ${esc(i.sku||'')}" data-id="${i.id}"></option>`).join('')}</datalist></div>
+    <div class="grid2"><div class="field"><label>Centre</label><select id="ar-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="field"><label>Type</label><select id="ar-kind"><option value="damage">Damaged</option><option value="expire">Expired</option></select></div></div>
+    <div class="field"><label>Quantity</label><input id="ar-qty" type="number" min="1" value="1"></div>
+    <div class="field"><label>Reason / details</label><textarea id="ar-note" rows="2" placeholder="e.g. packet torn; best-before passed"></textarea></div>
+    <div class="banner info">${svg(I.info,17)}<div>The quantity is reserved and sent to National/Super Admin for approval.</div></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Submit request</button>`);
+  document.getElementById('go').onclick=async()=>{
+    const raw=document.getElementById('ar-item').value.trim();let itemId=null;
+    const opt=[...document.querySelectorAll('#ar-items option')].find(o=>o.value===raw);if(opt)itemId=opt.dataset.id;
+    if(!itemId){const low=raw.toLowerCase();const f=S.items.find(i=>((i.name+' — '+(i.sku||'')).toLowerCase()===low)||(i.sku||'').toLowerCase()===low||i.name.toLowerCase()===low);if(f)itemId=f.id;}
+    if(!itemId)return toast('Pick an item from the list',true);
+    const lc=document.getElementById('ar-loc').value,kind=document.getElementById('ar-kind').value,qty=parseInt(document.getElementById('ar-qty').value,10)||0,note=document.getElementById('ar-note').value.trim();
+    if(qty<=0)return toast('Enter a quantity',true);
+    const{error}=await sb.rpc('request_adjustment',{p_loc:lc,p_item:itemId,p_qty:qty,p_kind:kind,p_reason:note||null});
+    if(error)return toast(error.message||'Failed',true);
+    closeOverlay();toast('Request submitted for approval');await refreshOps([lc]);
   };
 }
 let auRange='90d',auSearch='';
