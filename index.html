@@ -361,6 +361,8 @@ function recQty(l,it){return Math.max(0,recTarget(l,it)-onHand(l,it));}
 function monthsCover(l,it){const mv=monthlyAvg(l,it);return mv>0?onHand(l,it)/mv:null;}
 function isLow(l,it){const mv=monthlyAvg(l,it);return mv>0&&onHand(l,it)<mv*2;}
 function invValueFor(locs){let v=0;for(const k in S.stock){const[l,i]=k.split('__');if(locs.includes(l))v+=S.stock[k]*item(i).unit_cost;}return v;}
+/* per-item total on hand across all centres — precomputed so the Catalog doesn't scan all stock per item */
+function recomputeItemTotals(){const m={};for(const k in S.stock){const i=k.split('__')[1];m[i]=(m[i]||0)+S.stock[k];}S.itemTotal=m;}
 const trValue=t=>(t.lines||[]).reduce((s,l)=>s+l.qty_requested*item(l.item_id).unit_cost,0);
 const trTransit=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received)*item(l.item_id).unit_cost,0);
 const trShortU=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received),0);
@@ -377,16 +379,44 @@ function etaText(d){const n=daysUntil(d);if(n===null)return'—';if(n<0)return'o
 const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
 
 /* ---------- data loading ---------- */
+// Page through a big table using PARALLEL range requests (much faster than one page at a time).
+async function loadTableParallel(table,sel,filter){
+  const size=1000;
+  try{
+    let head=sb.from(table).select(sel.split(',')[0],{count:'exact',head:true});if(filter)head=filter(head);
+    const{count,error}=await head;if(error)throw error;
+    const pages=Math.max(1,Math.ceil((count||0)/size));
+    const reqs=[];for(let p=0;p<pages;p++){let qy=sb.from(table).select(sel).range(p*size,p*size+size-1);if(filter)qy=filter(qy);reqs.push(qy);}
+    const res=await Promise.all(reqs);const rows=[];res.forEach(r=>{if(r&&!r.error&&r.data)rows.push(...r.data);});return rows;
+  }catch(e){ // fallback: sequential
+    let rows=[],from=0;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)break;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;
+  }
+}
+let _heavyLoading=false;
+// Load the heavy stock + velocity tables in the BACKGROUND, then re-render — so the app appears instantly.
+async function loadHeavyBg(){
+  if(_heavyLoading)return;_heavyLoading=true;
+  try{
+    const stockFilter=(scoped()&&MYLOCS.length)?(qy)=>qy.in('location_id',MYLOCS):null;
+    const[stockRows,velRows]=await Promise.all([
+      loadTableParallel('stock','location_id,item_id,on_hand',stockFilter),
+      loadTableParallel('velocity','location_id,item_id,monthly_avg',stockFilter)
+    ]);
+    const st={};stockRows.forEach(r=>{st[r.location_id+'__'+r.item_id]=r.on_hand;});S.stock=st;
+    const vl={};velRows.forEach(r=>{vl[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});S.vel=vl;
+    recomputeItemTotals();
+    _heavyLoading=false;
+    const app=document.getElementById('app');if(app&&!app.hidden){renderSq();renderView();}
+  }catch(e){console.error('heavy load',e);_heavyLoading=false;}
+}
 async function loadAll(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
-  // Supabase caps a query at 1000 rows — page through to get EVERYTHING (items, stock, velocity can be huge).
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
-    const stockFilter = (scoped()&&MYLOCS.length) ? (qy)=>qy.in('location_id',MYLOCS) : null;
-    const[locations,items,stockRows,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,velocity,plocs,adjreq,invoices2]=await Promise.all([
+    // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
-      pageAll('stock','*',null,stockFilter),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
       q(sb.from('suppliers').select('*').order('name')),
@@ -394,7 +424,6 @@ async function loadAll(){
       q(sb.from('stocktakes').select('*, lines:stocktake_lines(*)').order('started_at',{ascending:false})),
       q(sb.from('profiles').select('*')),
       q(sb.from('audit_log').select('*').order('ts',{ascending:false}).limit(80)),
-      pageAll('velocity','*',null,stockFilter).catch(()=>[]),
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
       q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
@@ -402,9 +431,9 @@ async function loadAll(){
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
     S.adjReq=adjreq||[]; S.invoices=invoices2||[];
-    S.stock={}; stockRows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
-    S.vel={}; (velocity||[]).forEach(r=>{S.vel[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});
+    if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
+    loadHeavyBg(); // background — don't block first paint on 34k stock rows
     return true;
   }catch(e){ toast('Could not load data: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -438,6 +467,7 @@ async function reloadStockFor(locs){
   for(;;){const{data,error}=await sb.from('stock').select('*').in('location_id',uniq).range(from,from+size-1);if(error){console.error(error);break;}rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}
   for(const k of Object.keys(S.stock)){ if(uniq.includes(k.split('__')[0])) delete S.stock[k]; }
   rows.forEach(r=>{S.stock[r.location_id+'__'+r.item_id]=r.on_hand;});
+  recomputeItemTotals();
 }
 async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); renderNav(); renderSq(); renderView(); }
 
@@ -1368,7 +1398,7 @@ function catList(){
   if(catCat!=='all')list=list.filter(i=>i.category===catCat);
   if(q)list=list.filter(i=>i.name.toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q));
   const oh=scoped()?('On hand ('+(MYLOCS.length>1?'your centres':loc(HOME).code)+')'):'Total on hand';
-  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${oh}</th></tr></thead><tbody>${list.map(i=>{let t=0;if(scoped())t=MYLOCS.reduce((a,l)=>a+onHand(l,i.id),0);else for(const k in S.stock)if(k.endsWith('__'+i.id))t+=S.stock[k];return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${oh}</th></tr></thead><tbody>${list.map(i=>{let t=0;if(scoped())t=MYLOCS.reduce((a,l)=>a+onHand(l,i.id),0);else t=(S.itemTotal&&S.itemTotal[i.id])||0;return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 /* ---- per-item stock ledger (history) ---- */
 const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
@@ -1717,14 +1747,14 @@ function newInvoice(inv){
     <div class="grid2"><div class="field"><label>Email</label><input id="in-bemail"></div><div class="field"><label>Phone</label><input id="in-bphone"></div></div>
     <div class="field"><label>Address</label><textarea id="in-baddr" rows="2"></textarea></div>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px" id="in-savewrap"><input type="checkbox" id="in-savecust"> Save as a customer for next time</label>
+    <div class="grid2"><div class="field"><label>Customer number</label><input id="in-cno" placeholder="e.g. C-1024"></div><div class="field"><label>Customer order number</label><input id="in-ref" placeholder="their PO number"></div></div>
     <div class="grid2"><div class="field"><label>Issue date</label><input type="date" id="in-date" value="${today()}"></div><div class="field"><label>Due date</label><input type="date" id="in-due" value="${new Date(Date.now()+dueDays*864e5).toISOString().slice(0,10)}"></div></div>
-    <div class="field"><label>Reference / PO (optional)</label><input id="in-ref"></div>
     <div class="field"><label>Line items <span style="color:var(--faint);font-weight:400">· prices exclude GST</span></label><div id="in-lines"></div><button class="btn sm" id="in-add" style="margin-top:4px">${svg(I.plus,14)} Add line</button></div>
     <div class="field"><label>Notes / terms</label><textarea id="in-notes" rows="2" placeholder="${esc((invSettings&&invSettings.default_terms)||'')}"></textarea></div>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="in-reduce"> Reduce stock at the issuing centre when issued (and push to Square)</label>
     <div class="banner info" id="in-tot" style="margin-top:12px"></div>`;
   modal(invEditId?'Edit invoice':'New sales invoice','GST tax invoice',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="in-draft">Save draft</button><button class="btn primary" id="in-issue">Save &amp; issue</button>`);
-  if(inv){document.getElementById('in-loc').value=inv.location_id;document.getElementById('in-cust').value=inv.customer_id||'';setBill(inv);document.getElementById('in-date').value=inv.issue_date||today();if(inv.due_date)document.getElementById('in-due').value=inv.due_date;document.getElementById('in-ref').value=inv.reference||'';document.getElementById('in-notes').value=inv.notes||'';document.getElementById('in-reduce').checked=!!inv.reduce_stock;}
+  if(inv){document.getElementById('in-loc').value=inv.location_id;document.getElementById('in-cust').value=inv.customer_id||'';setBill(inv);document.getElementById('in-date').value=inv.issue_date||today();if(inv.due_date)document.getElementById('in-due').value=inv.due_date;document.getElementById('in-ref').value=inv.reference||'';document.getElementById('in-cno').value=inv.customer_no||'';document.getElementById('in-notes').value=inv.notes||'';document.getElementById('in-reduce').checked=!!inv.reduce_stock;}
   const cw=document.getElementById('in-savewrap');
   document.getElementById('in-cust').onchange=e=>{const c=invCustomers.find(x=>x.id===e.target.value);if(c){setBill(c);cw.style.display='none';}else{setBill({});cw.style.display='flex';}};
   if(inv&&inv.customer_id)cw.style.display='none';
@@ -1756,7 +1786,7 @@ async function saveInvoice(issue){
     const{data,error}=await sb.from('customers').insert({name:bname,abn:document.getElementById('in-babn').value.trim(),email:document.getElementById('in-bemail').value.trim(),phone:document.getElementById('in-bphone').value.trim(),address:document.getElementById('in-baddr').value.trim()}).select('id').single();
     if(!error&&data)customer_id=data.id;
   }
-  const header={location_id:document.getElementById('in-loc').value,customer_id,bill_name:bname,bill_abn:document.getElementById('in-babn').value.trim(),bill_email:document.getElementById('in-bemail').value.trim(),bill_phone:document.getElementById('in-bphone').value.trim(),bill_address:document.getElementById('in-baddr').value.trim(),issue_date:document.getElementById('in-date').value,due_date:document.getElementById('in-due').value||null,reference:document.getElementById('in-ref').value.trim(),notes:document.getElementById('in-notes').value.trim(),reduce_stock:document.getElementById('in-reduce').checked};
+  const header={location_id:document.getElementById('in-loc').value,customer_id,bill_name:bname,bill_abn:document.getElementById('in-babn').value.trim(),bill_email:document.getElementById('in-bemail').value.trim(),bill_phone:document.getElementById('in-bphone').value.trim(),bill_address:document.getElementById('in-baddr').value.trim(),issue_date:document.getElementById('in-date').value,due_date:document.getElementById('in-due').value||null,reference:document.getElementById('in-ref').value.trim(),customer_no:document.getElementById('in-cno').value.trim(),notes:document.getElementById('in-notes').value.trim(),reduce_stock:document.getElementById('in-reduce').checked};
   const{data:id,error}=await sb.rpc('save_invoice',{p_id:invEditId,p_header:header,p_lines:lines.map(l=>({item:l.item||null,description:l.desc||'',qty:l.qty,price:l.price}))});
   if(error)return toast(error.message||'Save failed',true);
   if(issue){const{error:e2}=await sb.rpc('issue_invoice',{p_id:id});if(e2)return toast('Saved as draft, but issue failed: '+e2.message,true);
@@ -1772,7 +1802,7 @@ function openInvoice(id){
   if(inv.status==='draft')act+=`<button class="btn" id="iv-edit">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-del">Delete</button><button class="btn primary" id="iv-issue">${svg(I.check,16)} Issue</button>`;
   else if(inv.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-void">Void</button><button class="btn primary" id="iv-paid">${svg(I.check,16)} Mark paid</button>`;
   const body=`${inv.status==='void'?`<div class="banner crit">${svg(I.alert,17)}<div>This invoice is <b>void</b>.</div></div>`:''}
-    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}</dd>${inv.reference?`<dt>Reference</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}${inv.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(inv.emailed_at)}</dd>`:''}${inv.last_reminded_at?`<dt>Reminder</dt><dd>${fmtDate(inv.last_reminded_at)}${inv.reminder_count?' · '+inv.reminder_count+' sent':''}</dd>`:''}</dl></div>
+    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}</dd>${inv.customer_no?`<dt>Customer no</dt><dd>${esc(inv.customer_no)}</dd>`:''}${inv.reference?`<dt>Customer order no</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}${inv.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(inv.emailed_at)}</dd>`:''}${inv.last_reminded_at?`<dt>Reminder</dt><dd>${fmtDate(inv.last_reminded_at)}${inv.reminder_count?' · '+inv.reminder_count+' sent':''}</dd>`:''}</dl></div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit (ex GST)</th><th class="num">Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3" class="num" style="font-weight:600">Subtotal</td><td class="num tnum">${money(inv.subtotal)}</td></tr><tr><td colspan="3" class="num">GST (${rateTxt})</td><td class="num tnum">${money(inv.gst)}</td></tr><tr><td colspan="3" class="num" style="font-weight:800">Total</td><td class="num tnum" style="font-weight:800">${money(inv.total)}</td></tr></tbody></table></div>`;
   slideover(inv.code,'Sales invoice',body,act);
   document.getElementById('iv-print').onclick=()=>printInvoice(inv);
@@ -1803,20 +1833,31 @@ function printInvoice(inv){
     </div>
     <div style="display:flex;justify-content:space-between;gap:20px;margin-top:22px">
       <div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">Bill to</div><div style="font-weight:700;margin-top:3px">${esc(inv.bill_name||'')}</div><div style="font-size:12px;white-space:pre-line;color:#333">${esc(inv.bill_address||'')}${inv.bill_abn?'\nABN '+esc(inv.bill_abn):''}${inv.bill_email?'\n'+esc(inv.bill_email):''}${inv.bill_phone?'\n'+esc(inv.bill_phone):''}</div></div>
-      <div style="text-align:right"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">From</div><div style="margin-top:3px">${esc(loc(inv.location_id).name)}</div>${inv.reference?`<div style="font-size:12px;color:#444;margin-top:6px">Ref: ${esc(inv.reference)}</div>`:''}</div>
+      <div style="text-align:right;font-size:12px;color:#333">${inv.customer_no?`<div>Customer no: <b>${esc(inv.customer_no)}</b></div>`:''}${inv.reference?`<div>Customer order no: <b>${esc(inv.reference)}</b></div>`:''}</div>
     </div>
     <table class="inv-tbl" style="width:100%;border-collapse:collapse;margin-top:20px;font-size:13px">
       <thead><tr><th style="text-align:left">Description</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit (ex GST)</th><th style="text-align:right">Amount</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div style="display:flex;justify-content:flex-end;margin-top:14px"><table style="font-size:13px"><tr><td style="padding:2px 18px 2px 0">Subtotal (ex GST)</td><td style="text-align:right">${money(inv.subtotal)}</td></tr><tr><td style="padding:2px 18px 2px 0">GST (${rate})</td><td style="text-align:right">${money(inv.gst)}</td></tr><tr style="font-weight:800;font-size:15px"><td style="padding:6px 18px 2px 0;border-top:2px solid #222">Total (inc GST)</td><td style="text-align:right;border-top:2px solid #222;padding-top:6px">${money(inv.total)}</td></tr></table></div>
-    ${(s.bank_details||inv.notes||s.default_terms)?`<div style="margin-top:26px;font-size:12px;color:#333;border-top:1px solid #ddd;padding-top:12px">${s.bank_details?`<div style="white-space:pre-line"><b>Payment</b>\n${esc(s.bank_details)}</div>`:''}${(inv.notes||s.default_terms)?`<div style="margin-top:8px;white-space:pre-line">${esc(inv.notes||s.default_terms)}</div>`:''}</div>`:''}
-    ${s.terms_conditions?`<div style="margin-top:22px;font-size:10.5px;color:#555;border-top:1px solid #ddd;padding-top:10px;white-space:pre-line"><b>Terms &amp; Conditions</b>\n${esc(s.terms_conditions)}</div>`:''}
-    ${s.footer_note?`<div style="margin-top:14px;text-align:center;font-size:11px;color:#888">${esc(s.footer_note)}</div>`:''}
+    <div style="margin-top:24px;font-size:12px;color:#222;border-top:1px solid #ddd;padding-top:12px">
+      <div style="font-weight:700;margin-bottom:4px">Bank account details</div>
+      ${s.bank_details?`<div style="white-space:pre-line">${esc(s.bank_details)}</div>`:`<div style="color:#999">(add your bank details in Invoice settings)</div>`}
+      <div style="margin-top:6px"><b>Payment reference:</b> ${esc(inv.code)} — please use your invoice number as the payment reference.</div>
+    </div>
+    ${(inv.notes||s.default_terms)?`<div style="margin-top:12px;font-size:12px;color:#333;white-space:pre-line">${esc(inv.notes||s.default_terms)}</div>`:''}
+    ${s.terms_conditions?`<div style="margin-top:18px;font-size:10.5px;color:#555;border-top:1px solid #ddd;padding-top:10px;white-space:pre-line"><b>Terms &amp; Conditions</b>\n${esc(s.terms_conditions)}</div>`:''}
+    <div style="margin-top:34px;display:flex;gap:36px;font-size:12px;color:#333">
+      <div style="flex:1">Received by (name):<div style="border-bottom:1px solid #999;height:22px;margin-top:16px"></div></div>
+      <div style="flex:1">Signature:<div style="border-bottom:1px solid #999;height:22px;margin-top:16px"></div></div>
+      <div style="width:130px">Date:<div style="border-bottom:1px solid #999;height:22px;margin-top:16px"></div></div>
+    </div>
+    ${s.footer_note?`<div style="margin-top:18px;text-align:center;font-size:11px;color:#888">${esc(s.footer_note)}</div>`:''}
   </div>`;
   let box=document.getElementById('invoicePrint');if(!box){box=document.createElement('div');box.id='invoicePrint';document.body.appendChild(box);}
   box.innerHTML=html;document.body.classList.add('printing-invoice');
-  const done=()=>{document.body.classList.remove('printing-invoice');window.removeEventListener('afterprint',done);};
+  const _t=document.title;document.title=inv.code; // browsers print the page title in the margin — use the invoice number instead of the app name
+  const done=()=>{document.body.classList.remove('printing-invoice');document.title=_t;window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
   setTimeout(()=>window.print(),60);
 }
@@ -1875,7 +1916,7 @@ async function downloadBackup(id){
   downloadJSON('shayona-backup_'+String(data.created_at||today()).slice(0,10)+'.json',{created_at:data.created_at,data:data.snapshot});
   toast('Backup downloaded');
 }
-function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites</div>`;}
+function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites${_heavyLoading?' · <span style="color:var(--warn)">loading stock…</span>':''}</div>`;}
 async function runSync(){
   toast('Syncing with Square…');
   try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);logEvent(`Square full sync — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock, ${data.categoriesLoaded||0} categories, ${data.createdLocations||0} new location(s)`);toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
