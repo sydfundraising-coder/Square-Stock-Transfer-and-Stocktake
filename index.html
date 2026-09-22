@@ -190,6 +190,10 @@
   /* ---- Reports ---- */
   .rep-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
   .rep-actions{display:flex;align-items:center;gap:8px;flex:none}
+  .rep-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 18px;border-bottom:1px solid var(--border);padding-bottom:0}
+  .rep-tab{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:var(--muted);font-weight:600;font-size:13px;padding:9px 13px;border-radius:9px 9px 0 0;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .rep-tab:hover{color:var(--ink);background:var(--surface-2)}
+  .rep-tab.active{color:var(--accent-ink);border-bottom-color:var(--accent);background:var(--accent-soft)}
   .rep-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-6px 0 16px}
   .rep-hint{display:flex;align-items:center;gap:7px;margin:-6px 0 16px;color:var(--muted);font-size:12.5px}
   .fchip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent-ink);border-radius:20px;padding:4px 6px 4px 12px;font-size:12.5px}
@@ -562,7 +566,7 @@ function mkChart(id,cfg){const el=document.getElementById(id);if(!el||!window.Ch
 function axes(){const t=chartTheme();return {x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid},beginAtZero:true}};}
 
 /* ---- reporting period + click-to-filter state ---- */
-let repRange='12m', repCentre=null, repCat=null;
+let repRange='12m', repCentre=null, repCat=null, repTab='movement';
 const matchCat=itemId=>!repCat||(item(itemId).category||'Uncategorised')===repCat;
 const matchCentreT=t=>!repCentre||t.from_location===repCentre||t.to_location===repCentre;
 const tHasCat=t=>!repCat||(t.lines||[]).some(l=>matchCat(l.item_id));
@@ -633,15 +637,26 @@ function reportData(){
     else if(i.status==='issued'){invOutstanding+=t;invStatus.issued+=t;if(i.due_date&&new Date(i.due_date+'T00:00:00')<todayD)invOverdue+=t;}
     else if(i.status==='draft'){invStatus.draft+=t;}});
   const invOpen=visInv.filter(i=>i.status==='issued').sort((a,b)=>new Date(a.due_date||0)-new Date(b.due_date||0));
+  // GST collected (on issued+paid), aging buckets, per-customer aggregate, top invoiced items, avg days to pay
+  let invGst=0,payDaysSum=0,payDaysN=0; const aging={cur:0,d30:0,d60:0,d90:0}; const custAgg={}; const invItemQty={},invItemRev={};
+  visInv.forEach(i=>{if(i.status==='issued'||i.status==='paid')invGst+=Number(i.gst)||0;
+    const cn=i.bill_name||'—';const ca=(custAgg[cn]=custAgg[cn]||{inv:0,total:0,paid:0,out:0});ca.inv++;ca.total+=Number(i.total)||0;
+    if(i.status==='paid'){ca.paid+=Number(i.total)||0;if(i.issued_at&&i.paid_at){const d=(new Date(i.paid_at)-new Date(i.issued_at))/864e5;if(d>=0){payDaysSum+=d;payDaysN++;}}}
+    if(i.status==='issued'){ca.out+=Number(i.total)||0;const days=i.due_date?Math.round((todayD-new Date(i.due_date+'T00:00:00'))/864e5):0;const t=Number(i.total)||0;if(days<=0)aging.cur+=t;else if(days<=30)aging.d30+=t;else if(days<=60)aging.d60+=t;else aging.d90+=t;}
+    (i.lines||[]).forEach(l=>{if(!l.item_id)return;invItemQty[l.item_id]=(invItemQty[l.item_id]||0)+(Number(l.qty)||0);invItemRev[l.item_id]=(invItemRev[l.item_id]||0)+(Number(l.line_total)||0);});});
+  const invAvgPayDays=payDaysN?Math.round(payDaysSum/payDaysN):null;
   return {visT,done,inTr,trDisc,avgTr,visO,ordRecv,avgOrd,visST,stDone,itemU,catU,routeU,moveByMonth,valByMonth,moveByMonthCat,
     counted,stVarLines,stVarUnits,stVarValAbs,stShortUnits,stShortVal,stOverUnits,stByLoc,stByMonth,discLog,
     adjApproved,adjPending,dmgUnits,dmgVal,expUnits,expVal,dmgByLoc,dmgByItem,dmgByMonth,pendingVal,
     visRcpt,purchUnits,purchVal,purchByLoc,purchByMonth,purchByCat,
-    visInv,invTotal,invPaid,invOutstanding,invOverdue,invByMonth,invByCust,invStatus,invOpen};
+    visInv,invTotal,invPaid,invOutstanding,invOverdue,invByMonth,invByCust,invStatus,invOpen,
+    invGst,aging,custAgg,invItemQty,invItemRev,invAvgPayDays};
 }
 
+function repTabs(){const t=[{id:'movement',label:'Stock movement',icon:I.transfer},{id:'purchases',label:'Purchases',icon:I.order},{id:'stocktake',label:'Stock take',icon:I.stocktake},{id:'losses',label:'Losses',icon:I.alert}];if(ROLE==='super_admin')t.push({id:'sales',label:'Sales & invoices',icon:I.cost});return t;}
 function vReports(v){
   const R=reportData();
+  if(!repTabs().some(t=>t.id===repTab))repTab='movement';
   const scopeLabel=scoped()?(MYLOCS.map(id=>loc(id).code).join(', ')||'your centres'):'all centres';
   const rangeLabel={'30d':'Last 30 days','90d':'Last 90 days','12m':'Last 12 months','all':'All time'}[repRange];
   const trLoss=R.trDisc.reduce((s,t)=>s+trShortV(t),0);
@@ -663,9 +678,12 @@ function vReports(v){
     ${(repCentre||repCat)?`<div class="rep-filters no-print">${svg(I.filter||I.search,14)}<span style="color:var(--muted);font-size:12.5px">Filtered:</span>
       ${repCentre?`<span class="fchip">Centre: <b>${esc(loc(repCentre).name)}</b> <button data-clearc title="Clear">${svg(I.x,12)}</button></span>`:''}
       ${repCat?`<span class="fchip">Category: <b>${esc(repCat)}</b> <button data-clearcat title="Clear">${svg(I.x,12)}</button></span>`:''}
-      <button class="btn sm" data-clearall>Clear all</button></div>`:`<div class="rep-hint no-print">${svg(I.info,14)}<span>Tip: click a centre, category or item in any chart to filter the whole report. Click a row in the discrepancy log to drill into that item.</span></div>`}
+      <button class="btn sm" data-clearall>Clear all</button></div>`:''}
 
-    <!-- ===== MISSING / DISCREPANCY (lead section) ===== -->
+    <div class="rep-tabs no-print">${repTabs().map(t=>`<button class="rep-tab ${repTab===t.id?'active':''}" data-rtab="${t.id}">${svg(t.icon,15)} ${t.label}</button>`).join('')}</div>
+
+    ${repTab==='losses'?`
+    <!-- ===== MISSING / DISCREPANCY ===== -->
     <div class="section-head"><h2>${svg(I.alert,17)} Missing &amp; discrepancies</h2></div>
     <div class="tiles">
       <div class="tile ${R.trDisc.length?'crit':''}"><div class="lbl">${svg(I.truck,14)} Transfer shortfalls</div><div class="val tnum">${R.trDisc.length}</div><div class="meta">${money0(trLoss)} short on receipt</div></div>
@@ -682,9 +700,11 @@ function vReports(v){
       ${R.discLog.length?R.discLog.slice(0,60).map(d=>`<tr class="clickable" data-drill="${d.itemId}"><td style="white-space:nowrap">${fmtDate(d.date)}</td><td>${esc(d.type)}</td><td class="mono">${esc(d.ref)}</td><td>${esc(d.centre)}</td><td>${esc(d.item)}</td><td class="num tnum">${d.expected}</td><td class="num tnum">${d.actual}</td><td class="num tnum" style="color:${d.diff<0?'var(--crit)':'var(--good)'};font-weight:600">${d.diff>0?'+':''}${d.diff}</td><td class="num tnum" style="color:${d.value<0?'var(--crit)':'var(--muted)'}">${money(Math.abs(d.value))}</td></tr>`).join(''):`<tr><td colspan="9" style="color:var(--faint)">No discrepancies in this period. 🎉</td></tr>`}
     </tbody></table></div>
     ${R.discLog.length>60?`<div style="font-size:12px;color:var(--faint);margin-top:8px" class="no-print">Showing latest 60 of ${R.discLog.length}. Use <b>CSV</b> for the full log.</div>`:''}
+    `:''}
 
+    ${repTab==='movement'?`
     <!-- ===== STOCK MOVEMENT ===== -->
-    <div class="section-head" style="margin-top:26px"><h2>${svg(I.transfer,17)} Stock movement</h2></div>
+    <div class="section-head"><h2>${svg(I.transfer,17)} Stock movement</h2></div>
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.transfer,14)} Transfers</div><div class="val tnum">${R.visT.length}</div><div class="meta">${R.done.length} completed</div></div>
       <div class="tile"><div class="lbl">${svg(I.box,14)} Units moved</div><div class="val tnum">${Object.values(R.itemU).reduce((a,b)=>a+b,0).toLocaleString()}</div><div class="meta">dispatched/requested</div></div>
@@ -697,9 +717,11 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Movement by category (units) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-cats"></canvas></div></div>
     </div>
     <div class="card pad chart-card"><h3>Busiest routes (units)</h3><div class="chart-box"><canvas id="ch-routes"></canvas></div></div>
+    `:''}
 
+    ${repTab==='purchases'?`
     <!-- ===== PURCHASES ===== -->
-    <div class="section-head" style="margin-top:26px"><h2>${svg(I.order,17)} Purchases</h2></div>
+    <div class="section-head"><h2>${svg(I.order,17)} Purchases</h2></div>
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Purchased value</div><div class="val tnum">${money0(R.purchVal)}</div><div class="meta">at cost</div></div>
       <div class="tile"><div class="lbl">${svg(I.box,14)} Units purchased</div><div class="val tnum">${R.purchUnits.toLocaleString()}</div><div class="meta">received into stock</div></div>
@@ -711,9 +733,12 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Purchases by centre (value) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-purloc"></canvas></div></div>
       <div class="card pad chart-card"><h3>Purchases by category (value) <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-purcat"></canvas></div></div>
     </div>
+    ${(()=>{const pc={};(R.visRcpt||[]).forEach(r=>{const cn=(r.supplier||'—');(pc[cn]=pc[cn]||0);(r.lines||[]).forEach(l=>{if(matchCat(l.item_id))pc[cn]+=l.qty*(l.unit_cost||0);});});const rows=Object.entries(pc).sort((a,b)=>b[1]-a[1]);return rows.length?`<div class="section-head" style="margin-top:6px"><h3 style="font-size:14px">Purchases by supplier</h3></div><div class="tablewrap"><table><thead><tr><th>Supplier</th><th class="num">Value (cost)</th></tr></thead><tbody>${rows.map(([n,vv])=>`<tr><td>${esc(n)}</td><td class="num tnum">${money(vv)}</td></tr>`).join('')}</tbody></table></div>`:'';})()}
+    `:''}
 
+    ${repTab==='stocktake'?`
     <!-- ===== STOCK TAKE ===== -->
-    <div class="section-head" style="margin-top:26px"><h2>${svg(I.stocktake,17)} Stock take</h2></div>
+    <div class="section-head"><h2>${svg(I.stocktake,17)} Stock take</h2></div>
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.stocktake,14)} Counts done</div><div class="val tnum">${R.stDone.length}</div><div class="meta">${R.visST.filter(s=>s.status==='open').length} in progress</div></div>
       <div class="tile"><div class="lbl">${svg(I.box,14)} Items counted</div><div class="val tnum">${R.counted.toLocaleString()}</div><div class="meta">completed counts</div></div>
@@ -724,7 +749,9 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Count accuracy by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-acc"></canvas></div></div>
       <div class="card pad chart-card"><h3>Variance value by centre <span class="chint no-print">· click to filter</span></h3><div class="chart-box"><canvas id="ch-stvar"></canvas></div></div>
     </div>
+    `:''}
 
+    ${repTab==='losses'?`
     <!-- ===== DAMAGE & EXPIRY ===== -->
     <div class="section-head" style="margin-top:26px"><h2>${svg(I.alert,17)} Damage &amp; expiry</h2></div>
     <div class="tiles">
@@ -738,20 +765,41 @@ function vReports(v){
       <div class="card pad chart-card"><h3>Loss by centre (value)</h3><div class="chart-box"><canvas id="ch-dmgloc"></canvas></div></div>
     </div>
     <div class="card pad chart-card"><h3>Top items lost to damage/expiry (value) <span class="chint no-print">· click to drill in</span></h3><div class="chart-box"><canvas id="ch-dmgitem"></canvas></div></div>
-    ${ROLE==='super_admin'?`
-    <!-- ===== SALES INVOICES ===== -->
-    <div class="section-head" style="margin-top:26px"><h2>${svg(I.cost,17)} Sales invoices</h2></div>
+    `:''}
+
+    ${(repTab==='sales'&&ROLE==='super_admin')?`
+    <!-- ===== SALES & INVOICES ===== -->
+    <div class="section-head"><h2>${svg(I.cost,17)} Sales &amp; invoices</h2></div>
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Invoiced (inc GST)</div><div class="val tnum">${money0(R.invTotal)}</div><div class="meta">${R.visInv.length} invoices</div></div>
       <div class="tile"><div class="lbl">${svg(I.check,14)} Paid</div><div class="val tnum">${money0(R.invPaid)}</div><div class="meta">received</div></div>
       <div class="tile ${R.invOutstanding>0?'warn':''}"><div class="lbl">${svg(I.calendar,14)} Outstanding</div><div class="val tnum">${money0(R.invOutstanding)}</div><div class="meta">issued, unpaid</div></div>
       <div class="tile ${R.invOverdue>0?'crit':''}"><div class="lbl">${svg(I.alert,14)} Overdue</div><div class="val tnum">${money0(R.invOverdue)}</div><div class="meta">past due date</div></div>
     </div>
+    <div class="tiles">
+      <div class="tile"><div class="lbl">${svg(I.cost,14)} GST collected</div><div class="val tnum">${money0(R.invGst)}</div><div class="meta">issued + paid (for BAS)</div></div>
+      <div class="tile"><div class="lbl">${svg(I.calendar,14)} Avg days to pay</div><div class="val tnum">${R.invAvgPayDays==null?'—':R.invAvgPayDays}</div><div class="meta">issued → paid</div></div>
+      <div class="tile"><div class="lbl">${svg(I.receipt,14)} Avg invoice</div><div class="val tnum">${money0(R.visInv.length?R.invTotal/R.visInv.length:0)}</div><div class="meta">inc GST</div></div>
+      <div class="tile"><div class="lbl">${svg(I.users||I.user,14)} Customers</div><div class="val tnum">${Object.keys(R.custAgg).length}</div><div class="meta">invoiced in period</div></div>
+    </div>
     <div class="grid2" style="align-items:start">
       <div class="card pad chart-card"><h3>Invoiced by month (inc GST)</h3><div class="chart-box"><canvas id="ch-invmonth"></canvas></div></div>
       <div class="card pad chart-card"><h3>Top customers (inc GST)</h3><div class="chart-box"><canvas id="ch-invcust"></canvas></div></div>
     </div>
-    <div class="section-head" style="margin-top:6px"><h3 style="font-size:14px">Outstanding invoices</h3></div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Aged receivables (outstanding)</h3>
+        <div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Bucket</th><th class="num">Amount</th></tr></thead><tbody>
+          <tr><td>Current (not yet due)</td><td class="num tnum">${money(R.aging.cur)}</td></tr>
+          <tr><td>1–30 days overdue</td><td class="num tnum" style="color:var(--warn)">${money(R.aging.d30)}</td></tr>
+          <tr><td>31–60 days overdue</td><td class="num tnum" style="color:var(--warn)">${money(R.aging.d60)}</td></tr>
+          <tr><td>60+ days overdue</td><td class="num tnum" style="color:var(--crit)">${money(R.aging.d90)}</td></tr>
+          <tr style="font-weight:700"><td>Total outstanding</td><td class="num tnum">${money(R.aging.cur+R.aging.d30+R.aging.d60+R.aging.d90)}</td></tr>
+        </tbody></table></div></div>
+      <div class="card pad chart-card"><h3>Top invoiced items (value)</h3><div class="chart-box"><canvas id="ch-invitem"></canvas></div></div>
+    </div>
+    <div class="section-head" style="margin-top:6px"><h3 style="font-size:14px">By customer</h3></div>
+    <div class="tablewrap"><table><thead><tr><th>Customer</th><th class="num">Invoices</th><th class="num">Invoiced</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead><tbody>${Object.entries(R.custAgg).sort((a,b)=>b[1].total-a[1].total).map(([n,c])=>`<tr><td>${esc(n)}</td><td class="num tnum">${c.inv}</td><td class="num tnum">${money(c.total)}</td><td class="num tnum" style="color:var(--good)">${money(c.paid)}</td><td class="num tnum" style="color:${c.out>0?'var(--warn)':'var(--faint)'}">${money(c.out)}</td></tr>`).join('')||`<tr><td colspan="5" style="color:var(--faint)">No invoices in this period.</td></tr>`}</tbody></table></div>
+    <div class="section-head" style="margin-top:16px"><h3 style="font-size:14px">Outstanding invoices (aging)</h3></div>
     <div class="tablewrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>From</th><th>Issued</th><th>Due</th><th class="num">Total</th><th>Age</th></tr></thead><tbody>${R.invOpen.length?R.invOpen.map(i=>{const od=i.due_date?Math.round((new Date(today()+'T00:00:00')-new Date(i.due_date+'T00:00:00'))/864e5):null;return `<tr class="clickable" data-inv="${i.id}"><td class="mono">${esc(i.code)}</td><td>${esc(i.bill_name||'—')}</td><td>${loc(i.location_id).code}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(i.issue_date)}</td><td style="white-space:nowrap;font-size:12.5px">${fmtDate(i.due_date)}</td><td class="num tnum">${money(i.total)}</td><td style="font-size:12.5px;color:${od>0?'var(--crit)':'var(--muted)'}">${od==null?'—':(od>0?od+'d overdue':(-od)+'d left')}</td></tr>`;}).join(''):`<tr><td colspan="7" style="color:var(--faint)">Nothing outstanding. 🎉</td></tr>`}</tbody></table></div>
     `:''}
   `;
@@ -764,6 +812,7 @@ function vReports(v){
   const ba=v.querySelector('[data-clearall]');if(ba)ba.onclick=()=>{repCentre=null;repCat=null;renderView();};
   v.querySelectorAll('[data-drill]').forEach(row=>row.onclick=()=>openItemDrill(row.dataset.drill));
   v.querySelectorAll('[data-inv]').forEach(row=>row.onclick=()=>openInvoice(row.dataset.inv));
+  v.querySelectorAll('[data-rtab]').forEach(b=>b.onclick=()=>{repTab=b.dataset.rtab;renderView();document.querySelector('.content').scrollTop=0;});
   renderReportCharts(R);
 }
 
@@ -851,6 +900,9 @@ function renderReportCharts(R){
     const ic=Object.entries(R.invByCust).sort((a,b)=>b[1]-a[1]).slice(0,8);
     mkChart('ch-invcust',{type:'bar',data:{labels:ic.map(r=>r[0]),datasets:[{label:'Invoiced $',data:ic.map(r=>Math.round(r[1])),backgroundColor:t.transit,borderRadius:4}]},
       options:{indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
+    const ii=Object.entries(R.invItemRev||{}).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    mkChart('ch-invitem',{type:'bar',data:{labels:ii.map(([id])=>item(id).name),datasets:[{label:'Invoiced $',data:ii.map(([,vv2])=>Math.round(vv2)),backgroundColor:t.accent,borderRadius:4}]},
+      options:{indexAxis:'y',onClick:onClickIndex(i=>ii[i]&&openItemDrill(ii[i][0])),plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{color:t.muted,font:{size:11},callback:v=>'$'+v},grid:{color:t.grid}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}}}}});
   }
 }
 
@@ -895,7 +947,12 @@ function exportReportCSV(R){
   (R.visRcpt||[]).forEach(r=>{const mo=mKey(r.received_on);(r.lines||[]).forEach(l=>{const c=item(l.item_id).category||'Uncategorised';const key=r.location_id+'|'+mo+'|'+c;(pAgg[key]=pAgg[key]||{u:0,v:0});pAgg[key].u+=l.qty;pAgg[key].v+=l.qty*(l.unit_cost||0);});});
   const pRows=Object.entries(pAgg).map(([k,x])=>{const[lc,mo,c]=k.split('|');return [loc(lc).name,mLabel(mo),c,x.u,x.v.toFixed(2)];}).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));
   setTimeout(()=>downloadCSV(`purchases_${scopeLabel}_${stamp}.csv`,['Centre','Month','Category','Units','Value (AUD)'],pRows),1600);
-  toast('Downloaded 5 CSV files: discrepancies, movement, stock-take, damage/expiry, purchases');
+  // 6) Sales invoices (super admin)
+  if(ROLE==='super_admin'&&R.visInv&&R.visInv.length){
+    const iv=R.visInv.slice().sort((a,b)=>new Date(b.issue_date)-new Date(a.issue_date)).map(i=>{const od=i.due_date&&i.status==='issued'?Math.round((new Date(today()+'T00:00:00')-new Date(i.due_date+'T00:00:00'))/864e5):'';return [i.code,i.status,loc(i.location_id).code,i.bill_name||'',fmtDate(i.issue_date),fmtDate(i.due_date),(i.subtotal||0).toFixed(2),(i.gst||0).toFixed(2),(i.total||0).toFixed(2),(od!==''&&od>0)?od:''];});
+    setTimeout(()=>downloadCSV(`sales-invoices_${scopeLabel}_${stamp}.csv`,['Invoice','Status','From','Customer','Issued','Due','Subtotal','GST','Total (AUD)','Days overdue'],iv),2000);
+  }
+  toast('Report CSVs downloaded');
 }
 /* Charts draw to canvas with the colours present at creation time — so before printing we force the
    light palette and redraw, then restore afterwards, so the PDF is always crisp on white paper. */
@@ -1711,18 +1768,29 @@ function openInvoice(id){
   const rateTxt=(inv.gst_rate||10)+'%';
   const rows=(inv.lines||[]).map(l=>`<tr><td>${esc(l.description||(l.item_id?item(l.item_id).name:'—'))}</td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_price)}</td><td class="num tnum">${money(l.line_total)}</td></tr>`).join('');
   let act=`<button class="btn" data-close>Close</button><button class="btn" id="iv-print">${svg(I.receipt,16)} Print / PDF</button>`;
+  if(inv.status!=='void')act+=`<button class="btn" id="iv-email">${svg(I.order,16)} Email</button>`;
   if(inv.status==='draft')act+=`<button class="btn" id="iv-edit">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-del">Delete</button><button class="btn primary" id="iv-issue">${svg(I.check,16)} Issue</button>`;
   else if(inv.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-void">Void</button><button class="btn primary" id="iv-paid">${svg(I.check,16)} Mark paid</button>`;
   const body=`${inv.status==='void'?`<div class="banner crit">${svg(I.alert,17)}<div>This invoice is <b>void</b>.</div></div>`:''}
-    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}</dd>${inv.reference?`<dt>Reference</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}</dl></div>
+    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}</dd>${inv.reference?`<dt>Reference</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}${inv.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(inv.emailed_at)}</dd>`:''}${inv.last_reminded_at?`<dt>Reminder</dt><dd>${fmtDate(inv.last_reminded_at)}${inv.reminder_count?' · '+inv.reminder_count+' sent':''}</dd>`:''}</dl></div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit (ex GST)</th><th class="num">Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3" class="num" style="font-weight:600">Subtotal</td><td class="num tnum">${money(inv.subtotal)}</td></tr><tr><td colspan="3" class="num">GST (${rateTxt})</td><td class="num tnum">${money(inv.gst)}</td></tr><tr><td colspan="3" class="num" style="font-weight:800">Total</td><td class="num tnum" style="font-weight:800">${money(inv.total)}</td></tr></tbody></table></div>`;
   slideover(inv.code,'Sales invoice',body,act);
   document.getElementById('iv-print').onclick=()=>printInvoice(inv);
+  const bm=document.getElementById('iv-email');if(bm)bm.onclick=()=>emailInvoice(inv);
   const be=document.getElementById('iv-edit');if(be)be.onclick=()=>newInvoice(inv);
   const bd=document.getElementById('iv-del');if(bd)bd.onclick=async()=>{if(!confirm('Delete draft '+inv.code+'?'))return;const{error}=await sb.rpc('delete_invoice',{p_id:inv.id});if(error)return toast(error.message,true);closeOverlay();toast('Draft deleted');vInvoices(document.getElementById('view'));};
   const bi=document.getElementById('iv-issue');if(bi)bi.onclick=async()=>{const{error}=await sb.rpc('issue_invoice',{p_id:inv.id});if(error)return toast(error.message,true);if(inv.reduce_stock)sb.functions.invoke('square-push',{body:{location_id:inv.location_id,item_ids:(inv.lines||[]).filter(l=>l.item_id).map(l=>l.item_id)}}).then(()=>{},()=>{});closeOverlay();toast('Invoice issued');vInvoices(document.getElementById('view'));};
   const bp=document.getElementById('iv-paid');if(bp)bp.onclick=async()=>{const{error}=await sb.rpc('set_invoice_status',{p_id:inv.id,p_status:'paid'});if(error)return toast(error.message,true);closeOverlay();toast('Marked paid');vInvoices(document.getElementById('view'));};
   const bv=document.getElementById('iv-void');if(bv)bv.onclick=async()=>{if(!confirm('Void '+inv.code+'? Any stock it deducted will be restored.'))return;const{error}=await sb.rpc('set_invoice_status',{p_id:inv.id,p_status:'void'});if(error)return toast(error.message,true);if(inv.stock_reduced)sb.functions.invoke('square-push',{body:{location_id:inv.location_id,item_ids:(inv.lines||[]).filter(l=>l.item_id).map(l=>l.item_id)}}).then(()=>{},()=>{});closeOverlay();toast('Invoice voided');vInvoices(document.getElementById('view'));};
+}
+async function emailInvoice(inv){
+  const to=window.prompt('Email invoice '+inv.code+' to:',inv.bill_email||'');
+  if(to===null)return;if(!to.trim())return toast('Enter a recipient email',true);
+  toast('Sending invoice…');
+  const{data,error}=await sb.functions.invoke('invoice-mail',{body:{invoice_id:inv.id,to:to.trim()}});
+  if(error)return toast('Email failed: '+await fnErr(error),true);
+  if(data&&data.error)return toast(data.error,true);
+  toast('Invoice emailed to '+to.trim());closeOverlay();vInvoices(document.getElementById('view'));
 }
 function printInvoice(inv){
   const s=invSettings||{};const rate=(inv.gst_rate||10)+'%';
@@ -1743,6 +1811,7 @@ function printInvoice(inv){
     </table>
     <div style="display:flex;justify-content:flex-end;margin-top:14px"><table style="font-size:13px"><tr><td style="padding:2px 18px 2px 0">Subtotal (ex GST)</td><td style="text-align:right">${money(inv.subtotal)}</td></tr><tr><td style="padding:2px 18px 2px 0">GST (${rate})</td><td style="text-align:right">${money(inv.gst)}</td></tr><tr style="font-weight:800;font-size:15px"><td style="padding:6px 18px 2px 0;border-top:2px solid #222">Total (inc GST)</td><td style="text-align:right;border-top:2px solid #222;padding-top:6px">${money(inv.total)}</td></tr></table></div>
     ${(s.bank_details||inv.notes||s.default_terms)?`<div style="margin-top:26px;font-size:12px;color:#333;border-top:1px solid #ddd;padding-top:12px">${s.bank_details?`<div style="white-space:pre-line"><b>Payment</b>\n${esc(s.bank_details)}</div>`:''}${(inv.notes||s.default_terms)?`<div style="margin-top:8px;white-space:pre-line">${esc(inv.notes||s.default_terms)}</div>`:''}</div>`:''}
+    ${s.terms_conditions?`<div style="margin-top:22px;font-size:10.5px;color:#555;border-top:1px solid #ddd;padding-top:10px;white-space:pre-line"><b>Terms &amp; Conditions</b>\n${esc(s.terms_conditions)}</div>`:''}
     ${s.footer_note?`<div style="margin-top:14px;text-align:center;font-size:11px;color:#888">${esc(s.footer_note)}</div>`:''}
   </div>`;
   let box=document.getElementById('invoicePrint');if(!box){box=document.createElement('div');box.id='invoicePrint';document.body.appendChild(box);}
@@ -1760,11 +1829,12 @@ function invoiceSettingsForm(){
     <div class="field"><label>Address</label><textarea id="is-addr" rows="2">${esc(s.address||'')}</textarea></div>
     <div class="field"><label>Bank / payment details (shown on invoice)</label><textarea id="is-bank" rows="3" placeholder="Account name\nBSB\nAccount number">${esc(s.bank_details||'')}</textarea></div>
     <div class="grid2"><div class="field"><label>Default payment terms (days)</label><input type="number" id="is-days" value="${s.due_days||14}"></div><div class="field"><label>GST rate (%)</label><input type="number" id="is-gst" value="${s.gst_rate||10}"></div></div>
-    <div class="field"><label>Default terms text</label><input id="is-terms" value="${esc(s.default_terms||'')}"></div>
+    <div class="field"><label>Default terms text (short line near totals)</label><input id="is-terms" value="${esc(s.default_terms||'')}"></div>
+    <div class="field"><label>Terms &amp; Conditions (full, printed on every invoice)</label><textarea id="is-tc" rows="7" placeholder="Paste your T&Cs here…">${esc(s.terms_conditions||'')}</textarea></div>
     <div class="field"><label>Footer note</label><input id="is-foot" value="${esc(s.footer_note||'')}"></div>`,
     `<button class="btn" data-close>Cancel</button><button class="btn primary" id="is-save">Save</button>`);
   document.getElementById('is-save').onclick=async()=>{
-    const patch={id:1,seller_name:document.getElementById('is-name').value.trim(),abn:document.getElementById('is-abn').value.trim(),phone:document.getElementById('is-phone').value.trim(),email:document.getElementById('is-email').value.trim(),address:document.getElementById('is-addr').value.trim(),bank_details:document.getElementById('is-bank').value.trim(),due_days:+document.getElementById('is-days').value||14,gst_rate:+document.getElementById('is-gst').value||10,default_terms:document.getElementById('is-terms').value.trim(),footer_note:document.getElementById('is-foot').value.trim(),updated_at:new Date().toISOString()};
+    const patch={id:1,seller_name:document.getElementById('is-name').value.trim(),abn:document.getElementById('is-abn').value.trim(),phone:document.getElementById('is-phone').value.trim(),email:document.getElementById('is-email').value.trim(),address:document.getElementById('is-addr').value.trim(),bank_details:document.getElementById('is-bank').value.trim(),due_days:+document.getElementById('is-days').value||14,gst_rate:+document.getElementById('is-gst').value||10,default_terms:document.getElementById('is-terms').value.trim(),terms_conditions:document.getElementById('is-tc').value.trim(),footer_note:document.getElementById('is-foot').value.trim(),updated_at:new Date().toISOString()};
     const{error}=await sb.from('invoice_settings').upsert(patch,{onConflict:'id'});
     if(error)return toast(error.message||'Save failed',true);
     invSettings=patch;closeOverlay();toast('Invoice settings saved');
