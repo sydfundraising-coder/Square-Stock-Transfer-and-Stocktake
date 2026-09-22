@@ -346,7 +346,7 @@ const canReceiveT=t=>can('transfer.receive')&&(!scoped()||mine(t.to_location));
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[]};
 const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
 const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
@@ -369,7 +369,7 @@ const trTransit=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.q
 const trShortU=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received),0);
 const trShortV=t=>(t.lines||[]).reduce((s,l)=>s+Math.max(0,l.qty_dispatched-l.qty_received)*item(l.item_id).unit_cost,0);
 
-const STATUS={requested:{label:'Requested',cls:'p-req'},approved:{label:'Approved',cls:'p-appr'},in_transit:{label:'In Transit',cls:'p-transit'},partially_received:{label:'Partially Received',cls:'p-partial'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
+const STATUS={draft:{label:'Draft',cls:'p-draft'},requested:{label:'Requested',cls:'p-req'},approved:{label:'Approved',cls:'p-appr'},in_transit:{label:'In Transit',cls:'p-transit'},partially_received:{label:'Partially Received',cls:'p-partial'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
 const sPill=s=>`<span class="pill ${(STATUS[s]||STATUS.requested).cls}">${(STATUS[s]||{label:s}).label}</span>`;
 function tStat(t){ if(t.status==='approved'&&t.picking_started_at) return {label:'Picking in progress',cls:'p-partial'}; return STATUS[t.status]||{label:t.status,cls:'p-draft'}; }
 const sPillT=t=>`<span class="pill ${tStat(t).cls}">${tStat(t).label}</span>`;
@@ -415,7 +415,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
-    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2]=await Promise.all([
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
@@ -428,10 +428,11 @@ async function loadAll(){
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
       q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
+      q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
-    S.adjReq=adjreq||[]; S.invoices=invoices2||[];
+    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadHeavyBg(); // background — don't block first paint on 34k stock rows
@@ -445,7 +446,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -456,9 +457,10 @@ async function loadOps(){
       q(sb.from('profile_locations').select('*')).catch(()=>[]),
       q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
+      q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -520,6 +522,7 @@ const NAV=[
   {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
   {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length},
   {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
+  {id:'freight',label:'Freight',icon:I.truck,group:'Operations'},
   {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
   {id:'invoices',label:'Sales Invoices',icon:I.cost,group:'Operations',need:'*'},
   {id:'catalog',label:'Catalog',icon:I.catalog,group:'Operations'},
@@ -542,18 +545,18 @@ function renderNav(){
   NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','receipts','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','freight','receipts','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
 }
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],receipts:['Goods Receipts','Record supplier deliveries'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalog','Items synced from Square'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,receipts:vReceipts,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -995,7 +998,7 @@ window.addEventListener('afterprint',()=>{ if(route!=='reports')return; if(_preP
 let trFilter='all',trSearch='';
 function vTransfers(v){
   v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
-    <select class="filter" id="f"><option value="all">All statuses</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
+    <select class="filter" id="f"><option value="all">All statuses</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
     <div class="spacer"></div>${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
   document.getElementById('f').value=trFilter;
   document.getElementById('f').onchange=e=>{trFilter=e.target.value;trList();};
@@ -1022,11 +1025,14 @@ function openTransfer(id){
   const notDisp=t.status==='requested'||t.status==='approved';
   const atSource=!scoped()||mine(t.from_location);
   const editDel=notDisp?`<button class="btn" data-tedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button>`:'';
-  if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`);
+  if(t.status==='draft')actions=`<button class="btn" data-tdraftedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button><button class="btn primary" data-tsubmit="${t.id}">${svg(I.check,16)} Submit request</button>`;
+  else if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`);
   else if(t.status==='approved'){let a=editDel;if(atSource)a+=`<button class="btn" data-print="${t.id}">${svg(I.receipt,16)} Pick list</button><button class="btn" data-pick="${t.id}">${svg(I.box,16)} Pick items</button>`;if(canDispatchT(t))a+=`<button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch</button>`;else if(!atSource)a+=`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;actions=a;}
   else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
   if(ROLE==='super_admin'&&!t.reversed_at&&['in_transit','partially_received','received'].includes(t.status))actions+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-treverse="${t.id}">${svg(I.alert,15)} Reverse</button>`;
-  const body=`${t.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(t.reversed_at)}${t.reverse_reason?` — ${esc(t.reverse_reason)}`:''}. Stock was restored to source, removed from destination, and pushed to Square.</div></div>`:''}${stepHtml}
+  if(['approved','in_transit','partially_received'].includes(t.status))actions+=`<button class="btn" data-addcn="${t.id}">${svg(I.truck,15)} Add connote</button>`;
+  const tCons=(S.consignments||[]).filter(c=>c.transfer_id===t.id);
+  const body=`${t.status==='draft'?`<div class="banner warn">${svg(I.info,17)}<div><b>Draft — not submitted.</b> Stock is <b>not reserved</b> yet. Submit the request to reserve stock and send it for approval.</div></div>`:''}${tCons.length?`<div class="banner info">${svg(I.truck,17)}<div><b>Freight:</b> ${tCons.map(c=>`<span class="mono">${esc(c.connote||c.code)}</span> (${esc(c.carrier||'—')}, ${cnPill(c.status)})`).join(' · ')}</div></div>`:''}${t.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(t.reversed_at)}${t.reverse_reason?` — ${esc(t.reverse_reason)}`:''}. Stock was restored to source, removed from destination, and pushed to Square.</div></div>`:''}${stepHtml}
     ${picking?`<div class="banner warn">${svg(I.box,17)}<div><b>Picking in progress</b> at ${esc(loc(t.from_location).name)} — ${pickedLines} of ${(t.lines||[]).length} item(s) picked so far.</div></div>`:''}
     ${(t.status==='in_transit'||t.status==='partially_received')?`<div class="banner transit">${svg(I.truck,17)}<div><b>${money(trTransit(t))} in transit</b> from ${esc(loc(t.from_location).name)} to ${esc(loc(t.to_location).name)}.</div></div>`:''}
     ${du>0&&t.status==='received'?`<div class="banner crit">${svg(I.alert,17)}<div><b>Discrepancy: ${du} short (${money(dv)}).</b></div></div>`:''}
@@ -1102,8 +1108,11 @@ async function loadTfSrc(locId){
   try{const{data,error}=await sb.rpc('centre_stock',{p_loc:locId});if(!error&&data)data.forEach(r=>{tfSrc.avail[r.item_id]=r.available;tfSrc.onhand[r.item_id]=r.on_hand;});}catch(e){console.error('centre_stock',e);}
   if(document.getElementById('sum'))sum();
 }
+let tfDraftId=null;
 function newTransfer(presetItem){
-  dLines=[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
+  const draft=(presetItem&&typeof presetItem==='object'&&presetItem.id)?presetItem:null;
+  tfDraftId=draft?draft.id:null;
+  dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
@@ -1115,11 +1124,12 @@ function newTransfer(presetItem){
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
-  modal('New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Submit request</button>`);
+  modal(draft?'Edit draft transfer':'New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save for later</button><button class="btn primary" id="go">Submit request</button>`);
   const hub=S.locations.find(l=>l.is_hub);const from=document.getElementById('tf-from'),to=document.getElementById('tf-to');
   // From = Central Warehouse (hub) by default; To = the user's centre.
   if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
   else{if(hub)from.value=hub.id;to.value=(destLocs.find(l=>l.id!==(hub?hub.id:''))||destLocs[0]||{}).id;}
+  if(draft){from.value=draft.from_location;to.value=draft.to_location;document.getElementById('tf-notes').value=draft.notes||'';}
   edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=sum;
   loadTfSrc(from.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
@@ -1128,6 +1138,16 @@ function newTransfer(presetItem){
   document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));edLines();sum();});
   document.getElementById('tf-rec').onclick=fillRecommended;
   document.getElementById('go').onclick=submitTransfer;
+  document.getElementById('go-draft').onclick=saveTransferDraft;
+}
+async function saveTransferDraft(){
+  const from=document.getElementById('tf-from').value,to=document.getElementById('tf-to').value,notes=document.getElementById('tf-notes').value.trim();
+  const lines=dLines.filter(l=>l.item&&l.qty>0);
+  if(from===to)return toast('Source and destination must differ',true);
+  if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
+  if(!lines.length)return toast('Add an item to save',true);
+  if(!window.confirm('Save as a draft to finish later?\n\nA draft does NOT reserve stock — someone else could request it before you submit. You can open it any time from the Transfers list to submit.'))return;
+  const id=await callRpc('save_transfer_draft',{p_id:tfDraftId,p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Saved as draft');
 }
 function fillRecommended(){
   const to=document.getElementById('tf-to').value;
@@ -1162,7 +1182,17 @@ async function submitTransfer(){
   if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
   if(!lines.length)return toast('Add an item',true);
   if(tfExceed)return toast('Reduce quantities over available',true);
-  await callRpc('create_transfer',{p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Request submitted');
+  if(tfDraftId){
+    // save the draft then submit it (validates availability + reserves)
+    const{error:e1}=await sb.rpc('save_transfer_draft',{p_id:tfDraftId,p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))});
+    if(e1){toast(e1.message||'Save failed',true);return;}
+    const{error:e2}=await sb.rpc('submit_transfer_draft',{p_id:tfDraftId});
+    if(e2){toast(e2.message||'Submit failed',true);return;}
+    closeOverlay();toast('Request submitted');notifyTransfer(tfDraftId,'requested');await refreshOps([from,to]);
+    return;
+  }
+  const id=await callRpc('create_transfer',{p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Request submitted');
+  if(id)notifyTransfer(id,'requested');
 }
 /* Receive */
 function openReceive(id){
@@ -1172,7 +1202,7 @@ function openReceive(id){
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
     const note=(document.getElementById('rc-note')||{}).value||'';
-    await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});
+    await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
   };
 }
 /* Orders */
@@ -1896,6 +1926,71 @@ function invoiceSettingsForm(){
     invSettings=patch;closeOverlay();toast('Invoice settings saved');
   };
 }
+/* ============================ Freight / consignments ============================ */
+let frFilter='all';
+const CNST={booked:{l:'Booked',c:'p-req'},in_transit:{l:'In transit',c:'p-transit'},delivered:{l:'Delivered',c:'p-done'},exception:{l:'Exception',c:'p-cancel'}};
+const cnPill=s=>`<span class="pill ${(CNST[s]||{c:'p-draft'}).c}">${(CNST[s]||{l:s}).l}</span>`;
+function vFreight(v){
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.truck,17)}<div>Log carrier <b>consignment notes (connotes)</b> and track deliveries. Link one to a stock transfer to keep it together.</div></div>
+    <div class="rep-actions no-print"><select class="filter" id="fr-f"><option value="all">All</option><option value="booked">Booked</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option><option value="exception">Exception</option></select><button class="btn primary" id="fr-new">${svg(I.plus,15)} New consignment</button></div></div>
+    <div id="fr-list"></div>`;
+  document.getElementById('fr-f').value=frFilter;document.getElementById('fr-f').onchange=e=>{frFilter=e.target.value;frList();};
+  document.getElementById('fr-new').onclick=()=>newConsignment();
+  frList();
+}
+function frList(){
+  const el=document.getElementById('fr-list');if(!el)return;
+  let list=(S.consignments||[]).filter(c=>!scoped()||mine(c.from_location)||mine(c.to_location));
+  if(frFilter!=='all')list=list.filter(c=>c.status===frFilter);
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Connote</th><th>Carrier</th><th>Route</th><th>Dispatched</th><th>ETA</th><th>Status</th><th class="num">Cost</th></tr></thead><tbody>${list.map(c=>`<tr class="clickable" data-cn="${c.id}"><td class="mono">${esc(c.connote||c.code)}</td><td>${esc(c.carrier||'—')}</td><td>${c.from_location?loc(c.from_location).code:'—'} ${svg(I.arrow,12)} ${c.to_location?loc(c.to_location).code:'—'}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(c.dispatch_date)}</td><td style="white-space:nowrap;font-size:12.5px;color:${c.status!=='delivered'&&c.eta&&new Date(c.eta+'T00:00:00')<new Date(today()+'T00:00:00')?'var(--crit)':'var(--muted)'}">${fmtDate(c.eta)}</td><td>${cnPill(c.status)}</td><td class="num tnum">${c.cost?money(c.cost):'—'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.truck,34)}<div>No consignments${frFilter!=='all'?' ('+frFilter+')':''} yet.</div></div>`;
+  el.querySelectorAll('[data-cn]').forEach(r=>r.onclick=()=>openConsignment(r.dataset.cn));
+}
+function newConsignment(cn,presetTransfer){
+  const c=cn||{};
+  const locs=S.locations.filter(l=>l.active!==false);
+  const myLocs=scoped()?locs.filter(l=>mine(l.id)):locs;
+  // transfers that could be linked (dispatched / in transit / recent)
+  const trs=S.transfers.filter(t=>(!scoped()||mine(t.from_location)||mine(t.to_location))&&['approved','in_transit','partially_received','received'].includes(t.status)).slice(0,60);
+  const trOpts=`<option value="">— none —</option>`+trs.map(t=>`<option value="${t.id}">${esc(t.code)} · ${loc(t.from_location).code}→${loc(t.to_location).code}</option>`).join('');
+  const body=`<div class="grid2"><div class="field"><label>Carrier / freighter</label><input id="cn-carrier" value="${esc(c.carrier||'')}" placeholder="e.g. TNT, Border Express"></div>
+      <div class="field"><label>Connote / tracking number</label><input id="cn-connote" value="${esc(c.connote||'')}"></div></div>
+    <div class="field"><label>Link to transfer (optional)</label><select id="cn-tr">${trOpts}</select></div>
+    <div class="grid2"><div class="field"><label>From</label><select id="cn-from"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+      <div class="field"><label>To</label><select id="cn-to"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div></div>
+    <div class="grid2"><div class="field"><label>Dispatch date</label><input type="date" id="cn-disp" value="${c.dispatch_date||''}"></div><div class="field"><label>ETA</label><input type="date" id="cn-eta" value="${c.eta||''}"></div></div>
+    <div class="grid2"><div class="field"><label>Status</label><select id="cn-status"><option value="booked">Booked</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option><option value="exception">Exception</option></select></div>
+      <div class="field"><label>Freight cost (AUD)</label><input type="number" min="0" step="0.01" id="cn-cost" value="${c.cost||''}"></div></div>
+    <div class="field"><label>Tracking URL (optional)</label><input id="cn-url" value="${esc(c.tracking_url||'')}" placeholder="https://…"></div>
+    <div class="field"><label>Notes</label><textarea id="cn-notes" rows="2">${esc(c.notes||'')}</textarea></div>`;
+  modal(cn?'Edit consignment':'New consignment','Carrier connote',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cn-go">Save</button>`);
+  const setRoute=(fromId,toId)=>{document.getElementById('cn-from').value=fromId||'';document.getElementById('cn-to').value=toId||'';};
+  if(cn){setRoute(c.from_location,c.to_location);document.getElementById('cn-status').value=c.status||'booked';if(c.transfer_id)document.getElementById('cn-tr').value=c.transfer_id;}
+  else if(presetTransfer){const t=S.transfers.find(x=>x.id===presetTransfer);if(t){document.getElementById('cn-tr').value=t.id;setRoute(t.from_location,t.to_location);}}
+  document.getElementById('cn-tr').onchange=e=>{const t=S.transfers.find(x=>x.id===e.target.value);if(t)setRoute(t.from_location,t.to_location);};
+  document.getElementById('cn-go').onclick=async()=>{
+    const from=document.getElementById('cn-from').value||null,to=document.getElementById('cn-to').value||null;
+    if(!from&&!to)return toast('Pick a From or To centre',true);
+    if(scoped()&&!(from&&mine(from))&&!(to&&mine(to)))return toast('One of your centres must be on the consignment',true);
+    const row={transfer_id:document.getElementById('cn-tr').value||null,from_location:from,to_location:to,carrier:document.getElementById('cn-carrier').value.trim(),connote:document.getElementById('cn-connote').value.trim(),tracking_url:document.getElementById('cn-url').value.trim(),status:document.getElementById('cn-status').value,dispatch_date:document.getElementById('cn-disp').value||null,eta:document.getElementById('cn-eta').value||null,cost:parseFloat(document.getElementById('cn-cost').value)||0,notes:document.getElementById('cn-notes').value.trim()};
+    if(row.status==='delivered'&&!c.delivered_date)row.delivered_date=today();
+    let error;
+    if(cn){({error}=await sb.from('consignments').update(row).eq('id',c.id));}
+    else{row.created_by=ME&&ME.id;({error}=await sb.from('consignments').insert(row));}
+    if(error)return toast(error.message||'Save failed',true);
+    closeOverlay();toast('Consignment saved');await refreshOps([from,to].filter(Boolean));
+  };
+}
+function openConsignment(id){
+  const c=(S.consignments||[]).find(x=>x.id===id);if(!c)return;
+  const t=c.transfer_id?S.transfers.find(x=>x.id===c.transfer_id):null;
+  const body=`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Connote</dt><dd class="mono">${esc(c.connote||c.code)}</dd><dt>Carrier</dt><dd>${esc(c.carrier||'—')}</dd><dt>Route</dt><dd>${c.from_location?esc(loc(c.from_location).name):'—'} → ${c.to_location?esc(loc(c.to_location).name):'—'}</dd><dt>Status</dt><dd>${cnPill(c.status)}</dd><dt>Dispatched</dt><dd>${fmtDate(c.dispatch_date)}</dd><dt>ETA</dt><dd>${fmtDate(c.eta)}</dd>${c.delivered_date?`<dt>Delivered</dt><dd>${fmtDate(c.delivered_date)}</dd>`:''}<dt>Cost</dt><dd class="tnum">${c.cost?money(c.cost):'—'}</dd>${t?`<dt>Transfer</dt><dd class="mono">${esc(t.code)}</dd>`:''}</dl>${c.notes?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">${esc(c.notes)}</div>`:''}${c.tracking_url?`<div style="margin-top:10px"><a href="${esc(c.tracking_url)}" target="_blank" rel="noopener" class="btn sm">${svg(I.truck,14)} Track online</a></div>`:''}</div>`;
+  let act=`<button class="btn" data-close>Close</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="cn-del">Delete</button><button class="btn" id="cn-edit">Edit</button>`;
+  if(c.status!=='delivered')act+=`<button class="btn primary" id="cn-deliver">${svg(I.check,16)} Mark delivered</button>`;
+  slideover(c.connote||c.code,'Consignment',body,act);
+  document.getElementById('cn-edit').onclick=()=>newConsignment(c);
+  document.getElementById('cn-del').onclick=async()=>{if(!confirm('Delete this consignment?'))return;const{error}=await sb.from('consignments').delete().eq('id',c.id);if(error)return toast(error.message,true);closeOverlay();toast('Deleted');await refreshOps([c.from_location,c.to_location].filter(Boolean));};
+  const bd=document.getElementById('cn-deliver');if(bd)bd.onclick=async()=>{const{error}=await sb.from('consignments').update({status:'delivered',delivered_date:today()}).eq('id',c.id);if(error)return toast(error.message,true);closeOverlay();toast('Marked delivered');await refreshOps([c.from_location,c.to_location].filter(Boolean));};
+}
 function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
@@ -1947,18 +2042,22 @@ async function runTeamSync(){
 
 /* ---------- RPC wrapper (+ optional push our stock to Square) ---------- */
 async function callRpc(fn,args,okMsg,push){
-  const{error}=await sb.rpc(fn,args);
-  if(error){toast(error.message||'Action failed',true);return;}
+  const{data,error}=await sb.rpc(fn,args);
+  if(error){toast(error.message||'Action failed',true);return undefined;}
   closeOverlay();toast(okMsg||'Done');
   // Push the new count to Square in the BACKGROUND — don't make the user wait on it.
   if(push&&push.location_id){ sb.functions.invoke('square-push',{body:push}).catch(e=>console.error('square-push',e)); }
   // Refresh only what changed: operational tables + the affected location's stock.
   await refreshOps(push&&push.location_id?[push.location_id]:[]);
+  return data;
 }
+// Email the transfer's requester on each status change (requester-only). Fire-and-forget.
+function notifyTransfer(id,event){ if(!id)return; sb.functions.invoke('transfer-mail',{body:{transfer_id:id,event}}).then(()=>{},()=>{}); }
 function txItems(t){return (t.lines||[]).map(l=>l.item_id);}
-function doApprove(id){callRpc('approve_transfer',{p_id:id},'Approved');}
-function doCancel(id){callRpc('cancel_transfer',{p_id:id},'Cancelled');}
-function doDispatch(id){const t=S.transfers.find(x=>x.id===id);callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);}
+async function doSubmitDraft(id){const t=S.transfers.find(x=>x.id===id);await callRpc('submit_transfer_draft',{p_id:id},'Request submitted');notifyTransfer(id,'requested');}
+async function doApprove(id){await callRpc('approve_transfer',{p_id:id},'Approved');notifyTransfer(id,'approved');}
+async function doCancel(id){await callRpc('cancel_transfer',{p_id:id},'Cancelled');notifyTransfer(id,'cancelled');}
+async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);notifyTransfer(id,'in_transit');}
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost.</div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
@@ -2012,6 +2111,9 @@ document.addEventListener('click',e=>{
   const rc=e.target.closest('[data-receive]');if(rc){openReceive(rc.dataset.receive);return;}
   const td=e.target.closest('[data-tdel]');if(td){doDeleteTransfer(td.dataset.tdel);return;}
   const te=e.target.closest('[data-tedit]');if(te){openEditTransfer(te.dataset.tedit);return;}
+  const tde=e.target.closest('[data-tdraftedit]');if(tde){const t=S.transfers.find(x=>x.id===tde.dataset.tdraftedit);if(t)newTransfer(t);return;}
+  const tsu=e.target.closest('[data-tsubmit]');if(tsu){doSubmitDraft(tsu.dataset.tsubmit);return;}
+  const acn=e.target.closest('[data-addcn]');if(acn){newConsignment(null,acn.dataset.addcn);return;}
   const pp=e.target.closest('[data-print]');if(pp){const t=S.transfers.find(x=>x.id===pp.dataset.print);if(t)printPickList(t);return;}
   const pk=e.target.closest('[data-pick]');if(pk){openPicking(pk.dataset.pick);return;}
   const os=e.target.closest('[data-oship]');if(os){doShipOrder(os.dataset.oship);return;}
