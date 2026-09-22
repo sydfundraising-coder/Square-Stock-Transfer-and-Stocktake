@@ -14,6 +14,7 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 <script>
   /* Logo loader: tries several file names/extensions, falls back to the "S" mark + text.
      Put your logo file next to index.html (same folder) named one of these. */
@@ -1797,7 +1798,7 @@ function openInvoice(id){
   const inv=invList.find(x=>x.id===id)||(S.invoices||[]).find(x=>x.id===id);if(!inv)return;
   const rateTxt=(inv.gst_rate||10)+'%';
   const rows=(inv.lines||[]).map(l=>`<tr><td>${esc(l.description||(l.item_id?item(l.item_id).name:'—'))}</td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_price)}</td><td class="num tnum">${money(l.line_total)}</td></tr>`).join('');
-  let act=`<button class="btn" data-close>Close</button><button class="btn" id="iv-print">${svg(I.receipt,16)} Print / PDF</button>`;
+  let act=`<button class="btn" data-close>Close</button><button class="btn" id="iv-print">${svg(I.receipt,16)} Download PDF</button>`;
   if(inv.status!=='void')act+=`<button class="btn" id="iv-email">${svg(I.order,16)} Email</button>`;
   if(inv.status==='draft')act+=`<button class="btn" id="iv-edit">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-del">Delete</button><button class="btn primary" id="iv-issue">${svg(I.check,16)} Issue</button>`;
   else if(inv.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-void">Void</button><button class="btn primary" id="iv-paid">${svg(I.check,16)} Mark paid</button>`;
@@ -1845,7 +1846,7 @@ function printInvoice(inv){
       ${s.bank_details?`<div style="white-space:pre-line">${esc(s.bank_details)}</div>`:`<div style="color:#999">(add your bank details in Invoice settings)</div>`}
       <div style="margin-top:6px"><b>Payment reference:</b> ${esc(inv.code)} — please use your invoice number as the payment reference.</div>
     </div>
-    ${(inv.notes||s.default_terms)?`<div style="margin-top:12px;font-size:12px;color:#333;white-space:pre-line">${esc(inv.notes||s.default_terms)}</div>`:''}
+    ${inv.notes?`<div style="margin-top:12px;font-size:12px;color:#333;white-space:pre-line"><b>Notes:</b> ${esc(inv.notes)}</div>`:''}
     ${s.terms_conditions?`<div style="margin-top:18px;font-size:10.5px;color:#555;border-top:1px solid #ddd;padding-top:10px;white-space:pre-line"><b>Terms &amp; Conditions</b>\n${esc(s.terms_conditions)}</div>`:''}
     <div style="margin-top:34px;display:flex;gap:36px;font-size:12px;color:#333">
       <div style="flex:1">Received by (name):<div style="border-bottom:1px solid #999;height:22px;margin-top:16px"></div></div>
@@ -1855,8 +1856,22 @@ function printInvoice(inv){
     ${s.footer_note?`<div style="margin-top:18px;text-align:center;font-size:11px;color:#888">${esc(s.footer_note)}</div>`:''}
   </div>`;
   let box=document.getElementById('invoicePrint');if(!box){box=document.createElement('div');box.id='invoicePrint';document.body.appendChild(box);}
+  // Preferred: generate a real PDF (no browser URL/date/title in the margins).
+  if(window.html2pdf){
+    box.style.cssText='position:fixed;left:-10000px;top:0;display:block;background:#fff;width:800px';
+    box.innerHTML=`<div style="width:800px;padding:30px;background:#fff;color:#111;font-family:Arial,Helvetica,sans-serif">${html}</div>`;
+    toast('Preparing PDF…');
+    html2pdf().set({margin:8,filename:inv.code+'.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}})
+      .from(box.firstElementChild).save()
+      .then(()=>{box.style.cssText='';box.innerHTML='';})
+      .catch(()=>{box.style.cssText='';printInvoiceFallback(box,html,inv);});
+    return;
+  }
+  printInvoiceFallback(box,html,inv);
+}
+function printInvoiceFallback(box,html,inv){
   box.innerHTML=html;document.body.classList.add('printing-invoice');
-  const _t=document.title;document.title=inv.code; // browsers print the page title in the margin — use the invoice number instead of the app name
+  const _t=document.title;document.title=inv.code;
   const done=()=>{document.body.classList.remove('printing-invoice');document.title=_t;window.removeEventListener('afterprint',done);};
   window.addEventListener('afterprint',done);
   setTimeout(()=>window.print(),60);
