@@ -2192,7 +2192,22 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
 }
 async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function fnErr(error){try{if(error&&error.context&&typeof error.context.json==='function'){const b=await error.context.json();return b.error||JSON.stringify(b);}}catch(e){}return (error&&error.message)||'failed';}
-async function runVelocity(){toast('Reading 12 months of sales from Square…');try{const{data,error}=await sb.functions.invoke('square-sales');if(error){toast('Sales update failed: '+await fnErr(error),true);return;}if(data&&data.error){toast(data.error,true);return;}toast('Sales updated — '+((data&&data.itemsWithSales)||0)+' item lines from '+((data&&data.orders)||0)+' orders');refresh();}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function runVelocity(){
+  const locs=S.locations.filter(l=>l.square_location_id).map(l=>l.id);
+  if(!locs.length)return toast('No Square-linked locations — run a full sync first',true);
+  const size=3;let orders=0,items=0,done=0;
+  try{
+    for(let i=0;i<locs.length;i+=size){
+      const chunk=locs.slice(i,i+size);
+      toast('Updating sales… '+done+'/'+locs.length+' centres');
+      const{data,error}=await sb.functions.invoke('square-sales',{body:{location_ids:chunk}});
+      if(error){toast('Sales update failed: '+await fnErr(error),true);return;}
+      if(data&&data.error){toast(data.error,true);return;}
+      orders+=(data&&data.orders)||0;items+=(data&&data.itemsWithSales)||0;done+=chunk.length;
+    }
+    toast('Sales updated — '+items+' item lines from '+orders+' orders');refresh();
+  }catch(e){toast('Failed: '+(e.message||e),true);}
+}
 async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}logEvent('Pushed all stock to Square ('+n+' locations)');toast('Pushed '+n+' location(s) to Square');}
 /* fire-and-forget system-event log; tolerant of the function not existing yet */
 function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(p&&typeof p.then==='function')p.then(()=>{},()=>{});}catch(e){}}
