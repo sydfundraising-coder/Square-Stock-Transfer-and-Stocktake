@@ -1439,7 +1439,7 @@ function reviewStocktake(st){
     ${uncounted>0?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px"><input type="checkbox" id="st-zero" style="margin-top:3px"><span>Treat the ${uncounted} not-counted item(s) as <b>0</b> (full count). Leave unticked to keep their current stock.</span></label>`:''}
     ${rows.length?`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">System</th><th class="num">Counted</th><th class="num">Diff</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="banner info">${svg(I.check,17)}<div>No variances — everything matches.</div></div>`}`;
   modal('Submit '+st.code,'Final review — cannot be undone',body,`<button class="btn" data-close>Back</button><button class="btn primary" id="st-confirm">Submit count</button>`);
-  document.getElementById('st-confirm').onclick=()=>{
+  document.getElementById('st-confirm').onclick=async()=>{
     let counts=stCountsArray();const zero=document.getElementById('st-zero');
     if(zero&&zero.checked){(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});}
     if(isHub(st.location_id)){const miss=counts.filter(c=>{const cnt=+c.counted;return cnt>0&&(!(stArea[c.line]||'').trim()||!(stAisle[c.line]||'').trim());});if(miss.length)return toast('Central Warehouse: enter a storage area and aisle # for every counted item ('+miss.length+' missing)',true);}
