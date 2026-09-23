@@ -1857,7 +1857,7 @@ function cycleCountModal(){
     if(made===1&&firstId)openStock(firstId);
   };
 }
-let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={};
+let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={}, stExp={};
 function persistStLocations(st){const rows=(st.lines||[]).filter(l=>(stArea[l.id]||'')!==''||(stAisle[l.id]||'')!=='').map(l=>({item:l.item_id,area:stArea[l.id]||'',aisle:stAisle[l.id]||''}));if(rows.length)setItemLocations(st.location_id,rows,true);}
 function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
 function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
@@ -1865,7 +1865,7 @@ function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=areaOf(st.location_id,l.item_id);stAisle[l.id]=aisleOf(st.location_id,l.item_id);}); }
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=areaOf(st.location_id,l.item_id);stAisle[l.id]=aisleOf(st.location_id,l.item_id);stExp[l.id]=((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';}); }
   stCurrentId=id;
   const camOk=('BarcodeDetector' in window);
   let head='';
@@ -1909,7 +1909,11 @@ function reviewStocktake(st){
     if(isHub(st.location_id)){const miss=counts.filter(c=>{const cnt=+c.counted;return cnt>0&&(!(stArea[c.line]||'').trim()||!(stAisle[c.line]||'').trim());});if(miss.length)return toast('Central Warehouse: enter a storage area and aisle # for every counted item ('+miss.length+' missing)',true);}
     persistStLocations(st);
     await callRpc('finalize_stocktake',{p_id:st.id,p_counts:counts},'Stock take submitted',{location_id:st.location_id});
-    if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,+c.counted||0)});}catch(e){console.error('bin_reset',e);}}await loadBins();renderView();}
+    if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,+c.counted||0)});}catch(e){console.error('bin_reset',e);}}await loadBins();}
+    // Backfill / update expiry: any counted line with a Best Before date sets that item's batch to the counted qty.
+    let didExp=false;for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;const exp=stExp[c.line];if(exp){try{await sb.rpc('batch_reset',{p_loc:st.location_id,p_item:l.item_id,p_qty:Math.max(0,+c.counted||0),p_expiry:exp});didExp=true;}catch(e){console.error('batch_reset',e);}}}
+    if(didExp)await loadBatches();
+    renderView();
   };
 }
 function saveAmend(st){const counts=stCountsArray();if(!counts.length)return toast('No counts to save',true);persistStLocations(st);callRpc('amend_stocktake',{p_id:st.id,p_counts:counts},'Count amended',{location_id:st.location_id});}
@@ -1921,7 +1925,7 @@ function renderStRows(st,editable,filter){
   return lines.map(l=>{const it=item(l.item_id);
     if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
       const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"></div></div>`;}
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"><input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional — sets this item's expiry)" style="${ist}"></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
@@ -1929,7 +1933,8 @@ function renderStRows(st,editable,filter){
 function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="st-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
 function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});
   document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();});
-  document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();});}
+  document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();});
+  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;});}
 function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const line=(st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this count: '+code,true);return;}const cur=+stCounts[line.id]||0;stCounts[line.id]=cur+1;toast('+1 '+item(line.item_id).name+' = '+(cur+1));saveStProgress(st,false);updateStProgress();}
 function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce){if(st&&st.lines)persistStLocations(st);toast(error?('Save failed: '+error.message):'Progress saved',!!error);}};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
 async function openScanner(st){
