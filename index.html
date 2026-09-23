@@ -459,15 +459,29 @@ const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
 /* ---------- data loading ---------- */
 // Page through a big table using PARALLEL range requests (much faster than one page at a time).
 async function loadTableParallel(table,sel,filter){
-  const size=1000;
+  const size=1000, CONC=4;   // limited concurrency — many parallel full-table reads 500 on shared Postgres
+  const fetchPage=async(p)=>{
+    for(let attempt=0;attempt<2;attempt++){
+      let qy=sb.from(table).select(sel).range(p*size,p*size+size-1);if(filter)qy=filter(qy);
+      const{data,error}=await qy;
+      if(!error)return data||[];
+      if(attempt===0)await new Promise(r=>setTimeout(r,500)); // brief backoff, then retry once
+      else console.error(table+' page '+p+' failed:',error.message||error);
+    }
+    return [];
+  };
   try{
     let head=sb.from(table).select(sel.split(',')[0],{count:'exact',head:true});if(filter)head=filter(head);
     const{count,error}=await head;if(error)throw error;
     const pages=Math.max(1,Math.ceil((count||0)/size));
-    const reqs=[];for(let p=0;p<pages;p++){let qy=sb.from(table).select(sel).range(p*size,p*size+size-1);if(filter)qy=filter(qy);reqs.push(qy);}
-    const res=await Promise.all(reqs);const rows=[];res.forEach(r=>{if(r&&!r.error&&r.data)rows.push(...r.data);});return rows;
-  }catch(e){ // fallback: sequential
-    let rows=[],from=0;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)break;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;
+    const rows=[];
+    for(let start=0;start<pages;start+=CONC){
+      const batch=[];for(let p=start;p<Math.min(pages,start+CONC);p++)batch.push(fetchPage(p));
+      (await Promise.all(batch)).forEach(d=>rows.push(...d));
+    }
+    return rows;
+  }catch(e){ // fallback: fully sequential
+    let rows=[],from=0;for(;;){const d=await fetchPage(from/size);rows=rows.concat(d);if(d.length<size)break;from+=size;}return rows;
   }
 }
 let _heavyLoading=false;
@@ -475,13 +489,17 @@ let _heavyLoading=false;
 async function loadHeavyBg(){
   if(_heavyLoading)return;_heavyLoading=true;
   try{
-    const stockFilter=(scoped()&&MYLOCS.length)?(qy)=>qy.in('location_id',MYLOCS):null;
-    const[stockRows,velRows]=await Promise.all([
-      loadTableParallel('stock','location_id,item_id,on_hand,store_area,aisle',stockFilter),
-      loadTableParallel('velocity','location_id,item_id,monthly_avg',stockFilter)
-    ]);
-    const st={},bn={};stockRows.forEach(r=>{const k=r.location_id+'__'+r.item_id;st[k]=r.on_hand;if(r.store_area||r.aisle)bn[k]={area:r.store_area||'',aisle:r.aisle||''};});S.stock=st;S.bin=bn;
-    const vl={};velRows.forEach(r=>{vl[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});S.vel=vl;
+    // Load PER CENTRE, filtered by the indexed location_id — never whole-table OFFSET paging,
+    // which times out (500) on a 34k-row table. Mirrors the fast targeted refresh.
+    const locs=(scoped()&&MYLOCS.length)?MYLOCS.slice():S.locations.map(l=>l.id);
+    const st={},bn={},vl={};const size=1000,CONC=4;
+    const pageAllFor=async(table,sel,locId,onRow)=>{let from=0;for(;;){const{data,error}=await sb.from(table).select(sel).eq('location_id',locId).range(from,from+size-1);if(error){console.error(table+' '+locId+':',error.message||error);break;}(data||[]).forEach(onRow);if(!data||data.length<size)break;from+=size;}};
+    const loadOne=async(locId)=>{
+      await pageAllFor('stock','location_id,item_id,on_hand,store_area,aisle',locId,r=>{const k=r.location_id+'__'+r.item_id;st[k]=r.on_hand;if(r.store_area||r.aisle)bn[k]={area:r.store_area||'',aisle:r.aisle||''};});
+      await pageAllFor('velocity','location_id,item_id,monthly_avg',locId,r=>{vl[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});
+    };
+    for(let i=0;i<locs.length;i+=CONC){await Promise.all(locs.slice(i,i+CONC).map(loadOne));}
+    S.stock=st;S.bin=bn;S.vel=vl;
     recomputeItemTotals();
     _heavyLoading=false;
     const app=document.getElementById('app');if(app&&!app.hidden){renderSq();renderView();}
@@ -734,7 +752,7 @@ function ssCalc(x,cfg){
 }
 /* worked-example self-test → console (run from Settings tab). Returns pass count. */
 function ssSelfTest(){
-  const cfg=ssSettings();
+  const cfg=Object.assign({},SS_DEFAULTS); // worked examples assume default settings
   const mk=o=>Object.assign({onHand:0,onOrder:0,incTr:0,outTr:0,u60:0,u180:0,u365:0,uLast90:0,uPrev90:0,ageDays:null,seasonal:false,packSize:1,minStock:null,safetyDays:cfg.safety_days},o);
   const T=[
     ['ex1 low/reorder 80', mk({ageDays:200,u180:180,u365:180,u60:30,onHand:40}), r=>r.ads===1&&r.doc===40&&r.rop===60&&r.maxStock===120&&r.key==='low'&&r.orderQty===80],
@@ -993,7 +1011,7 @@ function ssEditItem(id){
   const it=item(id);const ov=ssOverride(id);
   const supOpts=`<option value="">— none —</option>`+S.suppliers.map(s=>`<option value="${s.id}"${ov.preferred_supplier_id===s.id?' selected':''}>${esc(s.name)}</option>`).join('');
   modal('Item settings',it.name,`<div class="grid2">
-      <div class="field"><label>Pack / carton size <span style="color:var(--faint);font-weight:400">rounding</span></label><input id="ov-pack" type="number" min="1" value="${ov.pack_size||''}" placeholder="1"></div>
+      <div class="field"><label>Order rounding (packets) <span style="color:var(--faint);font-weight:400">round suggested orders up to</span></label><input id="ov-pack" type="number" min="1" value="${ov.pack_size||''}" placeholder="1"></div>
       <div class="field"><label>Minimum stock <span style="color:var(--faint);font-weight:400">slow movers</span></label><input id="ov-min" type="number" min="0" value="${ov.min_stock||''}" placeholder="—"></div>
       <div class="field"><label>Safety days override</label><input id="ov-safety" type="number" min="0" value="${ov.safety_override||''}" placeholder="by ABC class"></div>
       <div class="field"><label>ABC override</label><select id="ov-abc"><option value="">Auto</option><option value="A"${ov.abc_override==='A'?' selected':''}>A</option><option value="B"${ov.abc_override==='B'?' selected':''}>B</option><option value="C"${ov.abc_override==='C'?' selected':''}>C</option></select></div>
@@ -2190,6 +2208,7 @@ function openItem(id){
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Ref</th><th>Centre</th><th>Type</th><th class="num">Qty</th><th>By</th><th></th></tr></thead><tbody>${preq.map(r=>`<tr><td class="mono">${esc(r.code||'')}</td><td>${loc(r.location_id).code}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'')}</td></tr>`).join('')}</tbody></table></div>`:'';
   const body=`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Category</dt><dd>${esc(it.category||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div>
+    ${(ROLE==='super_admin'||ROLE==='national_admin')?`<div class="card pad" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><div style="font-weight:600;font-size:13px">Packets per carton (box)</div><div style="font-size:11.5px;color:var(--muted)">Drives the box figures shown on transfers, orders, picking & reports</div></div><div class="spacer"></div><input id="it-ppc" type="number" min="1" value="${it.pack_per_carton||''}" placeholder="e.g. 24" style="max-width:120px"><button class="btn primary" id="it-ppc-save">Save</button></div>`:(it.pack_per_carton?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${it.pack_per_carton} packets / carton</div>`:'')}
     <h3 style="font-size:13px;margin:0 0 8px">Stock by location</h3>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th>Stored at</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${preqHtml}
@@ -2206,6 +2225,7 @@ function openItem(id){
   document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
   const ihr=document.getElementById('ih-range');if(ihr){ihr.value=ihRange;ihr.onchange=e=>{ihRange=e.target.value;renderItemHistory(id);};}
   document.getElementById('ih-csv').onclick=()=>{const rows=(window._ihRows||[]);downloadCSV('item-history_'+(it.sku||it.name).replace(/[^A-Za-z0-9_-]/g,'')+'_'+today()+'.csv',['When','Type','Centre','Qty','Reference','Note'],rows.map(r=>[fmtDT(r.ts),lkind(r.kind).l,r.location_id?loc(r.location_id).name:'',r.qty_delta,r.reference||'',r.note||'']));toast('Item history exported ('+rows.length+' rows)');};
+  const ppcSave=document.getElementById('it-ppc-save');if(ppcSave)ppcSave.onclick=async()=>{const n=parseInt(document.getElementById('it-ppc').value,10);if(!(n>0))return toast('Enter packets per carton (a whole number)',true);const{error}=await sb.rpc('update_items_cost_carton',{p_rows:[{item:id,ppc:n}]});if(error)return toast(error.message||'Save failed — did you run 28_cost_carton.sql?',true);const itx=S.items.find(x=>x.id===id);if(itx)itx.pack_per_carton=n;toast('Saved — quantities now show in boxes');renderView();};
   const bt=document.getElementById('it-transfer');if(bt)bt.onclick=()=>newTransfer(id);
   const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
   const bd=document.getElementById('it-dmg');if(bd)bd.onclick=()=>openDamageRequest(id);
