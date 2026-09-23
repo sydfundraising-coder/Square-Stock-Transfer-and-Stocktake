@@ -466,6 +466,7 @@ async function loadAll(){
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadBins();
+    loadStockStatusData();
     loadHeavyBg(); // background — don't block first paint on 34k stock rows
     return true;
   }catch(e){ toast('Could not load data: '+(e.message||e),true); console.error(e); return false; }
@@ -506,7 +507,7 @@ async function reloadStockFor(locs){
   rows.forEach(r=>{const k=r.location_id+'__'+r.item_id;S.stock[k]=r.on_hand;if(r.store_area||r.aisle)S.bin[k]={area:r.store_area||'',aisle:r.aisle||''};});
   recomputeItemTotals();
 }
-async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); await loadBins(); renderNav(); renderSq(); renderView(); }
+async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); await loadBins(); await loadStockStatusData(); renderNav(); renderSq(); renderView(); }
 
 /* ---------- auth ---------- */
 async function boot(){
@@ -551,6 +552,7 @@ function renderRoleChip(prof){
 const NAV=[
   {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
+  {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview',need:'audit.view'},
   {id:'insights',label:'Centre Insights',icon:I.chart,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
@@ -583,14 +585,325 @@ function renderNav(){
 }
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
+/* =========================================================
+   STOCK STATUS REPORT  (excess / reorder / dead-stock by item & category)
+   Backend: 24_stock_status.sql + extended square-sales windows.
+   ========================================================= */
+const SS={tab:'report',store:null,fStatus:'all',fSupplier:'all',fAbc:'all',fCat:'all',q:'',_fr:null,_fl:null,_all:null};
+const SS_ST={
+  out:{l:'Out of Stock',c:'#dc2626'}, out_inc:{l:'Out of Stock – Incoming',c:'#dc2626'},
+  low:{l:'Low / Reorder',c:'#ea580c'}, low_new:{l:'Low / Reorder (New)',c:'#ea580c'},
+  low_onorder:{l:'Low – On Order',c:'#f59e0b'},
+  normal:{l:'Normal',c:'#16a34a'}, excess:{l:'Excess',c:'#2563eb'},
+  slow:{l:'Slow Moving',c:'#ca8a04'}, dead:{l:'Dead Stock',c:'#6b7280'},
+  clearance:{l:'Clearance Required',c:'#7c3aed'}, new:{l:'New Item',c:'#0d9488'},
+  seasonal:{l:'Seasonal – manual review',c:'#4f46e5'}, inactive:{l:'Inactive',c:'#9ca3af'}
+};
+function ssPill(key,extra){const s=SS_ST[key]||{l:key,c:'#6b7280'};const lbl=extra||s.l;return `<span style="background:${s.c}22;color:${s.c};border:1px solid ${s.c}55;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap">${esc(lbl)}</span>`;}
+const SS_DEFAULTS={lead_days:45,safety_days:15,safety_a:20,safety_b:15,safety_c:10,max_cover_days:120,new_item_days:60,slow_units:10,slow_window_days:60,dead_days:180,clearance_days:365,pending_warn_days:7,weighted_ads:false};
+function ssSettings(){return Object.assign({},SS_DEFAULTS,S.rptCfg||{});}
+function ssOverride(id){return (S.itemOv&&S.itemOv[id])||{};}
+function ssWin(loc,id){return (S.win&&S.win[loc+'__'+id])||{u60:0,u180:0,u365:0,u_last90:0,u_prev90:0,last_sale_date:null};}
+async function ssFetchAll(table,order){let rows=[],from=0;const size=1000;for(;;){let q=sb.from(table).select('*').range(from,from+size-1);if(order)q=q.order(order);const{data,error}=await q;if(error){console.error(table,error);break;}rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;}
+async function loadStockStatusData(){try{
+  const cfgP=sb.from('report_settings').select('*').eq('id',1).maybeSingle();
+  const ovP=sb.from('item_report_overrides').select('*');
+  const tlP=sb.from('transfer_status_log').select('*').order('changed_at',{ascending:false}).limit(500);
+  const [cfgR,ovR,win,tlR]=await Promise.all([cfgP,ovP,ssFetchAll('item_sales_windows'),tlP]);
+  if(cfgR&&cfgR.data)S.rptCfg=cfgR.data;
+  S.itemOv={};((ovR&&ovR.data)||[]).forEach(o=>S.itemOv[o.item_id]=o);
+  S.win={};(win||[]).forEach(w=>{S.win[w.location_id+'__'+w.item_id]=w;});
+  S.tlog=((tlR&&tlR.data)||[]);
+}catch(e){console.error('loadStockStatusData',e);}}
+function ssDaysBetween(a,b){return Math.floor((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);}
+function ssBuildFirstReceipt(){const m={};const put=(loc,id,d)=>{if(!d||!loc||!id)return;d=String(d).slice(0,10);const k=loc+'__'+id;if(!m[k]||d<m[k])m[k]=d;};
+  (S.receipts||[]).forEach(r=>{(r.lines||[]).forEach(l=>put(r.location_id,l.item_id,r.received_on));});
+  (S.transfers||[]).forEach(t=>{if(t.received_at)(t.lines||[]).forEach(l=>{if((l.qty_received||0)>0)put(t.to_location,l.item_id,t.received_at);});});
+  (S.orders||[]).forEach(o=>{if(o.status==='received'&&o.received_at)(o.lines||[]).forEach(l=>put(o.location_id,l.item_id,o.received_at));});
+  return m;}
+function ssBuildFlows(){const inc={},out={},incPO={},eta={};const add=(m,loc,id,q)=>{if(!q||!loc||!id)return;const k=loc+'__'+id;m[k]=(m[k]||0)+q;};
+  (S.transfers||[]).forEach(t=>{const st=t.status;(t.lines||[]).forEach(l=>{const rem=Math.max(0,(l.qty_dispatched||0)-(l.qty_received||0));
+    if(st==='requested'||st==='approved')add(inc,t.to_location,l.item_id,l.qty_requested||0);
+    else if(st==='in_transit'||st==='partially_received')add(inc,t.to_location,l.item_id,rem);
+    if(st==='approved')add(out,t.from_location,l.item_id,l.qty_requested||0);
+    else if(st==='in_transit'||st==='partially_received')add(out,t.from_location,l.item_id,rem);
+  });});
+  (S.orders||[]).forEach(o=>{if(o.status==='placed'||o.status==='shipped'){(o.lines||[]).forEach(l=>{add(incPO,o.location_id,l.item_id,l.qty||0);const k=o.location_id+'__'+l.item_id;if(o.expected_on&&(!eta[k]||o.expected_on<eta[k]))eta[k]=o.expected_on;});}});
+  return {inc,out,incPO,eta};}
+/* pure calculation + classification (unit-tested by ssSelfTest) */
+function ssCalc(x,cfg){
+  const incoming=(x.onOrder||0)+(x.incTr||0);
+  const outTr=(x.outTr||0);
+  const available=(x.onHand||0)+incoming-outTr;
+  const age=x.ageDays;
+  let ads;
+  if(cfg.weighted_ads&&age!=null&&age>180){ads=((x.uLast90*0.6)+(x.uPrev90*0.4))/90;}
+  else{const denom=(age!=null&&age<180)?Math.max(age,1):180;ads=x.u180/denom;}
+  ads=Math.round(ads*1000)/1000;
+  const doc=ads>0?available/ads:Infinity;
+  const rop=ads*(cfg.lead_days+x.safetyDays);
+  const maxStock=ads*cfg.max_cover_days;
+  const pack=(x.packSize&&x.packSize>0)?x.packSize:1;
+  const roundUp=q=>Math.ceil(Math.max(0,q)/pack)*pack;
+  const soldLast180=x.u180>0;
+  let key;
+  if(x.onHand===0&&incoming===0&&x.u180===0&&age!=null&&age>=cfg.new_item_days)key='inactive';
+  else if(x.onHand===0&&(soldLast180||age==null||age<cfg.new_item_days))key=incoming>0?'out_inc':'out';
+  else if(x.seasonal)key='seasonal';
+  else if(age!=null&&age<cfg.new_item_days)key=(doc<60)?'low_new':'new';
+  else if(x.onHand>0&&((x.u365===0&&age!=null&&age>=cfg.clearance_days)||(ads>0&&doc>cfg.clearance_days)))key='clearance';
+  else if(x.onHand>0&&x.u180===0&&age!=null&&age>=cfg.dead_days)key='dead';
+  else if(age!=null&&age>=cfg.new_item_days&&x.u60<cfg.slow_units)key='slow';
+  else if(doc<60)key='low';
+  else if(doc<=cfg.max_cover_days)key='normal';
+  else if(doc<=cfg.clearance_days)key='excess';
+  else key='normal';
+  let note=(age==null)?'Data missing':'';
+  let orderQty=0;
+  if(key==='dead'||key==='clearance'||key==='excess'||key==='inactive'||key==='new')orderQty=0;
+  else if(key==='slow')orderQty=(x.minStock&&available<x.minStock)?roundUp(x.minStock-available):0;
+  else if(available<=rop)orderQty=roundUp(maxStock-available);
+  // "Low – On Order": on hand alone below 60 days but incoming lifts it to 60+ (kept as a note; status stays healthy per worked examples)
+  if((key==='normal'||key==='excess')&&ads>0&&incoming>0){const docNoInc=(available-incoming)/ads;if(docNoInc<60){note=note||'Low – On Order (covered by incoming)';}}
+  const warn=[];
+  if((key==='dead'||key==='clearance'||key==='slow')&&incoming>0)warn.push('Check incoming stock – item not selling');
+  if(outTr>0&&(key==='out'||key==='out_inc'||key==='low'||key==='low_new'))warn.push('Transfer will leave this store short');
+  return {incoming,available,ads,doc,rop,maxStock,orderQty,key,note,warn};
+}
+/* worked-example self-test → console (run from Settings tab). Returns pass count. */
+function ssSelfTest(){
+  const cfg=ssSettings();
+  const mk=o=>Object.assign({onHand:0,onOrder:0,incTr:0,outTr:0,u60:0,u180:0,u365:0,uLast90:0,uPrev90:0,ageDays:null,seasonal:false,packSize:1,minStock:null,safetyDays:cfg.safety_days},o);
+  const T=[
+    ['ex1 low/reorder 80', mk({ageDays:200,u180:180,u365:180,u60:30,onHand:40}), r=>r.ads===1&&r.doc===40&&r.rop===60&&r.maxStock===120&&r.key==='low'&&r.orderQty===80],
+    ['ex2 slow', mk({ageDays:100,u60:7,u180:20,u365:20,onHand:15}), r=>r.key==='slow'],
+    ['ex3 not slow', mk({ageDays:100,u60:12,u180:60,u365:60,onHand:20}), r=>r.key!=='slow'],
+    ['ex4 new (20 left)', mk({ageDays:40,u180:3,u365:3,u60:3,onHand:20}), r=>r.key==='new'],
+    ['ex5 low new', mk({ageDays:30,u180:40,u365:40,u60:40,onHand:20}), r=>Math.abs(r.ads-1.333)<0.01&&r.doc<16&&r.doc>14&&r.key==='low_new'],
+    ['ex6 slow via created', mk({ageDays:70,u60:5,u180:5,u365:5,onHand:10}), r=>r.key==='slow'],
+    ['ex7 dead', mk({ageDays:250,u180:0,u365:5,onHand:15}), r=>r.key==='dead'],
+    ['ex8 clearance', mk({ageDays:400,u180:0,u365:0,onHand:15}), r=>r.key==='clearance'],
+    ['ex9 normal on order', mk({ageDays:300,u180:180,u365:365,u60:60,onHand:10,onOrder:60}), r=>r.available===70&&Math.round(r.doc)===70&&r.key==='normal'&&r.orderQty===0],
+    ['ex10 normal incoming tr', mk({ageDays:300,u180:180,u365:365,u60:60,onHand:10,incTr:60}), r=>r.available===70&&r.key==='normal'&&r.orderQty===0],
+    ['ex11 tr rejected→low 110', mk({ageDays:300,u180:180,u365:365,u60:60,onHand:10}), r=>r.available===10&&r.key==='low'&&r.orderQty===110],
+    ['ex12 out incoming', mk({ageDays:300,u180:180,u365:365,u60:60,onHand:0,incTr:30}), r=>r.key==='out_inc'],
+    ['ex13 outgoing short', mk({ageDays:300,u180:180,u365:365,u60:60,onHand:30,outTr:20}), r=>r.available===10&&r.key==='low'&&r.warn.some(w=>/leave this store short/.test(w))]
+  ];
+  let pass=0;const out=[];
+  T.forEach(([name,inp,ok])=>{const r=ssCalc(inp,cfg);const good=!!ok(r);if(good)pass++;out.push((good?'✓':'✗')+' '+name+'  → '+r.key+' ads='+r.ads+' doc='+(r.doc===Infinity?'∞':Math.round(r.doc))+' order='+r.orderQty);});
+  console.log('%cStock Status self-test: '+pass+'/'+T.length+' passed',(pass===T.length?'color:#16a34a':'color:#dc2626')+';font-weight:bold');
+  out.forEach(l=>console.log(l));
+  return {pass,total:T.length,lines:out};
+}
+/* build the per-store row set with calc + ABC */
+function ssRows(locId){
+  const cfg=ssSettings();const fr=SS._fr||{},fl=SS._fl||{inc:{},out:{},incPO:{},eta:{}};const td=today();
+  const rows=S.items.filter(i=>i.active!==false).map(it=>{
+    const id=it.id,k=locId+'__'+id;const soh=onHand(locId,id);const w=ssWin(locId,id),ov=ssOverride(id);
+    const start=fr[k]||(it.created_at?String(it.created_at).slice(0,10):null);
+    const age=start?Math.max(0,ssDaysBetween(start,td)):null;
+    const incTr=fl.inc[k]||0,outTr=fl.out[k]||0,onOrder=fl.incPO[k]||0,eta=fl.eta[k]||null;
+    const rev180=(w.u180||0)*(it.price||it.unit_cost||0);
+    return {store:locId,it,id,soh,w,ov,start,age,incTr,outTr,onOrder,eta,rev180};
+  });
+  const ranked=rows.filter(r=>r.rev180>0).sort((a,b)=>b.rev180-a.rev180);
+  const totalRev=ranked.reduce((s,r)=>s+r.rev180,0);let cum=0;
+  ranked.forEach(r=>{cum+=r.rev180;const share=totalRev>0?cum/totalRev:1;r.abc=share<=0.8?'A':(share<=0.95?'B':'C');});
+  rows.forEach(r=>{if(r.ov.abc_override)r.abc=r.ov.abc_override;else if(!r.abc)r.abc='C';
+    const safety=(r.ov.safety_override!=null&&r.ov.safety_override!=='')?+r.ov.safety_override:(r.abc==='A'?cfg.safety_a:r.abc==='B'?cfg.safety_b:cfg.safety_c);
+    r.safety=safety;
+    r.calc=ssCalc({onHand:r.soh,onOrder:r.onOrder,incTr:r.incTr,outTr:r.outTr,u60:r.w.u60||0,u180:r.w.u180||0,u365:r.w.u365||0,uLast90:r.w.u_last90||0,uPrev90:r.w.u_prev90||0,ageDays:r.age,seasonal:!!r.ov.seasonal,packSize:r.ov.pack_size,minStock:r.ov.min_stock,safetyDays:safety},cfg);
+  });
+  return rows;
+}
+function ssPrep(){SS._fr=ssBuildFirstReceipt();SS._fl=ssBuildFlows();SS._all={};visLocs().forEach(s=>{SS._all[s]=ssRows(s);});
+  SS._surplus={};visLocs().forEach(s=>{(SS._all[s]||[]).forEach(r=>{if(r.soh>0&&['excess','slow','dead'].includes(r.calc.key)){(SS._surplus[r.id]=SS._surplus[r.id]||[]).push({store:s,qty:r.calc.available>0?r.calc.available:r.soh});}});});}
+function ssStoreRows(){if(SS.store==='all'){let all=[];Object.values(SS._all).forEach(a=>all=all.concat(a));return all;}return SS._all[SS.store]||[];}
+/* recently cancelled/rejected transfers → items to flag on top */
+function ssRecentCancelKeys(){const keys={};const cut=Date.now()-21*864e5;
+  (S.tlog||[]).forEach(g=>{if(g.new_status!=='cancelled')return;if(new Date(g.changed_at).getTime()<cut)return;const t=(S.transfers||[]).find(x=>x.id===g.transfer_id);if(!t)return;(t.lines||[]).forEach(l=>{keys[t.to_location+'__'+l.item_id]={code:t.code,from:t.from_location};});});
+  return keys;}
+function ssPendingMap(){const cfg=ssSettings();const m={};const td=today();
+  (S.transfers||[]).forEach(t=>{if(t.status!=='requested')return;const age=ssDaysBetween(String(t.created_at).slice(0,10),td);if(age<=cfg.pending_warn_days)return;(t.lines||[]).forEach(l=>{m[t.to_location+'__'+l.item_id]={days:age,from:t.from_location};});});
+  return m;}
+function ssCrossStore(id,exceptStore){return (SS._surplus&&SS._surplus[id]||[]).filter(x=>x.store!==exceptStore);}
+function vStockStatus(v){
+  if(!S.win||!Object.keys(S.win).length){/* still fine; windows may be empty until sync */}
+  if(SS.store==null)SS.store=(scoped()?(HOME||visLocs()[0]):(visLocs()[0]));
+  ssPrep();
+  const stores=visLocs();
+  const storeOpts=`<option value="all"${SS.store==='all'?' selected':''}>All my centres</option>`+stores.map(s=>`<option value="${s}"${SS.store===s?' selected':''}>${esc(loc(s).name)} (${loc(s).code})</option>`).join('');
+  const tabs=[['report','Status report'],['po','Suggested PO'],['log','Transfer log'],['settings','Settings']];
+  const tabBar=`<div class="rep-tabs no-print" style="margin:10px 0">${tabs.map(([id,l])=>`<button class="rep-tab ${SS.tab===id?'active':''}" data-sstab="${id}">${esc(l)}</button>`).join('')}</div>`;
+  const winCount=Object.keys(S.win||{}).length;
+  const warnData=winCount?'':`<div class="banner warn">${svg(I.alert,17)}<div><b>No sales-window data yet.</b> Deploy the updated <b>square-sales</b> function and click <b>Square Sync → Update sales data</b> so 60/180/365-day sales populate. Until then ADS, DOC and status use zero sales.</div></div>`;
+  let bodyHtml='';
+  if(SS.tab==='report')bodyHtml=ssReportHtml();
+  else if(SS.tab==='po')bodyHtml=ssPoHtml();
+  else if(SS.tab==='log')bodyHtml=ssLogHtml();
+  else bodyHtml=ssSettingsHtml();
+  v.innerHTML=`<div class="banner info">${svg(I.box,17)}<div><b>Stock status by item & category.</b> Available = stock on hand + incoming (orders + open transfers in) − outgoing transfers. Status drives the suggested order. Set lead time, safety days and pack sizes under <b>Settings</b>.</div></div>
+    ${warnData}
+    <div class="toolbar" style="flex-wrap:wrap;gap:8px">
+      <select id="ss-store">${storeOpts}</select>
+      ${SS.tab==='report'?`<select id="ss-status"><option value="all">All statuses</option>${Object.keys(SS_ST).filter(k=>k!=='inactive').map(k=>`<option value="${k}"${SS.fStatus===k?' selected':''}>${esc(SS_ST[k].l)}</option>`).join('')}</select>
+      <select id="ss-abc"><option value="all">ABC: all</option><option value="A"${SS.fAbc==='A'?' selected':''}>A</option><option value="B"${SS.fAbc==='B'?' selected':''}>B</option><option value="C"${SS.fAbc==='C'?' selected':''}>C</option></select>
+      <select id="ss-sup"><option value="all">All suppliers</option>${S.suppliers.map(s=>`<option value="${s.id}"${SS.fSupplier===s.id?' selected':''}>${esc(s.name)}</option>`).join('')}<option value="none"${SS.fSupplier==='none'?' selected':''}>Unassigned</option></select>
+      <div class="search" style="max-width:220px">${svg(I.search,16)}<input id="ss-q" placeholder="Search item / code" value="${esc(SS.q)}"></div>`:''}
+      <div class="spacer"></div>
+      ${(SS.tab==='report'||SS.tab==='po')?`<button class="btn" data-ssexport="csv">${svg(I.receipt,15)} CSV</button><button class="btn" data-ssexport="xlsx">${svg(I.receipt,15)} Excel</button>`:''}
+    </div>
+    ${tabBar}
+    <div id="ssBody">${bodyHtml}</div>`;
+  const st=document.getElementById('ss-store');if(st)st.onchange=e=>{SS.store=e.target.value;renderView();};
+  const fs=document.getElementById('ss-status');if(fs)fs.onchange=e=>{SS.fStatus=e.target.value;ssRerenderBody();};
+  const fa=document.getElementById('ss-abc');if(fa)fa.onchange=e=>{SS.fAbc=e.target.value;ssRerenderBody();};
+  const fu=document.getElementById('ss-sup');if(fu)fu.onchange=e=>{SS.fSupplier=e.target.value;ssRerenderBody();};
+  const fq=document.getElementById('ss-q');if(fq)fq.oninput=e=>{SS.q=e.target.value;ssRerenderBody();};
+}
+function ssRerenderBody(){const el=document.getElementById('ssBody');if(!el)return;el.innerHTML=SS.tab==='report'?ssReportHtml():SS.tab==='po'?ssPoHtml():SS.tab==='log'?ssLogHtml():ssSettingsHtml();}
+function ssFilteredRows(){
+  let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
+  if(SS.fStatus!=='all')rows=rows.filter(r=>r.calc.key===SS.fStatus);
+  if(SS.fAbc!=='all')rows=rows.filter(r=>r.abc===SS.fAbc);
+  if(SS.fSupplier!=='all')rows=rows.filter(r=>SS.fSupplier==='none'?!r.ov.preferred_supplier_id:r.ov.preferred_supplier_id===SS.fSupplier);
+  const q=(SS.q||'').toLowerCase();if(q)rows=rows.filter(r=>r.it.name.toLowerCase().includes(q)||String(r.it.sku||'').toLowerCase().includes(q)||String(r.it.category||'').toLowerCase().includes(q));
+  return rows;
+}
+function ssSupName(id){const s=S.suppliers.find(x=>x.id===id);return s?s.name:'—';}
+function ssReportHtml(){
+  const rows=ssFilteredRows();const cancel=ssRecentCancelKeys();const pend=ssPendingMap();
+  // summary by status
+  const sum={};let totVal=0;rows.forEach(r=>{const kk=r.calc.key;sum[kk]=sum[kk]||{n:0,v:0};sum[kk].n++;const val=r.soh*(r.it.unit_cost||0);sum[kk].v+=val;totVal+=val;});
+  const tiles=Object.keys(SS_ST).filter(k=>sum[k]).map(k=>`<div class="tile" style="border-left:3px solid ${SS_ST[k].c}"><div class="lbl">${esc(SS_ST[k].l)}</div><div class="val tnum" style="font-size:18px">${sum[k].n}</div><div class="meta">${money0(sum[k].v)}</div></div>`).join('');
+  // rejected/cancelled affected on top
+  const flagged=rows.filter(r=>cancel[r.store+'__'+r.id]&&['out','out_inc','low','low_new'].includes(r.calc.key));
+  const order={out:0,out_inc:1,low:2,low_new:3,slow:4,dead:5,clearance:6,excess:7,seasonal:8,new:9,normal:10};
+  const norm=rows.filter(r=>!(cancel[r.store+'__'+r.id]&&['out','out_inc','low','low_new'].includes(r.calc.key)));
+  norm.sort((a,b)=>(order[a.calc.key]-order[b.calc.key])||(b.calc.orderQty-a.calc.orderQty)||a.it.name.localeCompare(b.it.name));
+  const show=flagged.concat(norm);
+  const rowHtml=r=>{const c=r.calc;const k=r.store+'__'+r.id;const cx=cancel[k];const pn=pend[k];
+    const warns=[...c.warn];if(cx&&['out','out_inc','low','low_new'].includes(c.key))warns.unshift('Transfer '+cx.code+' rejected/cancelled – reorder needed');
+    if(pn)warns.push('Transfer request pending '+pn.days+' days – check with '+loc(pn.from).code);
+    if(c.orderQty>0){const cs=ssCrossStore(r.id,r.store);if(cs.length)warns.push('Transfer available from '+cs.map(x=>loc(x.store).code+' ('+x.qty+')').join(', '));}
+    let extra=null;if(c.key==='out_inc')extra='Out of Stock – Incoming ('+c.incoming+' units'+(r.eta?', exp '+fmtDate(r.eta):'')+')';
+    if(c.key==='new'&&r.age!=null)extra='New Item – '+(ssSettings().new_item_days-r.age)+' d until assessed';
+    if(c.key==='seasonal')extra='Seasonal – manual review';
+    const docTxt=c.doc===Infinity?'∞':Math.round(c.doc);
+    const val=r.soh*(r.it.unit_cost||0);
+    return `<tr${cx&&['out','out_inc','low','low_new'].includes(c.key)?' style="background:'+SS_ST.low.c+'0d"':''}>
+      <td><div style="font-weight:600">${esc(r.it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.it.sku||'')}${r.it.category?' · '+esc(r.it.category):''}</div></td>
+      <td>${esc(ssSupName(r.ov.preferred_supplier_id))}</td>
+      <td style="white-space:nowrap;font-size:12px">${r.start?fmtDate(r.start):'<span style=\"color:var(--crit)\">missing</span>'}</td>
+      <td class="num tnum">${r.age==null?'—':r.age}</td>
+      <td class="num tnum">${r.soh}</td><td class="num tnum">${r.onOrder||'—'}</td><td class="num tnum">${r.incTr||'—'}</td><td class="num tnum">${r.outTr?'−'+r.outTr:'—'}</td>
+      <td class="num tnum" style="font-weight:700">${c.available}</td>
+      <td style="white-space:nowrap;font-size:12px">${r.eta?fmtDate(r.eta):'—'}</td>
+      <td class="num tnum">${r.w.u60||0}</td><td class="num tnum">${r.w.u180||0}</td>
+      <td class="num tnum">${c.ads.toFixed(2)}</td><td class="num tnum">${docTxt}</td>
+      <td style="white-space:nowrap;font-size:12px">${r.w.last_sale_date?fmtDate(r.w.last_sale_date):'—'}</td>
+      <td style="text-align:center"><span class="tag">${r.abc}</span></td>
+      <td>${ssPill(c.key,extra)}${c.note?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px">${esc(c.note)}</div>`:''}</td>
+      <td style="font-size:11px;color:var(--warn);max-width:190px">${warns.map(w=>esc(w)).join('<br>')||''}</td>
+      <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}</td>
+      <td class="num tnum">${money(val)}</td>
+      <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
+  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items shown</div></div></div>
+    ${flagged.length?`<div class="banner crit">${svg(I.alert,17)}<div><b>${flagged.length} item(s) hit by a rejected/cancelled transfer</b> — shown at the top; reorder needed.</div></div>`:''}
+    <div class="tablewrap" style="overflow-x:auto"><table style="min-width:1500px;font-size:12.5px"><thead><tr>
+      <th>Item</th><th>Supplier</th><th>Start</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
+    </tr></thead><tbody>${show.map(rowHtml).join('')||'<tr><td colspan="21" style="text-align:center;color:var(--faint);padding:24px">No items match.</td></tr>'}</tbody></table></div>`;
+}
+function ssPoRows(){return ssStoreRows().filter(r=>r.calc.orderQty>0&&(SS.fSupplier==='all'||(SS.fSupplier==='none'?!r.ov.preferred_supplier_id:r.ov.preferred_supplier_id===SS.fSupplier))).slice();}
+function ssPoHtml(){
+  const rows=ssPoRows();if(!rows.length)return `<div class="banner info">${svg(I.check,17)}<div>No items need ordering with current settings and stock.</div></div>`;
+  const groups={};rows.forEach(r=>{const sid=r.ov.preferred_supplier_id||'none';(groups[sid]=groups[sid]||[]).push(r);});
+  let html='';let grand=0;
+  Object.keys(groups).forEach(sid=>{const g=groups[sid];let sub=0;
+    const body=g.sort((a,b)=>a.it.name.localeCompare(b.it.name)).map(r=>{const cost=r.it.unit_cost||0;const line=r.calc.orderQty*cost;sub+=line;return `<tr><td>${esc(r.it.name)}</td><td class="mono" style="font-size:11px">${esc(r.it.sku||'')}</td><td>${esc(loc(r.store).code)}</td><td class="num tnum">${r.soh}</td><td class="num tnum">${Math.round(r.calc.doc===Infinity?0:r.calc.doc)}</td><td class="num tnum" style="font-weight:700">${r.calc.orderQty}</td><td class="num tnum">${money(cost)}</td><td class="num tnum">${money(line)}</td></tr>`;}).join('');
+    grand+=sub;
+    html+=`<div class="section-head"><h2>${esc(sid==='none'?'Unassigned supplier':ssSupName(sid))}</h2><span class="tag">${g.length} items · ${money(sub)}</span></div>
+      <div class="tablewrap"><table style="min-width:0;font-size:12.5px"><thead><tr><th>Item</th><th>Code</th><th>Store</th><th class="num">SOH</th><th class="num">DOC</th><th class="num">Order qty</th><th class="num">Unit cost</th><th class="num">Line value</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  });
+  return `<div class="banner info">${svg(I.cost,17)}<div><b>Suggested purchase order</b> — items at or below reorder point, grouped by preferred supplier. Set a preferred supplier per item via <b>Edit</b> on the status report.</div></div>${html}<div style="text-align:right;font-weight:700;margin-top:10px">Grand total: ${money(grand)}</div>`;
+}
+function ssLogHtml(){
+  const rows=(S.tlog||[]).filter(g=>{const okStore=(SS.store==='all')?true:(g.from_location===SS.store||g.to_location===SS.store);return okStore;}).slice(0,300);
+  if(!rows.length)return `<div class="banner info">${svg(I.info,17)}<div>No transfer status changes recorded yet. New changes are logged from now on.</div></div>`;
+  const body=rows.map(g=>`<tr><td style="white-space:nowrap;font-size:12px">${fmtDate(g.changed_at)}</td><td class="mono">${esc(g.code||'')}</td><td>${esc(loc(g.from_location).code)}</td><td>${esc(loc(g.to_location).code)}</td><td class="num tnum">${g.qty||0}</td><td>${esc(g.old_status||'')}</td><td style="font-weight:600">${esc(g.new_status||'')}</td></tr>`).join('');
+  return `<div class="banner info">${svg(I.info,17)}<div>Every transfer status change (why an item's status may have shifted).</div></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Transfer</th><th>From</th><th>To</th><th class="num">Qty</th><th>Was</th><th>Now</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function ssSettingsHtml(){
+  const c=ssSettings();const adm=ROLE&&['admin','national_admin','super_admin'].includes(ROLE);
+  const f=(id,lbl,val,hint)=>`<div class="field"><label>${lbl}${hint?` <span style="color:var(--faint);font-weight:400">${hint}</span>`:''}</label><input id="ss-set-${id}" type="number" value="${val}" ${adm?'':'disabled'}></div>`;
+  return `<div class="banner info">${svg(I.settings,17)}<div>These drive every calculation. ${adm?'Change and Save.':'Admins can change these.'}</div></div>
+    <div class="grid2">
+      ${f('lead_days','Lead time (days)',c.lead_days)}
+      ${f('max_cover_days','Max cover (days)',c.max_cover_days)}
+      ${f('safety_days','Safety stock (days)',c.safety_days,'default')}
+      ${f('new_item_days','New-item period (days)',c.new_item_days)}
+      ${f('safety_a','Safety A (days)',c.safety_a)}
+      ${f('safety_b','Safety B (days)',c.safety_b)}
+      ${f('safety_c','Safety C (days)',c.safety_c)}
+      ${f('slow_units','Slow-moving threshold (units)',c.slow_units)}
+      ${f('slow_window_days','Slow-moving window (days)',c.slow_window_days,'uses 60d bucket')}
+      ${f('dead_days','Dead-stock period (days)',c.dead_days)}
+      ${f('clearance_days','Clearance period (days)',c.clearance_days)}
+      ${f('pending_warn_days','Pending-transfer warning (days)',c.pending_warn_days)}
+    </div>
+    <label style="display:flex;gap:9px;align-items:center;margin:10px 0;font-size:14px"><input type="checkbox" id="ss-set-weighted_ads" ${c.weighted_ads?'checked':''} ${adm?'':'disabled'}> Use weighted ADS for items older than 180 days (last 90d × 0.6 + previous 90d × 0.4)</label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${adm?`<button class="btn primary" data-sssave>${svg(I.check,16)} Save settings</button>`:''}<button class="btn" data-ssselftest>${svg(I.check,16)} Run self-test (console)</button></div>`;
+}
+/* per-item override editor */
+function ssEditItem(id){
+  const it=item(id);const ov=ssOverride(id);
+  const supOpts=`<option value="">— none —</option>`+S.suppliers.map(s=>`<option value="${s.id}"${ov.preferred_supplier_id===s.id?' selected':''}>${esc(s.name)}</option>`).join('');
+  modal('Item settings',it.name,`<div class="grid2">
+      <div class="field"><label>Pack / carton size <span style="color:var(--faint);font-weight:400">rounding</span></label><input id="ov-pack" type="number" min="1" value="${ov.pack_size||''}" placeholder="1"></div>
+      <div class="field"><label>Minimum stock <span style="color:var(--faint);font-weight:400">slow movers</span></label><input id="ov-min" type="number" min="0" value="${ov.min_stock||''}" placeholder="—"></div>
+      <div class="field"><label>Safety days override</label><input id="ov-safety" type="number" min="0" value="${ov.safety_override||''}" placeholder="by ABC class"></div>
+      <div class="field"><label>ABC override</label><select id="ov-abc"><option value="">Auto</option><option value="A"${ov.abc_override==='A'?' selected':''}>A</option><option value="B"${ov.abc_override==='B'?' selected':''}>B</option><option value="C"${ov.abc_override==='C'?' selected':''}>C</option></select></div>
+      <div class="field"><label>Preferred supplier</label><select id="ov-sup">${supOpts}</select></div>
+      <div class="field"><label>Seasonal</label><label style="display:flex;gap:8px;align-items:center;font-size:14px;margin-top:8px"><input type="checkbox" id="ov-seasonal" ${ov.seasonal?'checked':''}> Exclude from auto-classification</label></div>
+    </div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="ov-go">${svg(I.check,16)} Save</button>`);
+  document.getElementById('ov-go').onclick=async()=>{
+    const p={pack_size:document.getElementById('ov-pack').value,min_stock:document.getElementById('ov-min').value,safety_override:document.getElementById('ov-safety').value,abc_override:document.getElementById('ov-abc').value,preferred_supplier_id:document.getElementById('ov-sup').value,seasonal:document.getElementById('ov-seasonal').checked};
+    const{error}=await sb.rpc('save_item_override',{p_item:id,p});
+    if(error)return toast(error.message||'Save failed',true);
+    closeOverlay();await loadStockStatusData();renderView();toast('Item settings saved');
+  };
+}
+async function ssSaveSettings(){
+  const ids=['lead_days','max_cover_days','safety_days','new_item_days','safety_a','safety_b','safety_c','slow_units','slow_window_days','dead_days','clearance_days','pending_warn_days'];
+  const p={};ids.forEach(k=>{const el=document.getElementById('ss-set-'+k);if(el&&el.value!=='')p[k]=+el.value;});
+  const w=document.getElementById('ss-set-weighted_ads');if(w)p.weighted_ads=w.checked;
+  const{error}=await sb.rpc('save_report_settings',{p});
+  if(error)return toast(error.message||'Save failed',true);
+  await loadStockStatusData();renderView();toast('Settings saved');
+}
+function ssExport(fmt){
+  if(SS.tab==='po'){const rows=ssPoRows();const header=['Supplier','Item','Code','Store','SOH','DOC','Order qty','Unit cost','Line value'];
+    const data=rows.map(r=>[ssSupName(r.ov.preferred_supplier_id),r.it.name,r.it.sku||'',loc(r.store).code,r.soh,Math.round(r.calc.doc===Infinity?0:r.calc.doc),r.calc.orderQty,(r.it.unit_cost||0).toFixed(2),(r.calc.orderQty*(r.it.unit_cost||0)).toFixed(2)]);
+    return ssDownload('suggested-po',header,data,fmt);}
+  const rows=ssFilteredRows();
+  const header=['Item','SKU','Category','Supplier','Start date','Age (days)','SOH','On order','Incoming transfers','Outgoing transfers','Available','Expected arrival','Sold 60d','Sold 180d','ADS','DOC','Last sale','ABC','Status','Warnings','Order qty','Stock value'];
+  const data=rows.map(r=>{const c=r.calc;return [r.it.name,r.it.sku||'',r.it.category||'',ssSupName(r.ov.preferred_supplier_id),r.start||'MISSING',r.age==null?'':r.age,r.soh,r.onOrder,r.incTr,r.outTr,c.available,r.eta||'',r.w.u60||0,r.w.u180||0,c.ads.toFixed(2),c.doc===Infinity?'Inf':Math.round(c.doc),r.w.last_sale_date||'',r.abc,SS_ST[c.key].l,c.warn.join('; '),c.orderQty,(r.soh*(r.it.unit_cost||0)).toFixed(2)];});
+  ssDownload('stock-status',header,data,fmt);
+}
+function ssDownload(base,header,data,fmt){
+  const stamp=today();const cn=SS.store==='all'?'all':loc(SS.store).code;
+  if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,`${base}_${cn}_${stamp}.xlsx`);toast('Excel exported');}
+  else downloadCSV(`${base}_${cn}_${stamp}.csv`,header,data);
+}
+
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -2311,6 +2624,11 @@ function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('o
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
+  const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
+  const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
+  const sse=e.target.closest('[data-ssedit]');if(sse){ssEditItem(sse.dataset.ssedit);return;}
+  const ssv=e.target.closest('[data-sssave]');if(ssv){ssSaveSettings();return;}
+  const sst=e.target.closest('[data-ssselftest]');if(sst){const r=ssSelfTest();toast('Self-test: '+r.pass+'/'+r.total+' passed — see console (F12)',r.pass!==r.total);return;}
   const nav=e.target.closest('[data-route]');if(nav){go(nav.dataset.route);return;}
   // action buttons inside clickable rows must win over the row's open handler
   const rcB=e.target.closest('[data-receive]');if(rcB){openReceive(rcB.dataset.receive);return;}
