@@ -700,11 +700,21 @@ function ssRows(locId){
   const cfg=ssSettings();const fr=SS._fr||{},fl=SS._fl||{inc:{},out:{},incPO:{},eta:{}};const td=today();
   const rows=S.items.filter(i=>i.active!==false).map(it=>{
     const id=it.id,k=locId+'__'+id;const soh=onHand(locId,id);const w=ssWin(locId,id),ov=ssOverride(id);
-    const start=fr[k]||(it.created_at?String(it.created_at).slice(0,10):null);
-    const age=start?Math.max(0,ssDaysBetween(start,td)):null;
+    // Age drives ADS (units/day). Square's created date is unreliable (its updated_at is bumped on every sync,
+    // so every item looks a few days old and ADS explodes). So we DON'T use created_at for age. We use:
+    //   1) a real first in-app stock receipt (reliable), and/or
+    //   2) the sales windows (sold 90–180d ago ⇒ ≥180d old; sold before 180d ⇒ ≥365d old).
+    // If we have neither, we assume the item is established (base 180 days) rather than brand new.
+    const realStart=fr[k]||null;
+    const start=realStart||(it.created_at?String(it.created_at).slice(0,10):null);
+    let age=realStart?Math.max(0,ssDaysBetween(realStart,td)):null;
+    let ageInferred=false,salesFloor=0;
+    if((w.u365||0)>(w.u180||0))salesFloor=365;else if((w.u_prev90||0)>0)salesFloor=180;
+    if(age==null){age=180;ageInferred=true;}
+    if(salesFloor&&age<salesFloor){age=salesFloor;ageInferred=true;}
     const incTr=fl.inc[k]||0,outTr=fl.out[k]||0,onOrder=fl.incPO[k]||0,eta=fl.eta[k]||null;
     const rev180=(w.u180||0)*(it.price||it.unit_cost||0);
-    return {store:locId,it,id,soh,w,ov,start,age,incTr,outTr,onOrder,eta,rev180};
+    return {store:locId,it,id,soh,w,ov,start,age,ageInferred,startReliable:!!realStart,incTr,outTr,onOrder,eta,rev180};
   });
   const ranked=rows.filter(r=>r.rev180>0).sort((a,b)=>b.rev180-a.rev180);
   const totalRev=ranked.reduce((s,r)=>s+r.rev180,0);let cum=0;
@@ -794,8 +804,8 @@ function ssReportHtml(){
     return `<tr${cx&&['out','out_inc','low','low_new'].includes(c.key)?' style="background:'+SS_ST.low.c+'0d"':''}>
       <td><div style="font-weight:600">${esc(r.it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.it.sku||'')}${r.it.category?' · '+esc(r.it.category):''}</div></td>
       <td>${esc(ssSupName(r.ov.preferred_supplier_id))}</td>
-      <td style="white-space:nowrap;font-size:12px">${r.start?fmtDate(r.start):'<span style=\"color:var(--crit)\">missing</span>'}</td>
-      <td class="num tnum">${r.age==null?'—':r.age}</td>
+      <td style="white-space:nowrap;font-size:12px">${r.startReliable?fmtDate(r.start):'<span style="color:var(--muted)" title="No in-app receipt; Square created date is unreliable, so age is estimated from sales history">est.</span>'}</td>
+      <td class="num tnum"${r.ageInferred?' title="Estimated from sales history — add a stock receipt for an exact age"':''}>${r.age==null?'—':r.age}${r.ageInferred?'*':''}</td>
       <td class="num tnum">${r.soh}</td><td class="num tnum">${r.onOrder||'—'}</td><td class="num tnum">${r.incTr||'—'}</td><td class="num tnum">${r.outTr?'−'+r.outTr:'—'}</td>
       <td class="num tnum" style="font-weight:700">${c.available}</td>
       <td style="white-space:nowrap;font-size:12px">${r.eta?fmtDate(r.eta):'—'}</td>
@@ -887,7 +897,7 @@ function ssExport(fmt){
     return ssDownload('suggested-po',header,data,fmt);}
   const rows=ssFilteredRows();
   const header=['Item','SKU','Category','Supplier','Start date','Age (days)','SOH','On order','Incoming transfers','Outgoing transfers','Available','Expected arrival','Sold 60d','Sold 180d','ADS','DOC','Last sale','ABC','Status','Warnings','Order qty','Stock value'];
-  const data=rows.map(r=>{const c=r.calc;return [r.it.name,r.it.sku||'',r.it.category||'',ssSupName(r.ov.preferred_supplier_id),r.start||'MISSING',r.age==null?'':r.age,r.soh,r.onOrder,r.incTr,r.outTr,c.available,r.eta||'',r.w.u60||0,r.w.u180||0,c.ads.toFixed(2),c.doc===Infinity?'Inf':Math.round(c.doc),r.w.last_sale_date||'',r.abc,SS_ST[c.key].l,c.warn.join('; '),c.orderQty,(r.soh*(r.it.unit_cost||0)).toFixed(2)];});
+  const data=rows.map(r=>{const c=r.calc;return [r.it.name,r.it.sku||'',r.it.category||'',ssSupName(r.ov.preferred_supplier_id),r.startReliable?r.start:'estimated',r.age==null?'':(r.age+(r.ageInferred?'*':'')),r.soh,r.onOrder,r.incTr,r.outTr,c.available,r.eta||'',r.w.u60||0,r.w.u180||0,c.ads.toFixed(2),c.doc===Infinity?'Inf':Math.round(c.doc),r.w.last_sale_date||'',r.abc,SS_ST[c.key].l,c.warn.join('; '),c.orderQty,(r.soh*(r.it.unit_cost||0)).toFixed(2)];});
   ssDownload('stock-status',header,data,fmt);
 }
 function ssDownload(base,header,data,fmt){
