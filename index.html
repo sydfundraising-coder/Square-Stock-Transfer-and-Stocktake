@@ -185,6 +185,7 @@
   .linerow-lbl span{text-align:center}.linerow-lbl span:first-child{text-align:left}
   .tf-line{display:grid;grid-template-columns:1fr 56px 72px 58px 60px 78px 32px;gap:7px;align-items:center;margin-bottom:9px}
   .lbox{border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;font-weight:700;font-size:13px;background:var(--surface-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ssmp>summary{cursor:pointer}.ssmp>summary::-webkit-details-marker{display:none}.ssmp>summary::marker{content:''}
   /* ---- invoice printing ---- */
   #invoicePrint{display:none}
   .inv-tbl th{border-bottom:2px solid #222;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#555}
@@ -589,7 +590,20 @@ function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSideba
    STOCK STATUS REPORT  (excess / reorder / dead-stock by item & category)
    Backend: 24_stock_status.sql + extended square-sales windows.
    ========================================================= */
-const SS={tab:'report',store:null,fStatus:'all',fSupplier:'all',fAbc:'all',fCat:'all',q:'',_fr:null,_fl:null,_all:null};
+const SS={tab:'report',fStores:null,fStatuses:[],fSupplier:'all',fAbc:'all',fCats:[],q:'',_fr:null,_fl:null,_all:null};
+/* selected centres (empty ⇒ all visible) */
+function ssSelectedStores(){const a=SS.fStores||[];const vis=visLocs();return a.length?a.filter(s=>vis.includes(s)):vis;}
+/* a checkbox multi-select rendered as a <details> dropdown (empty ⇒ all) */
+function ssMultipick(key,label,opts){
+  const sel=SS[key]||[];const n=sel.length;
+  return `<details class="ssmp" data-mpkey="${key}" data-mplabel="${esc(label)}" style="position:relative">
+    <summary class="btn" style="list-style:none;user-select:none">${esc(label)}: ${n?n+' selected':'all'}</summary>
+    <div style="position:absolute;z-index:60;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px;min-width:210px;max-height:320px;overflow:auto;box-shadow:0 10px 28px rgba(0,0,0,.18)">
+      <label style="display:flex;gap:8px;align-items:center;padding:4px 2px;font-size:13px;font-weight:700"><input type="checkbox" data-mpall="${key}" ${n===0?'checked':''}> All</label>
+      ${opts.map(o=>`<label style="display:flex;gap:8px;align-items:center;padding:4px 2px;font-size:13px"><input type="checkbox" data-mp="${key}" value="${esc(o.v)}" ${sel.includes(o.v)?'checked':''}> ${esc(o.l)}</label>`).join('')}
+    </div></details>`;
+}
+function ssSyncMp(key){const d=document.querySelector('.ssmp[data-mpkey="'+key+'"]');if(!d)return;const sel=SS[key]||[];d.querySelector('summary').textContent=d.dataset.mplabel+': '+(sel.length?sel.length+' selected':'all');const all=d.querySelector('[data-mpall]');if(all)all.checked=sel.length===0;}
 const SS_ST={
   out:{l:'Out of Stock',c:'#dc2626'}, out_inc:{l:'Out of Stock – Incoming',c:'#dc2626'},
   low:{l:'Low / Reorder',c:'#ea580c'}, low_new:{l:'Low / Reorder (New)',c:'#ea580c'},
@@ -728,7 +742,7 @@ function ssRows(locId){
 }
 function ssPrep(){SS._fr=ssBuildFirstReceipt();SS._fl=ssBuildFlows();SS._all={};visLocs().forEach(s=>{SS._all[s]=ssRows(s);});
   SS._surplus={};visLocs().forEach(s=>{(SS._all[s]||[]).forEach(r=>{if(r.soh>0&&['excess','slow','dead'].includes(r.calc.key)){(SS._surplus[r.id]=SS._surplus[r.id]||[]).push({store:s,qty:r.calc.available>0?r.calc.available:r.soh});}});});}
-function ssStoreRows(){if(SS.store==='all'){let all=[];Object.values(SS._all).forEach(a=>all=all.concat(a));return all;}return SS._all[SS.store]||[];}
+function ssStoreRows(){let all=[];ssSelectedStores().forEach(s=>{all=all.concat(SS._all[s]||[]);});return all;}
 /* recently cancelled/rejected transfers → items to flag on top */
 function ssRecentCancelKeys(){const keys={};const cut=Date.now()-21*864e5;
   (S.tlog||[]).forEach(g=>{if(g.new_status!=='cancelled')return;if(new Date(g.changed_at).getTime()<cut)return;const t=(S.transfers||[]).find(x=>x.id===g.transfer_id);if(!t)return;(t.lines||[]).forEach(l=>{keys[t.to_location+'__'+l.item_id]={code:t.code,from:t.from_location};});});
@@ -739,11 +753,11 @@ function ssPendingMap(){const cfg=ssSettings();const m={};const td=today();
 function ssCrossStore(id,exceptStore){return (SS._surplus&&SS._surplus[id]||[]).filter(x=>x.store!==exceptStore);}
 function vStockStatus(v){
   if(!S.win||!Object.keys(S.win).length){/* still fine; windows may be empty until sync */}
-  if(SS.store==null)SS.store=(scoped()?(HOME||visLocs()[0]):(visLocs()[0]));
+  if(SS.fStores==null)SS.fStores=(scoped()?[HOME||visLocs()[0]].filter(Boolean):[]);
   ssPrep();
   const stores=visLocs();
-  const storeOpts=`<option value="all"${SS.store==='all'?' selected':''}>All my centres</option>`+stores.map(s=>`<option value="${s}"${SS.store===s?' selected':''}>${esc(loc(s).name)} (${loc(s).code})</option>`).join('');
-  const tabs=[['report','Status report'],['po','Suggested PO'],['log','Transfer log'],['settings','Settings']];
+  const cats=[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category||'Uncategorised'))].sort();
+  const tabs=[['report','Status report'],['po','Suggested PO / Stock Transfer'],['log','Transfer log'],['settings','Settings']];
   const tabBar=`<div class="rep-tabs no-print" style="margin:10px 0">${tabs.map(([id,l])=>`<button class="rep-tab ${SS.tab===id?'active':''}" data-sstab="${id}">${esc(l)}</button>`).join('')}</div>`;
   const winCount=Object.keys(S.win||{}).length;
   const warnData=winCount?'':`<div class="banner warn">${svg(I.alert,17)}<div><b>No sales-window data yet.</b> Deploy the updated <b>square-sales</b> function and click <b>Square Sync → Update sales data</b> so 60/180/365-day sales populate. Until then ADS, DOC and status use zero sales.</div></div>`;
@@ -755,32 +769,32 @@ function vStockStatus(v){
   v.innerHTML=`<div class="banner info">${svg(I.box,17)}<div><b>Stock status by item & category.</b> Available = stock on hand + incoming (orders + open transfers in) − outgoing transfers. Status drives the suggested order. Set lead time, safety days and pack sizes under <b>Settings</b>.</div></div>
     ${warnData}
     <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-      <select id="ss-store">${storeOpts}</select>
-      ${SS.tab==='report'?`<select id="ss-status"><option value="all">All statuses</option>${Object.keys(SS_ST).filter(k=>k!=='inactive').map(k=>`<option value="${k}"${SS.fStatus===k?' selected':''}>${esc(SS_ST[k].l)}</option>`).join('')}</select>
+      ${ssMultipick('fStores','Centres',stores.map(s=>({v:s,l:loc(s).code+' — '+loc(s).name})))}
+      ${SS.tab==='report'?`${ssMultipick('fStatuses','Status',Object.keys(SS_ST).filter(k=>k!=='inactive').map(k=>({v:k,l:SS_ST[k].l})))}
+      ${ssMultipick('fCats','Category',cats.map(cn=>({v:cn,l:cn})))}
       <select id="ss-abc"><option value="all">ABC: all</option><option value="A"${SS.fAbc==='A'?' selected':''}>A</option><option value="B"${SS.fAbc==='B'?' selected':''}>B</option><option value="C"${SS.fAbc==='C'?' selected':''}>C</option></select>
-      <select id="ss-cat"><option value="all">All categories</option>${[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category||'Uncategorised'))].sort().map(cn=>`<option value="${esc(cn)}"${SS.fCat===cn?' selected':''}>${esc(cn)}</option>`).join('')}</select>
       <select id="ss-sup"><option value="all">All suppliers</option>${S.suppliers.map(s=>`<option value="${s.id}"${SS.fSupplier===s.id?' selected':''}>${esc(s.name)}</option>`).join('')}<option value="none"${SS.fSupplier==='none'?' selected':''}>Unassigned</option></select>
-      <div class="search" style="max-width:220px">${svg(I.search,16)}<input id="ss-q" placeholder="Search item / code" value="${esc(SS.q)}"></div>`:''}
+      <div class="search" style="max-width:240px">${svg(I.search,16)}<input id="ss-q" placeholder="Items: name/code, comma for several" value="${esc(SS.q)}"></div>`:''}
       <div class="spacer"></div>
       ${(SS.tab==='report'||SS.tab==='po')?`<button class="btn" data-ssexport="csv">${svg(I.receipt,15)} CSV</button><button class="btn" data-ssexport="xlsx">${svg(I.receipt,15)} Excel</button>`:''}
     </div>
     ${tabBar}
     <div id="ssBody">${bodyHtml}</div>`;
-  const st=document.getElementById('ss-store');if(st)st.onchange=e=>{SS.store=e.target.value;renderView();};
-  const fs=document.getElementById('ss-status');if(fs)fs.onchange=e=>{SS.fStatus=e.target.value;ssRerenderBody();};
+  v.querySelectorAll('[data-mp]').forEach(cb=>cb.onchange=e=>{const key=e.target.dataset.mp,val=e.target.value;let a=(SS[key]||[]).slice();if(e.target.checked){if(!a.includes(val))a.push(val);}else a=a.filter(x=>x!==val);SS[key]=a;ssSyncMp(key);ssRerenderBody();});
+  v.querySelectorAll('[data-mpall]').forEach(cb=>cb.onchange=e=>{const key=e.target.dataset.mpall;SS[key]=[];const d=e.target.closest('.ssmp');d.querySelectorAll('[data-mp]').forEach(x=>x.checked=false);e.target.checked=true;ssSyncMp(key);ssRerenderBody();});
   const fa=document.getElementById('ss-abc');if(fa)fa.onchange=e=>{SS.fAbc=e.target.value;ssRerenderBody();};
-  const fc=document.getElementById('ss-cat');if(fc)fc.onchange=e=>{SS.fCat=e.target.value;ssRerenderBody();};
   const fu=document.getElementById('ss-sup');if(fu)fu.onchange=e=>{SS.fSupplier=e.target.value;ssRerenderBody();};
   const fq=document.getElementById('ss-q');if(fq)fq.oninput=e=>{SS.q=e.target.value;ssRerenderBody();};
 }
 function ssRerenderBody(){const el=document.getElementById('ssBody');if(!el)return;el.innerHTML=SS.tab==='report'?ssReportHtml():SS.tab==='po'?ssPoHtml():SS.tab==='log'?ssLogHtml():ssSettingsHtml();}
 function ssFilteredRows(skipStatus){
   let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
-  if(!skipStatus&&SS.fStatus!=='all')rows=rows.filter(r=>r.calc.key===SS.fStatus);
+  if(!skipStatus&&(SS.fStatuses||[]).length)rows=rows.filter(r=>SS.fStatuses.includes(r.calc.key));
   if(SS.fAbc!=='all')rows=rows.filter(r=>r.abc===SS.fAbc);
-  if(SS.fCat!=='all')rows=rows.filter(r=>(r.it.category||'Uncategorised')===SS.fCat);
+  if((SS.fCats||[]).length)rows=rows.filter(r=>SS.fCats.includes(r.it.category||'Uncategorised'));
   if(SS.fSupplier!=='all')rows=rows.filter(r=>SS.fSupplier==='none'?!r.ov.preferred_supplier_id:r.ov.preferred_supplier_id===SS.fSupplier);
-  const q=(SS.q||'').toLowerCase();if(q)rows=rows.filter(r=>r.it.name.toLowerCase().includes(q)||String(r.it.sku||'').toLowerCase().includes(q)||String(r.it.category||'').toLowerCase().includes(q));
+  const terms=(SS.q||'').toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+  if(terms.length)rows=rows.filter(r=>{const hay=(r.it.name+' '+(r.it.sku||'')+' '+(r.it.category||'')).toLowerCase();return terms.some(t=>hay.includes(t));});
   return rows;
 }
 function ssSupName(id){const s=S.suppliers.find(x=>x.id===id);return s?s.name:'—';}
@@ -789,7 +803,7 @@ function ssReportHtml(){
   // summary by status — computed ignoring the status filter so all tiles stay visible & clickable
   const baseRows=ssFilteredRows(true);
   const sum={};let totVal=0;baseRows.forEach(r=>{const kk=r.calc.key;sum[kk]=sum[kk]||{n:0,v:0};sum[kk].n++;const val=r.soh*(r.it.unit_cost||0);sum[kk].v+=val;totVal+=val;});
-  const tiles=Object.keys(SS_ST).filter(k=>sum[k]).map(k=>`<div class="tile" data-ssfilter="${k}" style="cursor:pointer;border-left:3px solid ${SS_ST[k].c}${SS.fStatus===k?';outline:2px solid '+SS_ST[k].c:''}"><div class="lbl">${esc(SS_ST[k].l)}</div><div class="val tnum" style="font-size:18px">${sum[k].n}</div><div class="meta">${money0(sum[k].v)}</div></div>`).join('');
+  const tiles=Object.keys(SS_ST).filter(k=>sum[k]).map(k=>`<div class="tile" data-ssfilter="${k}" style="cursor:pointer;border-left:3px solid ${SS_ST[k].c}${(SS.fStatuses||[]).includes(k)?';outline:2px solid '+SS_ST[k].c:''}"><div class="lbl">${esc(SS_ST[k].l)}</div><div class="val tnum" style="font-size:18px">${sum[k].n}</div><div class="meta">${money0(sum[k].v)}</div></div>`).join('');
   // rejected/cancelled affected on top
   const flagged=rows.filter(r=>cancel[r.store+'__'+r.id]&&['out','out_inc','low','low_new'].includes(r.calc.key));
   const order={out:0,out_inc:1,low:2,low_new:3,slow:4,dead:5,clearance:6,excess:7,seasonal:8,new:9,normal:10};
@@ -822,7 +836,7 @@ function ssReportHtml(){
       <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}</td>
       <td class="num tnum">${money(val)}</td>
       <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
-  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${SS.fStatus==='all'?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
+  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
     ${flagged.length?`<div class="banner crit">${svg(I.alert,17)}<div><b>${flagged.length} item(s) hit by a rejected/cancelled transfer</b> — shown at the top; reorder needed.</div></div>`:''}
     <div class="tablewrap" style="overflow-x:auto"><table style="min-width:1500px;font-size:12.5px"><thead><tr>
       <th>Item</th><th>Supplier</th><th>Start</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
@@ -839,10 +853,31 @@ function ssPoHtml(){
     html+=`<div class="section-head"><h2>${esc(sid==='none'?'Unassigned supplier':ssSupName(sid))}</h2><span class="tag">${g.length} items · ${money(sub)}</span></div>
       <div class="tablewrap"><table style="min-width:0;font-size:12.5px"><thead><tr><th>Item</th><th>Code</th><th>Store</th><th class="num">SOH</th><th class="num">DOC</th><th class="num">Order qty</th><th class="num">Unit cost</th><th class="num">Line value</th></tr></thead><tbody>${body}</tbody></table></div>`;
   });
-  return `<div class="banner info">${svg(I.cost,17)}<div><b>Suggested purchase order</b> — items at or below reorder point, grouped by preferred supplier. Set a preferred supplier per item via <b>Edit</b> on the status report.</div></div>${html}<div style="text-align:right;font-weight:700;margin-top:10px">Grand total: ${money(grand)}</div>`;
+  return `<div class="banner info">${svg(I.cost,17)}<div><b>Suggested reorder</b> — items at or below reorder point. <b>Buy</b> from a supplier (export the PO), or <b>transfer</b> the stock in from another centre. Set a preferred supplier per item via <b>Edit</b> on the status report.</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn primary" data-ssconvert>${svg(I.transfer,15)} Convert to stock transfer</button></div>
+    ${html}<div style="text-align:right;font-weight:700;margin-top:10px">Grand total: ${money(grand)}</div>`;
+}
+/* ---- convert reorder suggestions into a stock transfer ---- */
+function ssItemsByStatus(locId,keys){
+  ssPrep();
+  const rows=(SS._all[locId]||[]).filter(r=>keys.includes(r.calc.key));
+  return rows.map(r=>({item:r.id,qty:r.calc.orderQty>0?r.calc.orderQty:Math.max(1,Math.round(r.calc.rop)||1)})).filter(x=>x.qty>0);
+}
+function ssOpenTransferFor(store,rows){
+  const hub=S.locations.find(l=>l.is_hub);
+  go('transfers');
+  newTransfer({prefill:true,to:store,from:(hub&&hub.id!==store)?hub.id:undefined,lines:rows.map(r=>({item:r.id,qty:r.calc.orderQty}))});
+}
+function ssConvertToTransfer(){
+  const rows=ssPoRows();if(!rows.length)return toast('Nothing to convert — no items need reordering.',true);
+  const byStore={};rows.forEach(r=>{(byStore[r.store]=byStore[r.store]||[]).push(r);});
+  const stores=Object.keys(byStore);
+  if(stores.length===1)return ssOpenTransferFor(stores[0],byStore[stores[0]]);
+  modal('Convert to stock transfer','A transfer goes to one centre — choose which',stores.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)"><span><b>${esc(loc(s).name)}</b> <span class="tag">${loc(s).code}</span> — ${byStore[s].length} item(s)</span><button class="btn sm primary" data-sstconv="${s}">${svg(I.transfer,14)} Transfer</button></div>`).join(''),`<button class="btn" data-close>Close</button>`);
+  document.querySelectorAll('[data-sstconv]').forEach(b=>b.onclick=()=>{const s=b.dataset.sstconv;closeOverlay();ssOpenTransferFor(s,byStore[s]);});
 }
 function ssLogHtml(){
-  const rows=(S.tlog||[]).filter(g=>{const okStore=(SS.store==='all')?true:(g.from_location===SS.store||g.to_location===SS.store);return okStore;}).slice(0,300);
+  const sel=ssSelectedStores();const rows=(S.tlog||[]).filter(g=>sel.includes(g.from_location)||sel.includes(g.to_location)).slice(0,300);
   if(!rows.length)return `<div class="banner info">${svg(I.info,17)}<div>No transfer status changes recorded yet. New changes are logged from now on.</div></div>`;
   const body=rows.map(g=>`<tr><td style="white-space:nowrap;font-size:12px">${fmtDate(g.changed_at)}</td><td class="mono">${esc(g.code||'')}</td><td>${esc(loc(g.from_location).code)}</td><td>${esc(loc(g.to_location).code)}</td><td class="num tnum">${g.qty||0}</td><td>${esc(g.old_status||'')}</td><td style="font-weight:600">${esc(g.new_status||'')}</td></tr>`).join('');
   return `<div class="banner info">${svg(I.info,17)}<div>Every transfer status change (why an item's status may have shifted).</div></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Transfer</th><th>From</th><th>To</th><th class="num">Qty</th><th>Was</th><th>Now</th></tr></thead><tbody>${body}</tbody></table></div>`;
@@ -905,7 +940,7 @@ function ssExport(fmt){
   ssDownload('stock-status',header,data,fmt);
 }
 function ssDownload(base,header,data,fmt){
-  const stamp=today();const cn=SS.store==='all'?'all':loc(SS.store).code;
+  const stamp=today();const ss=ssSelectedStores();const cn=ss.length===1?loc(ss[0]).code:(ss.length===visLocs().length?'all':ss.length+'centres');
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,`${base}_${cn}_${stamp}.xlsx`);toast('Excel exported');}
   else downloadCSV(`${base}_${cn}_${stamp}.csv`,header,data);
 }
@@ -1533,8 +1568,9 @@ async function loadTfSrc(locId){
 let tfDraftId=null;
 function newTransfer(presetItem){
   const draft=(presetItem&&typeof presetItem==='object'&&presetItem.id)?presetItem:null;
+  const pre=(presetItem&&typeof presetItem==='object'&&presetItem.prefill)?presetItem:null;
   tfDraftId=draft?draft.id:null;
-  dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
+  dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
@@ -1542,7 +1578,7 @@ function newTransfer(presetItem){
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select></div>
       <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer QTY</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
@@ -1553,7 +1589,9 @@ function newTransfer(presetItem){
   if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
   else{if(hub)from.value=hub.id;to.value=(destLocs.find(l=>l.id!==(hub?hub.id:''))||destLocs[0]||{}).id;}
   if(draft){from.value=draft.from_location;to.value=draft.to_location;document.getElementById('tf-notes').value=draft.notes||'';}
+  if(pre){if(pre.to)to.value=pre.to;if(pre.from)from.value=pre.from;}
   edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=()=>{edLines();sum();};
+  const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
   loadTfSrc(from.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
@@ -2675,9 +2713,10 @@ function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('o
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
-  const ssf=e.target.closest('[data-ssfilter]');if(ssf){SS.fStatus=ssf.dataset.ssfilter;SS.tab='report';renderView();return;}
+  const ssf=e.target.closest('[data-ssfilter]');if(ssf){const val=ssf.dataset.ssfilter;if(val==='all')SS.fStatuses=[];else{const a=SS.fStatuses||[];SS.fStatuses=a.includes(val)?a.filter(x=>x!==val):a.concat(val);}SS.tab='report';renderView();return;}
   const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
   const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
+  const ssc=e.target.closest('[data-ssconvert]');if(ssc){ssConvertToTransfer();return;}
   const sse=e.target.closest('[data-ssedit]');if(sse){ssEditItem(sse.dataset.ssedit);return;}
   const ssv=e.target.closest('[data-sssave]');if(ssv){ssSaveSettings();return;}
   const sst=e.target.closest('[data-ssselftest]');if(sst){const r=ssSelfTest();toast('Self-test: '+r.pass+'/'+r.total+' passed — see console (F12)',r.pass!==r.total);return;}
