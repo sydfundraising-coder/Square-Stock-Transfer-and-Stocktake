@@ -181,8 +181,10 @@
   .modal.full{width:97vw;max-width:1500px;height:95vh;max-height:95vh;display:flex;flex-direction:column}
   .modal.full .panel-body{flex:1;overflow:auto}
   .panel.wide{width:min(1100px,97vw)}
-  .linerow-lbl{display:grid;grid-template-columns:1fr 84px 34px;gap:9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;margin-bottom:4px}
-  .linerow-lbl span:nth-child(2){text-align:center}
+  .linerow-lbl{display:grid;grid-template-columns:1fr 66px 84px 80px 34px;gap:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:600;margin-bottom:4px}
+  .linerow-lbl span{text-align:center}.linerow-lbl span:first-child{text-align:left}
+  .tf-line{display:grid;grid-template-columns:1fr 66px 84px 80px 34px;gap:8px;align-items:center;margin-bottom:9px}
+  .lbox{border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;font-weight:700;font-size:13px;background:var(--surface-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* ---- invoice printing ---- */
   #invoicePrint{display:none}
   .inv-tbl th{border-bottom:2px solid #222;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#555}
@@ -1159,7 +1161,7 @@ function newTransfer(presetItem){
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
-      <div class="linerow-lbl"><span>Product</span><span>Transfer QTY</span><span></span></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span>Transfer QTY</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1201,7 +1203,7 @@ function edLines(){
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
-  ed.innerHTML=dLines.map((l,ix)=>`<div class="linerow"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>${l.item?`<div style="font-size:11.5px;margin:-4px 0 8px 2px;display:flex;gap:14px;flex-wrap:wrap">${from?`<span style="color:var(--good);font-weight:700">avail ${av(l.item)} at ${esc(loc(from).code)}</span>`:''}${to&&usage2(l.item)!=null?`<span style="color:var(--transit);font-weight:700">2-mo usage ${usage2(l.item)} at ${esc(loc(to).code)}</span>`:(to?`<span style="color:var(--faint)">no sales data at ${esc(loc(to).code)}</span>`:'')}</div>`:''}`).join('');
+  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const u=has?usage2(l.item):null;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available at ${from?esc(loc(from).name):'source'}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item):'—'}</div><div class="lbox" title="2-month usage at ${to?esc(loc(to).name):'destination'}" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
   ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{dLines[+e.target.dataset.lq].qty=Math.max(1,+e.target.value||1);sum();});
