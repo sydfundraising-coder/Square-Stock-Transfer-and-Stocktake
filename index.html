@@ -758,6 +758,7 @@ function vStockStatus(v){
       <select id="ss-store">${storeOpts}</select>
       ${SS.tab==='report'?`<select id="ss-status"><option value="all">All statuses</option>${Object.keys(SS_ST).filter(k=>k!=='inactive').map(k=>`<option value="${k}"${SS.fStatus===k?' selected':''}>${esc(SS_ST[k].l)}</option>`).join('')}</select>
       <select id="ss-abc"><option value="all">ABC: all</option><option value="A"${SS.fAbc==='A'?' selected':''}>A</option><option value="B"${SS.fAbc==='B'?' selected':''}>B</option><option value="C"${SS.fAbc==='C'?' selected':''}>C</option></select>
+      <select id="ss-cat"><option value="all">All categories</option>${[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category||'Uncategorised'))].sort().map(cn=>`<option value="${esc(cn)}"${SS.fCat===cn?' selected':''}>${esc(cn)}</option>`).join('')}</select>
       <select id="ss-sup"><option value="all">All suppliers</option>${S.suppliers.map(s=>`<option value="${s.id}"${SS.fSupplier===s.id?' selected':''}>${esc(s.name)}</option>`).join('')}<option value="none"${SS.fSupplier==='none'?' selected':''}>Unassigned</option></select>
       <div class="search" style="max-width:220px">${svg(I.search,16)}<input id="ss-q" placeholder="Search item / code" value="${esc(SS.q)}"></div>`:''}
       <div class="spacer"></div>
@@ -768,14 +769,16 @@ function vStockStatus(v){
   const st=document.getElementById('ss-store');if(st)st.onchange=e=>{SS.store=e.target.value;renderView();};
   const fs=document.getElementById('ss-status');if(fs)fs.onchange=e=>{SS.fStatus=e.target.value;ssRerenderBody();};
   const fa=document.getElementById('ss-abc');if(fa)fa.onchange=e=>{SS.fAbc=e.target.value;ssRerenderBody();};
+  const fc=document.getElementById('ss-cat');if(fc)fc.onchange=e=>{SS.fCat=e.target.value;ssRerenderBody();};
   const fu=document.getElementById('ss-sup');if(fu)fu.onchange=e=>{SS.fSupplier=e.target.value;ssRerenderBody();};
   const fq=document.getElementById('ss-q');if(fq)fq.oninput=e=>{SS.q=e.target.value;ssRerenderBody();};
 }
 function ssRerenderBody(){const el=document.getElementById('ssBody');if(!el)return;el.innerHTML=SS.tab==='report'?ssReportHtml():SS.tab==='po'?ssPoHtml():SS.tab==='log'?ssLogHtml():ssSettingsHtml();}
-function ssFilteredRows(){
+function ssFilteredRows(skipStatus){
   let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
-  if(SS.fStatus!=='all')rows=rows.filter(r=>r.calc.key===SS.fStatus);
+  if(!skipStatus&&SS.fStatus!=='all')rows=rows.filter(r=>r.calc.key===SS.fStatus);
   if(SS.fAbc!=='all')rows=rows.filter(r=>r.abc===SS.fAbc);
+  if(SS.fCat!=='all')rows=rows.filter(r=>(r.it.category||'Uncategorised')===SS.fCat);
   if(SS.fSupplier!=='all')rows=rows.filter(r=>SS.fSupplier==='none'?!r.ov.preferred_supplier_id:r.ov.preferred_supplier_id===SS.fSupplier);
   const q=(SS.q||'').toLowerCase();if(q)rows=rows.filter(r=>r.it.name.toLowerCase().includes(q)||String(r.it.sku||'').toLowerCase().includes(q)||String(r.it.category||'').toLowerCase().includes(q));
   return rows;
@@ -783,9 +786,10 @@ function ssFilteredRows(){
 function ssSupName(id){const s=S.suppliers.find(x=>x.id===id);return s?s.name:'—';}
 function ssReportHtml(){
   const rows=ssFilteredRows();const cancel=ssRecentCancelKeys();const pend=ssPendingMap();
-  // summary by status
-  const sum={};let totVal=0;rows.forEach(r=>{const kk=r.calc.key;sum[kk]=sum[kk]||{n:0,v:0};sum[kk].n++;const val=r.soh*(r.it.unit_cost||0);sum[kk].v+=val;totVal+=val;});
-  const tiles=Object.keys(SS_ST).filter(k=>sum[k]).map(k=>`<div class="tile" style="border-left:3px solid ${SS_ST[k].c}"><div class="lbl">${esc(SS_ST[k].l)}</div><div class="val tnum" style="font-size:18px">${sum[k].n}</div><div class="meta">${money0(sum[k].v)}</div></div>`).join('');
+  // summary by status — computed ignoring the status filter so all tiles stay visible & clickable
+  const baseRows=ssFilteredRows(true);
+  const sum={};let totVal=0;baseRows.forEach(r=>{const kk=r.calc.key;sum[kk]=sum[kk]||{n:0,v:0};sum[kk].n++;const val=r.soh*(r.it.unit_cost||0);sum[kk].v+=val;totVal+=val;});
+  const tiles=Object.keys(SS_ST).filter(k=>sum[k]).map(k=>`<div class="tile" data-ssfilter="${k}" style="cursor:pointer;border-left:3px solid ${SS_ST[k].c}${SS.fStatus===k?';outline:2px solid '+SS_ST[k].c:''}"><div class="lbl">${esc(SS_ST[k].l)}</div><div class="val tnum" style="font-size:18px">${sum[k].n}</div><div class="meta">${money0(sum[k].v)}</div></div>`).join('');
   // rejected/cancelled affected on top
   const flagged=rows.filter(r=>cancel[r.store+'__'+r.id]&&['out','out_inc','low','low_new'].includes(r.calc.key));
   const order={out:0,out_inc:1,low:2,low_new:3,slow:4,dead:5,clearance:6,excess:7,seasonal:8,new:9,normal:10};
@@ -818,7 +822,7 @@ function ssReportHtml(){
       <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}</td>
       <td class="num tnum">${money(val)}</td>
       <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
-  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items shown</div></div></div>
+  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${SS.fStatus==='all'?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
     ${flagged.length?`<div class="banner crit">${svg(I.alert,17)}<div><b>${flagged.length} item(s) hit by a rejected/cancelled transfer</b> — shown at the top; reorder needed.</div></div>`:''}
     <div class="tablewrap" style="overflow-x:auto"><table style="min-width:1500px;font-size:12.5px"><thead><tr>
       <th>Item</th><th>Supplier</th><th>Start</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
@@ -2634,6 +2638,7 @@ function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('o
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
+  const ssf=e.target.closest('[data-ssfilter]');if(ssf){SS.fStatus=ssf.dataset.ssfilter;SS.tab='report';renderView();return;}
   const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
   const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
   const sse=e.target.closest('[data-ssedit]');if(sse){ssEditItem(sse.dataset.ssedit);return;}
