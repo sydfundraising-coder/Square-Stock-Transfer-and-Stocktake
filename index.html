@@ -401,6 +401,32 @@ function batchComp(loc,item){
   return {batches:out,untracked:Math.max(0,oh-tracked),onHand:oh};
 }
 function expirySeqHtml(loc,item){const c=batchComp(loc,item);if(!c.batches.length&&!c.untracked)return '';return c.batches.map((b,ix)=>`<span style="display:inline-block;margin:1px 5px 1px 0;padding:1px 6px;border-radius:6px;background:${ix===0?expColor(b.expiry)+'22':'var(--surface)'};border:1px solid var(--border)"><b style="color:${ix===0?expColor(b.expiry):'var(--muted)'}">${ix+1}.</b> ${fmtDate(b.expiry)} <b>(${Math.round(b.qty)})</b></span>`).join('')+(c.untracked>0?`<span style="display:inline-block;margin:1px 5px 1px 0;padding:1px 6px;border-radius:6px;background:var(--surface);border:1px dashed var(--border);color:var(--faint)">no date (${Math.round(c.untracked)})</span>`:'');}
+// Editor to split one item into several (qty + best-before) rows. total=null means the rows define the total.
+// Renders as its OWN stacked overlay so it floats over the receive/stocktake screen without replacing it.
+function openBatchSplit(title,total,rows,onSave){
+  let R=(rows&&rows.length)?rows.map(r=>({qty:r.qty,exp:r.exp})):[{qty:(total||''),exp:''}];
+  const sumOf=()=>R.reduce((s,r)=>s+(+r.qty||0),0);
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+  const close=()=>{try{host.remove();}catch(e){}};
+  const inner=()=>`<div class="banner info">${svg(I.info,17)}<div>Enter each best-before date and how many packets carry it.${total!=null?` They must total <b>${total}</b> — now <b id="bs-sum">${sumOf()}</b>.`:` The count becomes the total — now <b id="bs-sum">${sumOf()}</b>.`}</div></div>
+    <div id="bs-rows">${R.map((r,i)=>`<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center"><input type="number" min="0" value="${r.qty}" data-bq="${i}" placeholder="qty" style="width:96px"><input type="date" value="${esc(r.exp||'')}" data-bx="${i}" style="flex:1"><button class="btn sm" data-brm="${i}" style="color:var(--crit);border-color:var(--crit)">${svg(I.x,14)}</button></div>`).join('')}</div>
+    <button class="btn sm" id="bs-add">${svg(I.plus,14)} Add another date</button>`;
+  const shell=()=>`<div class="modal" style="max-width:460px;width:100%;background:var(--surface);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">Multiple best-before dates</div></div><button class="x" id="bs-x">${svg(I.x,20)}</button></div><div class="panel-body" id="bs-body">${inner()}</div><div class="panel-foot"><button class="btn" id="bs-cancel">Cancel</button><button class="btn primary" id="bs-ok">${svg(I.check,15)} Save dates</button></div></div>`;
+  const rerenderBody=()=>{const b=host.querySelector('#bs-body');if(b){b.innerHTML=inner();wireRows();}};
+  function wireRows(){
+    host.querySelectorAll('#bs-rows [data-bq]').forEach(el=>el.oninput=e=>{R[+e.target.dataset.bq].qty=e.target.value;const s=host.querySelector('#bs-sum');if(s)s.textContent=sumOf();});
+    host.querySelectorAll('#bs-rows [data-bx]').forEach(el=>el.onchange=e=>{R[+e.target.dataset.bx].exp=e.target.value;});
+    host.querySelectorAll('#bs-rows [data-brm]').forEach(el=>el.onclick=()=>{if(R.length>1){R.splice(+el.dataset.brm,1);rerenderBody();}});
+    host.querySelector('#bs-add').onclick=()=>{R.push({qty:'',exp:''});rerenderBody();};
+  }
+  host.innerHTML=shell();document.body.appendChild(host);
+  host.querySelector('#bs-x').onclick=close;host.querySelector('#bs-cancel').onclick=close;
+  host.querySelector('#bs-ok').onclick=()=>{const out=R.filter(r=>(+r.qty>0)&&r.exp);if(!out.length)return toast('Add at least one dated quantity',true);if(total!=null&&out.reduce((s,r)=>s+(+r.qty||0),0)!==+total)return toast('Quantities must total '+total,true);close();onSave(out.map(r=>({qty:+r.qty,exp:r.exp})));};
+  wireRows();
+}
+// Write a set of dated batches for one item at a centre (clears existing, then adds each).
+async function batchesSet(loc,item,rows){try{const rs=(rows||[]).filter(r=>r.qty>0&&r.exp);if(!rs.length){return;}await sb.rpc('batch_reset',{p_loc:loc,p_item:item,p_qty:rs[0].qty,p_expiry:rs[0].exp});for(let i=1;i<rs.length;i++){await sb.rpc('batch_add',{p_loc:loc,p_item:item,p_qty:rs[i].qty,p_expiry:rs[i].exp,p_source:'stocktake',p_ref:null});}}catch(e){console.error('batchesSet',e);}}
 const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.email):'—';};
 function reservedAt(l,it){const tr=S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);const adj=(S.adjReq||[]).filter(r=>r.location_id===l&&r.item_id===it&&r.status==='pending').reduce((s,r)=>s+(r.qty||0),0);return tr+adj;}
 const availAt=(l,it)=>onHand(l,it)-reservedAt(l,it);
@@ -1730,20 +1756,23 @@ async function submitTransfer(){
 /* Receive */
 function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px"><span class="cap" style="flex:none">Best before *</span><input type="date" data-rx="${l.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"></div></div>`;}).join('');
-  const hubR=isHub(t.to_location);
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="grid2" style="margin-top:14px"><div class="field"><label>Stored at${hubR?' *':' (optional)'}</label>${areaField(t.to_location,'rc-tarea','')}</div><div class="field"><label>Aisle #${hubR?' *':' (optional)'}</label><input id="rc-taisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before *</span><input type="date" data-rx="${l.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-rxsplit="${l.id}" style="padding:4px 8px;font-size:12px">+ multiple dates</button></div></div>`;}).join('');
+  const hubR=isHub(t.to_location);const rcSplit={};
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy. If an item arrived with several best-before dates, use <b>+ multiple dates</b>.</div></div>${rows}<div class="grid2" style="margin-top:14px"><div class="field"><label>Stored at${hubR?' *':' (optional)'}</label>${areaField(t.to_location,'rc-tarea','')}</div><div class="field"><label>Aisle #${hubR?' *':' (optional)'}</label><input id="rc-taisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  (t.lines||[]).forEach(l=>{const b=document.querySelector(`[data-rxsplit="${l.id}"]`);if(!b)return;b.onclick=()=>{const rem=l.qty_dispatched-l.qty_received;const q=Math.max(0,Math.min(rem,+((document.querySelector(`[data-rc="${l.id}"]`)||{}).value)||0));if(q<=0)return toast('Enter the receiving quantity first',true);openBatchSplit('Best-before — '+item(l.item_id).name,q,rcSplit[l.id]||null,rows=>{rcSplit[l.id]=rows;const di=document.querySelector(`[data-rx="${l.id}"]`);if(di){di.value='';di.disabled=true;di.placeholder=rows.length+' dates';}b.textContent=rows.length+' dates ✎';toast('Saved '+rows.length+' best-before dates');});};});
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
     const note=(document.getElementById('rc-note')||{}).value||'';const area=((document.getElementById('rc-tarea')||{}).value||'').trim(),aisle=((document.getElementById('rc-taisle')||{}).value||'').trim();
     if(hubR&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
     const exps={};(t.lines||[]).forEach(l=>{exps[l.id]=((document.querySelector(`[data-rx="${l.id}"]`)||{}).value)||'';});
-    const missing=recv.filter(r=>r.qty>0&&!exps[r.line]);
+    const missing=recv.filter(r=>r.qty>0&&!exps[r.line]&&!(rcSplit[r.line]&&rcSplit[r.line].length));
     if(missing.length)return toast('Enter a Best Before date for every item received ('+missing.length+' missing)',true);
+    for(const l of (t.lines||[])){if(rcSplit[l.id]&&rcSplit[l.id].length){const rv=recv.find(x=>x.line===l.id);const q=rv?rv.qty:0;const sum=rcSplit[l.id].reduce((s,r)=>s+r.qty,0);if(sum!==q)return toast(item(l.item_id).name+': dated quantities ('+sum+') must equal received ('+q+')',true);}}
     await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
     if(area||aisle)await setItemLocations(t.to_location,(t.lines||[]).map(l=>({item:l.item_id,area,aisle})));
     await binReceiveLines(t.to_location,(t.lines||[]).map(l=>{const rv=recv.find(x=>x.line===l.id);return {item:l.item_id,area,aisle,qty:rv?rv.qty:0};}));
-    await batchAddLines(t.to_location,(t.lines||[]).map(l=>{const rv=recv.find(x=>x.line===l.id);return {item:l.item_id,qty:rv?rv.qty:0,exp:exps[l.id]};}),'transfer',t.code);
+    for(const l of (t.lines||[])){const rv=recv.find(x=>x.line===l.id);const q=rv?rv.qty:0;if(q<=0)continue;const rowsX=(rcSplit[l.id]&&rcSplit[l.id].length)?rcSplit[l.id]:(exps[l.id]?[{qty:q,exp:exps[l.id]}]:[]);for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:t.to_location,p_item:l.item_id,p_qty:r.qty,p_expiry:r.exp,p_source:'transfer',p_ref:t.code});}catch(e){console.error('batch_add',e);}}}
+    await loadBatches();
   };
 }
 /* Orders */
@@ -1864,7 +1893,7 @@ function cycleCountModal(){
     if(made===1&&firstId)openStock(firstId);
   };
 }
-let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={}, stExp={};
+let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={}, stExp={}, stSplit={};
 function persistStLocations(st){const rows=(st.lines||[]).filter(l=>(stArea[l.id]||'')!==''||(stAisle[l.id]||'')!=='').map(l=>({item:l.item_id,area:stArea[l.id]||'',aisle:stAisle[l.id]||''}));if(rows.length)setItemLocations(st.location_id,rows,true);}
 function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
 function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
@@ -1872,7 +1901,7 @@ function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=areaOf(st.location_id,l.item_id);stAisle[l.id]=aisleOf(st.location_id,l.item_id);stExp[l.id]=((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';}); }
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=areaOf(st.location_id,l.item_id);stAisle[l.id]=aisleOf(st.location_id,l.item_id);stExp[l.id]=((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';}); }
   stCurrentId=id;
   const camOk=('BarcodeDetector' in window);
   let head='';
@@ -1917,8 +1946,10 @@ function reviewStocktake(st){
     persistStLocations(st);
     await callRpc('finalize_stocktake',{p_id:st.id,p_counts:counts},'Stock take submitted',{location_id:st.location_id});
     if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,+c.counted||0)});}catch(e){console.error('bin_reset',e);}}await loadBins();}
-    // Backfill / update expiry: any counted line with a Best Before date sets that item's batch to the counted qty.
-    let didExp=false;for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;const exp=stExp[c.line];if(exp){try{await sb.rpc('batch_reset',{p_loc:st.location_id,p_item:l.item_id,p_qty:Math.max(0,+c.counted||0),p_expiry:exp});didExp=true;}catch(e){console.error('batch_reset',e);}}}
+    // Backfill / update expiry: a counted line with best-before date(s) sets that item's batches.
+    let didExp=false;for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;
+      if(stSplit[c.line]&&stSplit[c.line].length){await batchesSet(st.location_id,l.item_id,stSplit[c.line]);didExp=true;}
+      else{const exp=stExp[c.line];if(exp){try{await sb.rpc('batch_reset',{p_loc:st.location_id,p_item:l.item_id,p_qty:Math.max(0,+c.counted||0),p_expiry:exp});}catch(e){console.error('batch_reset',e);}didExp=true;}}}
     if(didExp)await loadBatches();
     renderView();
   };
@@ -1932,7 +1963,7 @@ function renderStRows(st,editable,filter){
   return lines.map(l=>{const it=item(l.item_id);
     if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
       const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}${ppc(it)?` · ${ppc(it)}/carton`:''}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"><input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional — sets this item's expiry)" style="${ist}"></div></div>`;}
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}${ppc(it)?` · ${ppc(it)}/carton`:''}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}">${(stSplit[l.id]&&stSplit[l.id].length)?`<span style="font-size:12px;color:var(--muted)">${stSplit[l.id].length} best-before dates</span>`:`<input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional)" style="${ist}">`}<button class="btn sm" data-stsplit="${l.id}" style="padding:4px 8px;font-size:12px">${(stSplit[l.id]&&stSplit[l.id].length)?'Edit dates':'+ dates'}</button></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
@@ -1941,7 +1972,8 @@ function renderStList(st){const el=document.getElementById('stList');if(!el)retu
 function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});
   document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();});
   document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();});
-  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;});}
+  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;});
+  document.querySelectorAll('#stList [data-stsplit]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stsplit;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=(st&&st.lines||[]).find(x=>x.id===lid);openBatchSplit('Best-before dates'+(l?' — '+item(l.item_id).name:''),null,stSplit[lid]||(stExp[lid]?[{qty:(+stCounts[lid]||''),exp:stExp[lid]}]:null),rows=>{stSplit[lid]=rows;stCounts[lid]=rows.reduce((s,r)=>s+r.qty,0);renderStList(st);saveStProgress({id:stCurrentId},false);});});}
 function stScanCode(st,code){if(!code)return;const cl=code.toLowerCase();const line=(st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this count: '+code,true);return;}const cur=+stCounts[line.id]||0;stCounts[line.id]=cur+1;toast('+1 '+item(line.item_id).name+' = '+(cur+1));saveStProgress(st,false);updateStProgress();}
 function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce){if(st&&st.lines)persistStLocations(st);toast(error?('Save failed: '+error.message):'Progress saved',!!error);}};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
 async function openScanner(st){
@@ -2005,12 +2037,13 @@ function newReceipt(){
 function rEd(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('red');
-  ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 58px 74px 130px 34px"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0"><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 54px 70px 150px 30px"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><div style="display:flex;gap:4px;align-items:center;min-width:0">${(l.batches&&l.batches.length)?`<span style="font-size:11px;color:var(--muted);flex:1">${l.batches.length} dates</span>`:`<input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0;flex:1">`}<button type="button" class="btn sm" data-rxsp="${ix}" title="Multiple best-before dates" style="padding:2px 6px;font-size:11px">${(l.batches&&l.batches.length)?'✎':'+'}</button></div><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
   recLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-ri="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-ri]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ri;recLines[ix].item=e.target.value;if(!recLines[ix].cost){recLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-rk="${ix}"]`).value=recLines[ix].cost;}rSum();});
   ed.querySelectorAll('[data-rq]').forEach(s=>s.oninput=e=>{recLines[+e.target.dataset.rq].qty=Math.max(1,+e.target.value||1);rSum();});
   ed.querySelectorAll('[data-rk]').forEach(s=>s.oninput=e=>{recLines[+e.target.dataset.rk].cost=Math.max(0,+e.target.value||0);rSum();});
   ed.querySelectorAll('[data-rx]').forEach(s=>s.onchange=e=>{recLines[+e.target.dataset.rx].exp=e.target.value;});
+  ed.querySelectorAll('[data-rxsp]').forEach(b=>b.onclick=()=>{const ix=+b.dataset.rxsp;const l=recLines[ix];if(!l.item)return toast('Select the item first',true);if(!(+l.qty>0))return toast('Enter the quantity first',true);openBatchSplit('Best-before — '+item(l.item).name,+l.qty,l.batches||(l.exp?[{qty:+l.qty,exp:l.exp}]:null),rows=>{recLines[ix].batches=rows;recLines[ix].qty=rows.reduce((s,r)=>s+r.qty,0);rEd();rSum();});});
   ed.querySelectorAll('[data-rr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-rr]').dataset.rr;if(recLines.length>1)recLines.splice(ix,1);rEd();});
   rSum();
 }
@@ -2018,13 +2051,15 @@ function rSum(){const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);docu
 async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
-  if(lines.some(l=>!l.exp))return toast('Enter a Best Before date for every item',true);
+  if(lines.some(l=>!l.exp&&!(l.batches&&l.batches.length)))return toast('Enter a Best Before date for every item',true);
+  for(const l of lines){if(l.batches&&l.batches.length){const sum=l.batches.reduce((s,r)=>s+r.qty,0);if(sum!==+l.qty)return toast(item(l.item).name+': dated quantities ('+sum+') must equal quantity ('+l.qty+')',true);}}
   const area=((document.getElementById('rc-area')||{}).value||'').trim(),aisle=((document.getElementById('rc-aisle')||{}).value||'').trim();
   if(isHub(lc)&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
-  const code=await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
+  await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
   if(area||aisle)await setItemLocations(lc,lines.map(l=>({item:l.item,area,aisle})));
   await binReceiveLines(lc,lines.map(l=>({item:l.item,area,aisle,qty:l.qty})));
-  await batchAddLines(lc,lines.map(l=>({item:l.item,qty:l.qty,exp:l.exp})),'supplier',sup);
+  for(const l of lines){const rowsX=(l.batches&&l.batches.length)?l.batches:[{qty:l.qty,exp:l.exp}];for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:lc,p_item:l.item,p_qty:r.qty,p_expiry:r.exp,p_source:'supplier',p_ref:sup});}catch(e){console.error('batch_add',e);}}}
+  await loadBatches();
 }
 /* Catalog */
 let catSearch='',catCat='all';
@@ -2791,13 +2826,17 @@ async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callR
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
-  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);return `<div class="recv-row" style="grid-template-columns:1fr 56px 150px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Qty</div><div class="tnum" style="font-weight:600">${+l.qty||0}</div></div><div><div class="cap">Best before *</div><input type="date" data-px="${l.item_id}" style="width:100%;padding:6px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost. Enter each item's <b>Best Before</b> date.</div></div>${lineRows}<div class="grid2" style="margin-top:12px"><div class="field"><label>Stored at${hub?' *':' (optional)'}</label>${areaField(o.location_id,'po-area','')}</div><div class="field"><label>Aisle #${hub?' *':' (optional)'}</label><input id="po-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  const poSplit={};
+  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);return `<div class="recv-row" style="grid-template-columns:1fr 56px 170px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Qty</div><div class="tnum" style="font-weight:600">${+l.qty||0}</div></div><div><div class="cap">Best before *</div><div style="display:flex;gap:4px;align-items:center"><input type="date" data-px="${l.item_id}" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-pxsp="${l.item_id}" title="Multiple best-before dates" style="padding:2px 6px;font-size:11px">+</button></div></div></div>`;}).join('');
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost. Enter each item's <b>Best Before</b> date — use <b>+</b> if a line arrived with several dates.</div></div>${lineRows}<div class="grid2" style="margin-top:12px"><div class="field"><label>Stored at${hub?' *':' (optional)'}</label>${areaField(o.location_id,'po-area','')}</div><div class="field"><label>Aisle #${hub?' *':' (optional)'}</label><input id="po-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  (o.lines||[]).forEach(l=>{const b=document.querySelector(`[data-pxsp="${l.item_id}"]`);if(!b)return;b.onclick=()=>{const q=+l.qty||0;if(q<=0)return;openBatchSplit('Best-before — '+item(l.item_id).name,q,poSplit[l.item_id]||null,rows=>{poSplit[l.item_id]=rows;const di=document.querySelector(`[data-px="${l.item_id}"]`);if(di){di.value='';di.disabled=true;di.placeholder=rows.length+' dates';}b.textContent=rows.length+' ✎';toast('Saved '+rows.length+' best-before dates');});};});
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';const area=((document.getElementById('po-area')||{}).value||'').trim(),aisle=((document.getElementById('po-aisle')||{}).value||'').trim();if(hub&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
     const exps={};(o.lines||[]).forEach(l=>{exps[l.item_id]=((document.querySelector(`[data-px="${l.item_id}"]`)||{}).value)||'';});
-    if((o.lines||[]).some(l=>(+l.qty||0)>0&&!exps[l.item_id]))return toast('Enter a Best Before date for every item',true);
+    if((o.lines||[]).some(l=>(+l.qty||0)>0&&!exps[l.item_id]&&!(poSplit[l.item_id]&&poSplit[l.item_id].length)))return toast('Enter a Best Before date for every item',true);
+    for(const l of (o.lines||[])){if(poSplit[l.item_id]&&poSplit[l.item_id].length){const sum=poSplit[l.item_id].reduce((s,r)=>s+r.qty,0);if(sum!==(+l.qty||0))return toast(item(l.item_id).name+': dated quantities ('+sum+') must equal ordered ('+(+l.qty||0)+')',true);}}
     await callRpc('receive_order',{p_id:id,p_note:note.trim()||null},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});if(area||aisle)await setItemLocations(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area,aisle})));await binReceiveLines(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area,aisle,qty:+l.qty||0})));
-    await batchAddLines(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,qty:+l.qty||0,exp:exps[l.item_id]})),'po',o.code);};
+    for(const l of (o.lines||[])){const q=+l.qty||0;if(q<=0)continue;const rowsX=(poSplit[l.item_id]&&poSplit[l.item_id].length)?poSplit[l.item_id]:(exps[l.item_id]?[{qty:q,exp:exps[l.item_id]}]:[]);for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:l.item_id,p_qty:r.qty,p_expiry:r.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}}
+    await loadBatches();};
 }
 /* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
 async function doReverse(fn,id,label,affectedLocs,itemIds){
