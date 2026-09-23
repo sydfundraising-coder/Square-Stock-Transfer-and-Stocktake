@@ -347,7 +347,7 @@ const canReceiveT=t=>can('transfer.receive')&&(!scoped()||mine(t.to_location));
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[]};
 const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
 const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
@@ -357,6 +357,14 @@ const areaOf=(l,i)=>binOf(l,i).area||'';
 const aisleOf=(l,i)=>binOf(l,i).aisle||'';
 const binLabel=(l,i)=>{const b=binOf(l,i);return b.area?(b.area+(b.aisle?' · '+b.aisle:'')):(b.aisle?b.aisle:'');};
 function areasAt(l){const set=new Set();if(S.bin)for(const k in S.bin){const[lc]=k.split('__');if(lc===l&&S.bin[k].area)set.add(S.bin[k].area);}return [...set].sort();}
+function aislesAt(l){const set=new Set();if(S.bin)for(const k in S.bin){const[lc]=k.split('__');if(lc===l&&S.bin[k].aisle)set.add(S.bin[k].aisle);}return [...set].sort();}
+const isHub=l=>!!(loc(l)&&loc(l).is_hub);
+function storeAreasAt(l){return (S.storeAreas||[]).filter(a=>a.location_id===l&&a.active!==false).map(a=>a.name).sort();}
+/* Build a location (area) field. Hub = controlled <select> (no free text); others = free-text datalist. */
+function areaField(locId,id,current,requiredHint){
+  if(isHub(locId)){const opts=storeAreasAt(locId);return `<select id="${id}" data-hubarea="1"><option value="">— select area —</option>${opts.map(a=>`<option value="${esc(a)}"${a===(current||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>${opts.length?'':`<div class="hint" style="color:var(--warn)">No areas defined for the warehouse yet — an Admin must add them in Locations → Storage areas.</div>`}`;}
+  return `<input id="${id}" list="${id}-dl" value="${esc(current||'')}" placeholder="${requiredHint||'location (optional)'}"><datalist id="${id}-dl">${areasAt(locId).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;
+}
 async function setItemLocations(loc,rows,overwrite){if(!loc||!rows||!rows.length)return;try{await sb.rpc('set_item_locations',{p_loc:loc,p_rows:rows,p_overwrite:!!overwrite});}catch(e){console.error('set_item_locations',e);}}
 const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.email):'—';};
 function reservedAt(l,it){const tr=S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);const adj=(S.adjReq||[]).filter(r=>r.location_id===l&&r.item_id===it&&r.status==='pending').reduce((s,r)=>s+(r.qty||0),0);return tr+adj;}
@@ -422,7 +430,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
-    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign]=await Promise.all([
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
@@ -436,10 +444,11 @@ async function loadAll(){
       q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
+      q(sb.from('store_areas').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
-    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[];
+    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadHeavyBg(); // background — don't block first paint on 34k stock rows
@@ -453,7 +462,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -465,9 +474,10 @@ async function loadOps(){
       q(sb.from('adjustment_requests').select('*').order('requested_at',{ascending:false})).catch(()=>[]),
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
+      q(sb.from('store_areas').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -1077,11 +1087,11 @@ function printPickList(t){
   w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);
 }
 /* picking (shared, scan-to-pick) */
-let pkCounts={}, pkId=null, pkSaveT=null, pkDirty=new Set(), pkFrom={};
+let pkCounts={}, pkId=null, pkSaveT=null, pkDirty=new Set(), pkFrom={}, pkAisle={};
 function pkArray(){return [...pkDirty].map(k=>({line:k,qty:Math.max(0,+pkCounts[k]||0)}));}
 function openPicking(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
-  pkId=id; pkCounts={}; pkDirty=new Set(); pkFrom={}; (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);pkFrom[l.id]=areaOf(t.from_location,l.item_id);});
+  pkId=id; pkCounts={}; pkDirty=new Set(); pkFrom={}; pkAisle={}; (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);pkFrom[l.id]=areaOf(t.from_location,l.item_id);pkAisle[l.id]=aisleOf(t.from_location,l.item_id);});
   const camOk=('BarcodeDetector' in window);
   const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Scan each item (USB scanner or camera) or search, and enter the quantity you're sending. Progress is shared and saved — others can pick alongside you. An Admin dispatches when done.</div></div>
     <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="pk-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="pk-cam">${svg(I.box,16)} Camera</button>`:''}</div>
@@ -1095,12 +1105,20 @@ function openPicking(id){
   bindPkInputs(t);updatePkProg(t);
   const cam=document.getElementById('pk-cam');if(cam)cam.onclick=()=>openPkScanner(t);
   document.getElementById('pk-save').onclick=()=>savePicks(t,true);
-  const d=document.getElementById('pk-disp');if(d)d.onclick=async()=>{await savePicks(t,false);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',{location_id:t.from_location,item_ids:txItems(t)});};
+  const d=document.getElementById('pk-disp');if(d)d.onclick=async()=>{
+    if(isHub(t.from_location)){const miss=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0&&!(pkFrom[l.id]||'').trim());if(miss.length)return toast('Central Warehouse: choose the pick-from area for every picked item ('+miss.length+' missing)',true);}
+    await savePicks(t,false);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',{location_id:t.from_location,item_ids:txItems(t)});notifyTransfer(id,'in_transit');};
 }
-function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=(t.lines||[]).slice();const kk=s=>(s||'~~~~').toLowerCase();lines.sort((a,b)=>{const aa=kk(areaOf(t.from_location,a.item_id)),ba=kk(areaOf(t.from_location,b.item_id));if(aa!==ba)return aa<ba?-1:1;const ai=kk(aisleOf(t.from_location,a.item_id)),bi=kk(aisleOf(t.from_location,b.item_id));if(ai!==bi)return ai<bi?-1:1;return item(a.item_id).name.localeCompare(item(b.item_id).name);});if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;const areasOpts=areasAt(t.from_location).map(a=>`<option value="${esc(a)}"></option>`).join('');return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];return `<div class="recv-row" style="grid-template-columns:1fr 50px 88px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Req</div><div class="tnum" style="font-weight:600">${l.qty_requested}</div></div><div><div class="cap">Picking</div><input type="number" min="0" inputmode="numeric" value="${c==null||c===0?'':c}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span><input list="pk-areas" data-pkfrom="${l.id}" value="${esc(pkFrom[l.id]||'')}" placeholder="storage area" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px"></div></div>`;}).join('')+`<datalist id="pk-areas">${areasOpts}</datalist>`;}
+function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=(t.lines||[]).slice();const kk=s=>(s||'~~~~').toLowerCase();lines.sort((a,b)=>{const aa=kk(areaOf(t.from_location,a.item_id)),ba=kk(areaOf(t.from_location,b.item_id));if(aa!==ba)return aa<ba?-1:1;const ai=kk(aisleOf(t.from_location,a.item_id)),bi=kk(aisleOf(t.from_location,b.item_id));if(ai!==bi)return ai<bi?-1:1;return item(a.item_id).name.localeCompare(item(b.item_id).name);});if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;const hubP=isHub(t.from_location);const inpStyle='flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
+  const areaOpts=(hubP?storeAreasAt(t.from_location):areasAt(t.from_location));const aisleOpts=aislesAt(t.from_location);
+  const areaCtl=l=>hubP?`<select data-pkfrom="${l.id}" style="${inpStyle}"><option value="">— area —</option>${areaOpts.map(a=>`<option value="${esc(a)}"${a===(pkFrom[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="pk-areas" data-pkfrom="${l.id}" value="${esc(pkFrom[l.id]||'')}" placeholder="area" style="${inpStyle}">`;
+  const aisleCtl=l=>`<input list="pk-aisles" data-pkaisle="${l.id}" value="${esc(pkAisle[l.id]||'')}" placeholder="aisle" style="width:84px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px">`;
+  return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];return `<div class="recv-row" style="grid-template-columns:1fr 50px 88px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Req</div><div class="tnum" style="font-weight:600">${l.qty_requested}</div></div><div><div class="cap">Picking</div><input type="number" min="0" inputmode="numeric" value="${c==null||c===0?'':c}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span>${areaCtl(l)}${aisleCtl(l)}</div></div>`;}).join('')+`<datalist id="pk-areas">${areaOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="pk-aisles">${aisleOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;}
 function renderPkList(t){const el=document.getElementById('pkList');if(!el)return;const f=(document.getElementById('pk-scan')||{}).value||'';el.innerHTML=renderPkRows(t,f);bindPkInputs(t);updatePkProg(t);}
 function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(inp=>{inp.oninput=e=>{pkCounts[e.target.dataset.pk]=e.target.value===''?0:Math.max(0,+e.target.value);pkDirty.add(e.target.dataset.pk);updatePkProg(t);};inp.onchange=()=>savePicks(t,false);});
-  document.querySelectorAll('#pkList [data-pkfrom]').forEach(inp=>{inp.onchange=e=>{const lid=e.target.dataset.pkfrom;pkFrom[lid]=e.target.value.trim();const l=(t.lines||[]).find(x=>x.id===lid);if(l&&pkFrom[lid]&&pkFrom[lid]!==areaOf(t.from_location,l.item_id)){setItemLocations(t.from_location,[{item:l.item_id,area:pkFrom[lid]}]);toast('Pick-from location updated');}};});}
+  const persistFrom=lid=>{const l=(t.lines||[]).find(x=>x.id===lid);if(!l)return;const a=pkFrom[lid]||'',ai=pkAisle[lid]||'';if((a&&a!==areaOf(t.from_location,l.item_id))||(ai&&ai!==aisleOf(t.from_location,l.item_id))){setItemLocations(t.from_location,[{item:l.item_id,area:a,aisle:ai}],true);toast('Pick-from location updated');}};
+  document.querySelectorAll('#pkList [data-pkfrom]').forEach(inp=>{inp.onchange=e=>{pkFrom[e.target.dataset.pkfrom]=e.target.value.trim();persistFrom(e.target.dataset.pkfrom);};});
+  document.querySelectorAll('#pkList [data-pkaisle]').forEach(inp=>{inp.onchange=e=>{pkAisle[e.target.dataset.pkaisle]=e.target.value.trim();persistFrom(e.target.dataset.pkaisle);};});}
 function updatePkProg(t){const el=document.getElementById('pk-prog');if(!el)return;const total=(t.lines||[]).length;const done=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0).length;el.textContent=done+' of '+total+' items picked';}
 function pkScan(t,code){if(!code)return;const cl=code.toLowerCase();const line=(t.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this transfer: '+code,true);return;}const cur=+pkCounts[line.id]||0;pkCounts[line.id]=cur+1;pkDirty.add(line.id);toast('+1 '+item(line.item_id).name+' = '+(cur+1));savePicks(t,false);updatePkProg(t);}
 function savePicks(t,announce){const picks=pkArray();if(!picks.length&&!announce)return;clearTimeout(pkSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_picks',{p_id:t.id,p_picks:picks});if(announce)toast(error?('Save failed: '+error.message):'Picking saved',!!error);};if(announce)doSave();else pkSaveT=setTimeout(doSave,700);}
@@ -1213,12 +1231,14 @@ async function submitTransfer(){
 function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div></div>`;}).join('');
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Stored at (location within centre)</label><input id="rc-tarea" list="rc-tareas" placeholder="e.g. Storage, Basement"><datalist id="rc-tareas">${areasAt(t.to_location).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  const hubR=isHub(t.to_location);
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="grid2" style="margin-top:14px"><div class="field"><label>Stored at${hubR?' *':' (optional)'}</label>${areaField(t.to_location,'rc-tarea','')}</div><div class="field"><label>Aisle #${hubR?' *':' (optional)'}</label><input id="rc-taisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
-    const note=(document.getElementById('rc-note')||{}).value||'';const area=(document.getElementById('rc-tarea')||{}).value||'';
+    const note=(document.getElementById('rc-note')||{}).value||'';const area=((document.getElementById('rc-tarea')||{}).value||'').trim(),aisle=((document.getElementById('rc-taisle')||{}).value||'').trim();
+    if(hubR&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
     await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
-    if(area.trim())await setItemLocations(t.to_location,(t.lines||[]).map(l=>({item:l.item_id,area:area.trim()})));
+    if(area||aisle)await setItemLocations(t.to_location,(t.lines||[]).map(l=>({item:l.item_id,area,aisle})));
   };
 }
 /* Orders */
@@ -1350,6 +1370,7 @@ function reviewStocktake(st){
   document.getElementById('st-confirm').onclick=()=>{
     let counts=stCountsArray();const zero=document.getElementById('st-zero');
     if(zero&&zero.checked){(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});}
+    if(isHub(st.location_id)){const miss=counts.filter(c=>{const cnt=+c.counted;return cnt>0&&(!(stArea[c.line]||'').trim()||!(stAisle[c.line]||'').trim());});if(miss.length)return toast('Central Warehouse: enter a storage area and aisle # for every counted item ('+miss.length+' missing)',true);}
     persistStLocations(st);
     callRpc('finalize_stocktake',{p_id:st.id,p_counts:counts},'Stock take submitted',{location_id:st.location_id});
   };
@@ -1361,13 +1382,14 @@ function renderStRows(st,editable,filter){
   if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});
   if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;
   return lines.map(l=>{const it=item(l.item_id);
-    if(editable){const c=stCounts[l.id];
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px"><input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px"><input data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px"></div></div>`;}
+    if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
+      const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
 }
-function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
+function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="st-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
 function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});
   document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();});
   document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();});}
@@ -1414,9 +1436,9 @@ let recLines=[];
 function newReceipt(){
   recLines=[{item:'',qty:1,cost:0}];
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
-  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="field"><label>Stored at (location within centre)</label><input id="rc-area" list="rc-areas" placeholder="e.g. Shayona Store, Storage, Basement"><datalist id="rc-areas"></datalist></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
+  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><input id="rc-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
   restrictLocSelect('rc-loc');
-  const rcArea=()=>{document.getElementById('rc-areas').innerHTML=areasAt(document.getElementById('rc-loc').value).map(a=>`<option value="${esc(a)}"></option>`).join('');};
+  const rcArea=()=>{const lc=document.getElementById('rc-loc').value;const hub=isHub(lc);document.getElementById('rc-areawrap').innerHTML=areaField(lc,'rc-area','',hub?'select area (required)':'location (optional)');document.getElementById('rc-arealbl').textContent='Stored at'+(hub?' *':' (optional)');document.getElementById('rc-aislelbl').textContent='Aisle #'+(hub?' *':' (optional)');};
   document.getElementById('rc-loc').addEventListener('change',rcArea);rcArea();
   rEd();document.getElementById('rAdd').onclick=()=>{recLines.push({item:'',qty:1,cost:0});rEd();};
   document.getElementById('go').onclick=submitReceipt;
@@ -1436,9 +1458,10 @@ function rSum(){const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);docu
 async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
-  const area=(document.getElementById('rc-area')||{}).value||'';
+  const area=((document.getElementById('rc-area')||{}).value||'').trim(),aisle=((document.getElementById('rc-aisle')||{}).value||'').trim();
+  if(isHub(lc)&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
   await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
-  if(area.trim())await setItemLocations(lc,lines.map(l=>({item:l.item,area:area.trim()})));
+  if(area||aisle)await setItemLocations(lc,lines.map(l=>({item:l.item,area,aisle})));
 }
 /* Catalog */
 let catSearch='',catCat='all';
@@ -1537,11 +1560,11 @@ function openSetLocation(itemId){
   if(!locs.length)return toast('No centre available',true);
   modal('Set storage location',it.name,`
     <div class="field"><label>Centre</label><select id="sl-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
-    <div class="grid2"><div class="field"><label>Store area</label><input id="sl-area" list="sl-areas" placeholder="e.g. Shayona Store, Storage, Basement"><datalist id="sl-areas"></datalist></div>
+    <div class="grid2"><div class="field"><label id="sl-arealbl">Store area</label><div id="sl-areawrap"></div></div>
       <div class="field"><label>Aisle #</label><input id="sl-aisle" placeholder="e.g. A3"></div></div>
-    <div class="hint">Type a new area name to create it, or pick an existing one.</div>`,
+    <div class="hint" id="sl-hint"></div>`,
     `<button class="btn" data-close>Cancel</button><button class="btn primary" id="sl-go">Save</button>`);
-  const fill=()=>{const lc=document.getElementById('sl-loc').value;document.getElementById('sl-area').value=areaOf(lc,itemId);document.getElementById('sl-aisle').value=aisleOf(lc,itemId);document.getElementById('sl-areas').innerHTML=areasAt(lc).map(a=>`<option value="${esc(a)}"></option>`).join('');};
+  const fill=()=>{const lc=document.getElementById('sl-loc').value;const hub=isHub(lc);document.getElementById('sl-areawrap').innerHTML=areaField(lc,'sl-area',areaOf(lc,itemId));document.getElementById('sl-aisle').value=aisleOf(lc,itemId);document.getElementById('sl-arealbl').textContent='Store area'+(hub?' (Warehouse — pick from list)':'');document.getElementById('sl-hint').textContent=hub?'':'Type a new area name to create it, or pick an existing one.';};
   document.getElementById('sl-loc').onchange=fill;fill();
   document.getElementById('sl-go').onclick=async()=>{
     const lc=document.getElementById('sl-loc').value,area=document.getElementById('sl-area').value.trim(),aisle=document.getElementById('sl-aisle').value.trim();
@@ -1615,8 +1638,23 @@ function vLocations(v){
   v.innerHTML=`
     ${can('sync.run')?`<div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="new-location">${svg(I.plus,16)} Add location</button>`:''}<button class="btn primary" data-act="link-locs">${svg(I.sync,16)} Pull locations from Square</button></div>`:''}
     ${!S.locations.length?`<div class="banner info">${svg(I.info,17)}<div>No locations yet. Click <b>Pull locations from Square</b> to bring them in automatically.</div></div>`:(unlinked?`<div class="banner warn">${svg(I.alert,17)}<div><b>${unlinked} location(s) not linked to Square yet</b> — stock won’t sync for them. Click <b>Pull locations from Square</b>. If a centre isn’t in Square (e.g. a stockroom), that’s fine — just leave it.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>All locations are linked to Square.</div></div>`)}
-    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th>${ROLE==='super_admin'?'<th></th>':''}</tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td>${ROLE==='super_admin'?`<td style="text-align:right">${l.is_hub?'<span style="font-size:12px;color:var(--faint)">default source</span>':`<button class="btn sm" data-sethub="${l.id}">Set as hub</button>`}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th><th class="num">Areas</th>${adminPlus()?'<th></th>':''}</tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td><td class="num tnum">${storeAreasAt(l.id).length||'—'}</td>${adminPlus()?`<td style="text-align:right;white-space:nowrap">${(!scoped()||mine(l.id))?`<button class="btn sm" data-areas="${l.id}">Storage areas</button>`:''}${ROLE==='super_admin'&&!l.is_hub?` <button class="btn sm" data-sethub="${l.id}">Set as hub</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  v.querySelectorAll('[data-areas]').forEach(b=>b.onclick=()=>openStoreAreas(b.dataset.areas));
 }
+const adminPlus=()=>['admin','national_admin','super_admin'].includes(ROLE);
+function openStoreAreas(locId){
+  const render=()=>{const areas=(S.storeAreas||[]).filter(a=>a.location_id===locId).sort((a,b)=>a.name.localeCompare(b.name));
+    return `<div class="banner info">${svg(I.info,17)}<div>Storage areas for <b>${esc(loc(locId).name)}</b>${isHub(locId)?' (Central Warehouse — users must pick from this list, so keep it accurate).':' (optional; other centres also allow free-text locations).'}</div></div>
+    <div class="field"><label>Add an area</label><div style="display:flex;gap:8px"><input id="sa-new" placeholder="e.g. Shayona Store, Storage, Basement" style="flex:1"><button class="btn" id="sa-add">${svg(I.plus,15)} Add</button></div></div>
+    <div id="sa-list">${areas.length?areas.map(a=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(a.name)}</span><button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-sadel="${a.id}">Remove</button></div>`).join(''):'<div style="color:var(--faint);font-size:13px;padding:8px 0">No areas yet.</div>'}</div>`;};
+  modal('Storage areas',loc(locId).code,render(),`<button class="btn primary" data-close>Done</button>`);
+  const wire=()=>{
+    const add=document.getElementById('sa-add');if(add)add.onclick=async()=>{const nm=document.getElementById('sa-new').value.trim();if(!nm)return;const{error}=await sb.from('store_areas').insert({location_id:locId,name:nm});if(error)return toast(error.message||'Failed',true);await loadOps();refreshStoreAreasModal(locId,render,wire);};
+    document.querySelectorAll('[data-sadel]').forEach(b=>b.onclick=async()=>{const{error}=await sb.from('store_areas').delete().eq('id',b.dataset.sadel);if(error)return toast(error.message,true);await loadOps();refreshStoreAreasModal(locId,render,wire);});
+  };
+  wire();
+}
+function refreshStoreAreasModal(locId,render,wire){const body=document.querySelector('#scrim .panel-body');if(body){body.innerHTML=render();wire();}renderView();}
 async function setHub(id){
   const l=S.locations.find(x=>x.id===id);if(!l)return;
   if(!window.confirm('Make '+l.name+' the default transfer source (Hub)? Any other hub will be cleared.'))return;
@@ -2135,8 +2173,9 @@ async function doCancel(id){await callRpc('cancel_transfer',{p_id:id},'Cancelled
 async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);notifyTransfer(id,'in_transit');}
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost.</div></div><div class="field"><label>Stored at (location within centre)</label><input id="po-area" list="po-areas" placeholder="e.g. Storage, Basement"><datalist id="po-areas">${areasAt(o.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
-  document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';const area=(document.getElementById('po-area')||{}).value||'';await callRpc('receive_order',{p_id:id,p_note:note.trim()||null},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});if(area.trim())await setItemLocations(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area:area.trim()})));};
+  const hub=isHub(o.location_id);
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost.</div></div><div class="grid2"><div class="field"><label>Stored at${hub?' *':' (optional)'}</label>${areaField(o.location_id,'po-area','')}</div><div class="field"><label>Aisle #${hub?' *':' (optional)'}</label><input id="po-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';const area=((document.getElementById('po-area')||{}).value||'').trim(),aisle=((document.getElementById('po-aisle')||{}).value||'').trim();if(hub&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);await callRpc('receive_order',{p_id:id,p_note:note.trim()||null},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});if(area||aisle)await setItemLocations(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area,aisle})));};
 }
 /* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
 async function doReverse(fn,id,label,affectedLocs,itemIds){
