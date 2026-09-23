@@ -1708,7 +1708,7 @@ async function submitOrder(){
 function vStock(v){
   const list=S.stocktakes.filter(s=>!scoped()||mine(s.location_id));
   v.innerHTML=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Live-adjusted counts.</b> While a count is open, sales keep updating the system figure so your variance is always current. Finalising posts a physical count to Square.</div></div>
-    <div class="toolbar"><div class="spacer"></div>${can('stocktake.do')?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
+    <div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
     ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>No stock takes yet.</div></div>`}`;
 }
 function newStock(){
@@ -1719,6 +1719,43 @@ function newStock(){
   document.getElementById('go').onclick=async()=>{
     const lc=document.getElementById('st-loc').value,cat=document.getElementById('st-cat').value;
     await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
+  };
+}
+/* movement score for an item at a centre: monthly velocity, else 60-day sales ÷ 2 */
+function ssMovement(locId,id){const mv=(S.vel&&S.vel[locId+'__'+id])||0;if(mv>0)return mv;const w=(S.win&&S.win[locId+'__'+id]);return w?((+w.u60||0)/2):0;}
+/* weighted random sample (favours movers) of items that have stock at the centre */
+function pickByMovement(locId,n){
+  const pool=S.items.filter(i=>i.active!==false&&onHand(locId,i.id)>0).map(i=>({id:i.id,w:Math.max(0.1,ssMovement(locId,i.id))+0.15}));
+  const chosen=[];const arr=pool.slice();
+  while(chosen.length<n&&arr.length){
+    let tot=0;for(const x of arr)tot+=x.w;let r=Math.random()*tot,idx=0;
+    for(;idx<arr.length-1;idx++){r-=arr[idx].w;if(r<=0)break;}
+    chosen.push(arr[idx].id);arr.splice(idx,1);
+  }
+  return chosen;
+}
+/* Super Admin: auto-generate a spot-check stock take of N items chosen by movement */
+function cycleCountModal(){
+  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  const lo=`<option value="__all">All centres</option>`+S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  modal('Spot-check stock take','System picks items weighted by movement',`<div class="grid2">
+      <div class="field"><label>Centre</label><select id="cc-loc">${lo}</select></div>
+      <div class="field"><label>Number of items</label><input id="cc-n" type="number" min="1" max="200" value="25"></div>
+    </div><div class="banner info">${svg(I.info,17)}<div>Items are chosen at random but <b>weighted by movement</b> (velocity, then 60-day sales), so fast movers are counted more often. Only items with stock on hand are eligible. Choosing <b>All centres</b> creates one count per centre.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cc-go">${svg(I.stocktake,16)} Generate count</button>`);
+  document.getElementById('cc-go').onclick=async()=>{
+    const sel=document.getElementById('cc-loc').value;const n=Math.max(1,Math.min(200,+document.getElementById('cc-n').value||25));
+    const locs=sel==='__all'?S.locations.filter(l=>l.active!==false).map(l=>l.id):[sel];
+    let made=0,skipped=0,firstId=null;
+    for(const lc of locs){
+      const items=pickByMovement(lc,n);
+      if(!items.length){skipped++;continue;}
+      const{data,error}=await sb.rpc('start_cycle_count',{p_loc:lc,p_items:items});
+      if(error){toast(loc(lc).code+': '+error.message,true);continue;}
+      made++;if(!firstId)firstId=data;
+    }
+    closeOverlay();await refreshOps([]);
+    toast('Created '+made+' spot-check count'+(made===1?'':'s')+(skipped?' ('+skipped+' centre(s) had no stock)':''),made===0);
+    if(made===1&&firstId)openStock(firstId);
   };
 }
 let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={};
@@ -2658,7 +2695,7 @@ document.addEventListener('click',e=>{
   const oi=e.target.closest('[data-openitem]');if(oi){openItem(oi.dataset.openitem);return;}
   const sh=e.target.closest('[data-sethub]');if(sh){setHub(sh.dataset.sethub);return;}
   if(e.target.closest('[data-close]')){closeOverlay();return;}
-  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'ledger':runLedger,'push-all':pushAll}[k]||(()=>{}))();return;}
+  const a=e.target.closest('[data-act]');if(a){const k=a.dataset.act;({'new-transfer':newTransfer,'new-order':newOrder,'new-stock':newStock,'cycle-count':cycleCountModal,'new-receipt':newReceipt,'new-supplier':newSupplier,'sync':runSync,'sync-team':runTeamSync,'link-locs':linkLocations,'new-location':newLocation,'velocity':runVelocity,'ledger':runLedger,'push-all':pushAll}[k]||(()=>{}))();return;}
   const ap=e.target.closest('[data-approve]');if(ap){doApprove(ap.dataset.approve);return;}
   const cx=e.target.closest('[data-cancel]');if(cx){doCancel(cx.dataset.cancel);return;}
   const dp=e.target.closest('[data-dispatch]');if(dp){doDispatch(dp.dataset.dispatch);return;}
