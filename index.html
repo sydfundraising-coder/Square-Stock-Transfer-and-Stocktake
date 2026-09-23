@@ -1216,7 +1216,7 @@ function newTransfer(presetItem){
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span>Their SOH</span><span>Cover</span><span>Transfer QTY</span><span></span></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer QTY</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1258,6 +1258,7 @@ function edLines(){
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
+  const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
   ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const u=has?usage2(l.item):null;const mc=(has&&to)?monthsCover(to,l.item):null;const low=has&&to&&isLow(to,l.item);return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item):'—'}</div><div class="lbox" title="Units the destination sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'the requesting centre'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${has&&to?onHand(to,l.item):'—'}</div><div class="lbox" title="Months of stock the destination has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
