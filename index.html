@@ -178,6 +178,10 @@
   .hero::after{content:"";position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.09)}
   .hero::before{content:"";position:absolute;right:60px;bottom:-70px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.06)}
   @media (max-width:600px){.hero{padding:18px}.hero h2{font-size:19px}}
+  .modal.full{max-width:min(1000px,96vw);width:96vw;height:92vh;display:flex;flex-direction:column}
+  .modal.full .panel-body{flex:1;overflow:auto}
+  .linerow-lbl{display:grid;grid-template-columns:1fr 84px 34px;gap:9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;margin-bottom:4px}
+  .linerow-lbl span:nth-child(2){text-align:center}
   /* ---- invoice printing ---- */
   #invoicePrint{display:none}
   .inv-tbl th{border-bottom:2px solid #222;padding:7px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#555}
@@ -1153,23 +1157,23 @@ function newTransfer(presetItem){
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="tf-rec">${svg(I.chart,14)} Fill recommended (2-month cover)</button><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden></div>
+      <div class="linerow-lbl"><span>Product</span><span>Transfer QTY</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
-  modal(draft?'Edit draft transfer':'New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save for later</button><button class="btn primary" id="go">Submit request</button>`);
+  modal(draft?'Edit draft transfer':'New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save for later</button><button class="btn primary" id="go">Submit request</button>`,'full');
   const hub=S.locations.find(l=>l.is_hub);const from=document.getElementById('tf-from'),to=document.getElementById('tf-to');
   // From = Central Warehouse (hub) by default; To = the user's centre.
   if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
   else{if(hub)from.value=hub.id;to.value=(destLocs.find(l=>l.id!==(hub?hub.id:''))||destLocs[0]||{}).id;}
   if(draft){from.value=draft.from_location;to.value=draft.to_location;document.getElementById('tf-notes').value=draft.notes||'';}
-  edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=sum;
+  edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=()=>{edLines();sum();};
   loadTfSrc(from.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));edLines();sum();});
-  document.getElementById('tf-rec').onclick=fillRecommended;
   document.getElementById('go').onclick=submitTransfer;
   document.getElementById('go-draft').onclick=saveTransferDraft;
 }
@@ -1191,10 +1195,12 @@ function fillRecommended(){
 }
 function edLines(){
   const from=(document.getElementById('tf-from')||{}).value;
+  const to=(document.getElementById('tf-to')||{}).value;
   const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
+  const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
-  ed.innerHTML=dLines.map((l,ix)=>`<div class="linerow"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>${l.item&&from?`<div style="font-size:11.5px;margin:-4px 0 8px 2px;color:var(--good);font-weight:700">avail ${av(l.item)} at ${esc(loc(from).code)}</div>`:''}`).join('');
+  ed.innerHTML=dLines.map((l,ix)=>`<div class="linerow"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>${l.item?`<div style="font-size:11.5px;margin:-4px 0 8px 2px;display:flex;gap:14px;flex-wrap:wrap">${from?`<span style="color:var(--good);font-weight:700">avail ${av(l.item)} at ${esc(loc(from).code)}</span>`:''}${to&&usage2(l.item)!=null?`<span style="color:var(--transit);font-weight:700">2-mo usage ${usage2(l.item)} at ${esc(loc(to).code)}</span>`:(to?`<span style="color:var(--faint)">no sales data at ${esc(loc(to).code)}</span>`:'')}</div>`:''}`).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;sum();});
   ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{dLines[+e.target.dataset.lq].qty=Math.max(1,+e.target.value||1);sum();});
@@ -1513,9 +1519,9 @@ function exportCatalogue(fmt){
 /* ---- per-item stock ledger (history) ---- */
 const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
-let ihKind='all',ihItem=null;
+let ihKind='all',ihItem=null,ihRange='12m';
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
-async function fetchItemLedger(itemId,limit){let qy=sb.from('stock_ledger').select('*').eq('item_id',itemId).order('ts',{ascending:false}).limit(limit||300);if(scoped()&&MYLOCS.length)qy=qy.in('location_id',MYLOCS);const{data,error}=await qy;if(error)throw error;return data||[];}
+async function fetchItemLedger(itemId){let qy=sb.from('stock_ledger').select('*').eq('item_id',itemId).order('ts',{ascending:false}).limit(2000);if(ihRange==='12m'){const s=new Date();s.setMonth(s.getMonth()-12);qy=qy.gte('ts',s.toISOString());}if(scoped()&&MYLOCS.length)qy=qy.in('location_id',MYLOCS);const{data,error}=await qy;if(error)throw error;return data||[];}
 async function renderItemHistory(itemId){
   const el=document.getElementById('ih-list');if(!el)return;
   let rows;try{rows=await fetchItemLedger(itemId);}catch(e){el.innerHTML=`<div style="color:var(--faint);font-size:13px">Could not load history: ${esc(e.message||e)}</div>`;return;}
@@ -1537,6 +1543,7 @@ function openItem(id){
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th>Stored at</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${preqHtml}
     <div style="display:flex;align-items:center;gap:10px;margin:18px 0 8px"><h3 style="font-size:13px;margin:0">History</h3><div class="spacer"></div>
+      <select class="filter" id="ih-range" style="height:32px;padding:4px 8px"><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       <select class="filter" id="ih-kind" style="height:32px;padding:4px 8px">${kinds.map(k=>`<option value="${k}">${k==='all'?'All movements':esc(lkind(k).l)}</option>`).join('')}</select>
       <button class="btn sm" id="ih-csv">${svg(I.receipt,14)} CSV</button></div>
     <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>`;
@@ -1546,6 +1553,7 @@ function openItem(id){
     +`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
   slideover(it.name,it.sku||'',body,foot);
   document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
+  const ihr=document.getElementById('ih-range');if(ihr){ihr.value=ihRange;ihr.onchange=e=>{ihRange=e.target.value;renderItemHistory(id);};}
   document.getElementById('ih-csv').onclick=()=>{const rows=(window._ihRows||[]);downloadCSV('item-history_'+(it.sku||it.name).replace(/[^A-Za-z0-9_-]/g,'')+'_'+today()+'.csv',['When','Type','Centre','Qty','Reference','Note'],rows.map(r=>[fmtDT(r.ts),lkind(r.kind).l,r.location_id?loc(r.location_id).name:'',r.qty_delta,r.reference||'',r.note||'']));toast('Item history exported ('+rows.length+' rows)');};
   const bt=document.getElementById('it-transfer');if(bt)bt.onclick=()=>newTransfer(id);
   const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
@@ -2215,7 +2223,7 @@ function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
 function slideover(t,s,b,f){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
-function modal(t,s,b,f){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
+function modal(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));s.addEventListener('click',e=>{if(e.target===s)closeOverlay();});}
 function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
 let toastT;
