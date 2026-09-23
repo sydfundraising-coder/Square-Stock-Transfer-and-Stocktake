@@ -178,8 +178,9 @@
   .hero::after{content:"";position:absolute;right:-50px;top:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.09)}
   .hero::before{content:"";position:absolute;right:60px;bottom:-70px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.06)}
   @media (max-width:600px){.hero{padding:18px}.hero h2{font-size:19px}}
-  .modal.full{max-width:min(1000px,96vw);width:96vw;height:92vh;display:flex;flex-direction:column}
+  .modal.full{width:97vw;max-width:1500px;height:95vh;max-height:95vh;display:flex;flex-direction:column}
   .modal.full .panel-body{flex:1;overflow:auto}
+  .panel.wide{width:min(1100px,97vw)}
   .linerow-lbl{display:grid;grid-template-columns:1fr 84px 34px;gap:9px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;margin-bottom:4px}
   .linerow-lbl span:nth-child(2){text-align:center}
   /* ---- invoice printing ---- */
@@ -1101,7 +1102,7 @@ function openPicking(id){
     <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="pk-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="pk-cam">${svg(I.box,16)} Camera</button>`:''}</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px"><span id="pk-prog"></span></div>`;
   const foot=`<button class="btn" data-close>Close</button><button class="btn" id="pk-save">Save</button>${canDispatchT(t)?`<button class="btn primary" id="pk-disp">${svg(I.truck,16)} Dispatch</button>`:''}`;
-  slideover('Pick '+t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,`${head}<div id="pkList">${renderPkRows(t,'')}</div>`,foot);
+  slideover('Pick '+t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,`${head}<div id="pkList">${renderPkRows(t,'')}</div>`,foot,'wide');
   const scan=document.getElementById('pk-scan');
   scan.oninput=()=>renderPkList(t);
   scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();pkScan(t,scan.value.trim());scan.value='';renderPkList(t);scan.focus();}};
@@ -2222,7 +2223,7 @@ function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(
 
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
-function slideover(t,s,b,f){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
+function slideover(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function modal(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));s.addEventListener('click',e=>{if(e.target===s)closeOverlay();});}
 function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
