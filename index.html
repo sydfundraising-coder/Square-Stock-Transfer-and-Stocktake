@@ -360,6 +360,11 @@ const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
 const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
 const onHand=(l,i)=>S.stock[l+'__'+i]||0;
+/* packets-per-carton (boxes) helpers — it is an item OBJECT */
+const ppc=it=>{const p=it&&it.pack_per_carton;return (p&&p>0)?+p:0;};
+const pktToBox=(pk,it)=>{const n=ppc(it);return n?pk/n:null;};
+const boxTxt=(pk,it)=>{const n=ppc(it);if(!n)return '';const b=pk/n;return (Math.round(b*100)/100)+(b===1?' box':' boxes');};
+const ceilBox=(pk,it)=>{const n=ppc(it);return n?Math.ceil(pk/n):null;};
 const binOf=(l,i)=>(S.bin&&S.bin[l+'__'+i])||{area:'',aisle:''};
 const areaOf=(l,i)=>binOf(l,i).area||'';
 const aisleOf=(l,i)=>binOf(l,i).aisle||'';
@@ -876,8 +881,8 @@ function ssReportHtml(){
       <td>${esc(ssSupName(r.ov.preferred_supplier_id))}</td>
       <td style="white-space:nowrap;font-size:12px">${r.startReliable?fmtDate(r.start):'<span style="color:var(--muted)" title="No in-app receipt; Square created date is unreliable, so age is estimated from sales history">est.</span>'}</td>
       <td class="num tnum"${r.ageInferred?' title="Estimated from sales history — add a stock receipt for an exact age"':''}>${r.age==null?'—':r.age}${r.ageInferred?'*':''}</td>
-      <td class="num tnum">${r.soh}</td><td class="num tnum">${r.onOrder||'—'}</td><td class="num tnum">${r.incTr||'—'}</td><td class="num tnum">${r.outTr?'−'+r.outTr:'—'}</td>
-      <td class="num tnum" style="font-weight:700">${c.available}</td>
+      <td class="num tnum">${r.soh}${ppc(r.it)?`<div style="font-size:10px;color:var(--faint)">${boxTxt(r.soh,r.it)}</div>`:''}</td><td class="num tnum">${r.onOrder||'—'}</td><td class="num tnum">${r.incTr||'—'}</td><td class="num tnum">${r.outTr?'−'+r.outTr:'—'}</td>
+      <td class="num tnum" style="font-weight:700">${c.available}${ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${boxTxt(c.available,r.it)}</div>`:''}</td>
       <td style="white-space:nowrap;font-size:12px">${r.eta?fmtDate(r.eta):'—'}</td>
       <td class="num tnum">${r.w.u60||0}</td><td class="num tnum">${r.w.u180||0}</td>
       <td class="num tnum">${c.ads.toFixed(2)}</td><td class="num tnum">${docTxt}</td>
@@ -885,7 +890,7 @@ function ssReportHtml(){
       <td style="text-align:center"><span class="tag">${r.abc}</span></td>
       <td>${ssPill(c.key,extra)}${c.note?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px">${esc(c.note)}</div>`:''}</td>
       <td style="font-size:11px;color:var(--warn);max-width:190px">${warns.map(w=>esc(w)).join('<br>')||''}</td>
-      <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}</td>
+      <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}${c.orderQty>0&&ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${ceilBox(c.orderQty,r.it)} box${ceilBox(c.orderQty,r.it)===1?'':'es'}</div>`:''}</td>
       <td class="num tnum">${money(val)}</td>
       <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
   return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
@@ -900,10 +905,10 @@ function ssPoHtml(){
   const groups={};rows.forEach(r=>{const sid=r.ov.preferred_supplier_id||'none';(groups[sid]=groups[sid]||[]).push(r);});
   let html='';let grand=0;
   Object.keys(groups).forEach(sid=>{const g=groups[sid];let sub=0;
-    const body=g.sort((a,b)=>a.it.name.localeCompare(b.it.name)).map(r=>{const cost=r.it.unit_cost||0;const line=r.calc.orderQty*cost;sub+=line;return `<tr><td>${esc(r.it.name)}</td><td class="mono" style="font-size:11px">${esc(r.it.sku||'')}</td><td>${esc(loc(r.store).code)}</td><td class="num tnum">${r.soh}</td><td class="num tnum">${Math.round(r.calc.doc===Infinity?0:r.calc.doc)}</td><td class="num tnum" style="font-weight:700">${r.calc.orderQty}</td><td class="num tnum">${money(cost)}</td><td class="num tnum">${money(line)}</td></tr>`;}).join('');
+    const body=g.sort((a,b)=>a.it.name.localeCompare(b.it.name)).map(r=>{const cost=r.it.unit_cost||0;const line=r.calc.orderQty*cost;sub+=line;const bx=ceilBox(r.calc.orderQty,r.it);return `<tr><td>${esc(r.it.name)}</td><td class="mono" style="font-size:11px">${esc(r.it.sku||'')}</td><td>${esc(loc(r.store).code)}</td><td class="num tnum">${r.soh}</td><td class="num tnum">${Math.round(r.calc.doc===Infinity?0:r.calc.doc)}</td><td class="num tnum" style="font-weight:700">${r.calc.orderQty}</td><td class="num tnum" style="font-weight:700;color:var(--transit)">${bx==null?'—':bx}</td><td class="num tnum">${money(cost)}</td><td class="num tnum">${money(line)}</td></tr>`;}).join('');
     grand+=sub;
     html+=`<div class="section-head"><h2>${esc(sid==='none'?'Unassigned supplier':ssSupName(sid))}</h2><span class="tag">${g.length} items · ${money(sub)}</span></div>
-      <div class="tablewrap"><table style="min-width:0;font-size:12.5px"><thead><tr><th>Item</th><th>Code</th><th>Store</th><th class="num">SOH</th><th class="num">DOC</th><th class="num">Order qty</th><th class="num">Unit cost</th><th class="num">Line value</th></tr></thead><tbody>${body}</tbody></table></div>`;
+      <div class="tablewrap"><table style="min-width:0;font-size:12.5px"><thead><tr><th>Item</th><th>Code</th><th>Store</th><th class="num">SOH</th><th class="num">DOC</th><th class="num">Order (pkts)</th><th class="num">Order (boxes)</th><th class="num">Unit cost</th><th class="num">Line value</th></tr></thead><tbody>${body}</tbody></table></div>`;
   });
   return `<div class="banner info">${svg(I.cost,17)}<div><b>Suggested reorder</b> — items at or below reorder point. <b>Buy</b> from a supplier (export the PO), or <b>transfer</b> the stock in from another centre. Set a preferred supplier per item via <b>Edit</b> on the status report.</div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn primary" data-ssconvert>${svg(I.transfer,15)} Convert to stock transfer</button></div>
@@ -987,12 +992,12 @@ function ssExport(fmt){
   if(SS.tab==='expiry'){const rows=ssExpiryRows();const header=['Item','SKU','Centre','Best before','Days left','Qty','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
     const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
     return ssDownload('expiry',header,data,fmt);}
-  if(SS.tab==='po'){const rows=ssPoRows();const header=['Supplier','Item','Code','Store','SOH','DOC','Order qty','Unit cost','Line value'];
-    const data=rows.map(r=>[ssSupName(r.ov.preferred_supplier_id),r.it.name,r.it.sku||'',loc(r.store).code,r.soh,Math.round(r.calc.doc===Infinity?0:r.calc.doc),r.calc.orderQty,(r.it.unit_cost||0).toFixed(2),(r.calc.orderQty*(r.it.unit_cost||0)).toFixed(2)]);
+  if(SS.tab==='po'){const rows=ssPoRows();const header=['Supplier','Item','Code','Store','SOH','DOC','Order (packets)','Packets/carton','Order (boxes)','Unit cost','Line value'];
+    const data=rows.map(r=>[ssSupName(r.ov.preferred_supplier_id),r.it.name,r.it.sku||'',loc(r.store).code,r.soh,Math.round(r.calc.doc===Infinity?0:r.calc.doc),r.calc.orderQty,ppc(r.it)||'',ceilBox(r.calc.orderQty,r.it)==null?'':ceilBox(r.calc.orderQty,r.it),(r.it.unit_cost||0).toFixed(2),(r.calc.orderQty*(r.it.unit_cost||0)).toFixed(2)]);
     return ssDownload('suggested-po',header,data,fmt);}
   const rows=ssFilteredRows();
-  const header=['Item','SKU','Category','Supplier','Start date','Age (days)','SOH','On order','Incoming transfers','Outgoing transfers','Available','Expected arrival','Sold 60d','Sold 180d','ADS','DOC','Last sale','ABC','Status','Warnings','Order qty','Stock value'];
-  const data=rows.map(r=>{const c=r.calc;return [r.it.name,r.it.sku||'',r.it.category||'',ssSupName(r.ov.preferred_supplier_id),r.startReliable?r.start:'estimated',r.age==null?'':(r.age+(r.ageInferred?'*':'')),r.soh,r.onOrder,r.incTr,r.outTr,c.available,r.eta||'',r.w.u60||0,r.w.u180||0,c.ads.toFixed(2),c.doc===Infinity?'Inf':Math.round(c.doc),r.w.last_sale_date||'',r.abc,SS_ST[c.key].l,c.warn.join('; '),c.orderQty,(r.soh*(r.it.unit_cost||0)).toFixed(2)];});
+  const header=['Item','SKU','Category','Supplier','Packets/carton','Start date','Age (days)','SOH','SOH (boxes)','On order','Incoming transfers','Outgoing transfers','Available','Available (boxes)','Expected arrival','Sold 60d','Sold 180d','ADS','DOC','Last sale','ABC','Status','Warnings','Order qty','Order (boxes)','Stock value'];
+  const data=rows.map(r=>{const c=r.calc;const sb=pktToBox(r.soh,r.it),ab=pktToBox(c.available,r.it);return [r.it.name,r.it.sku||'',r.it.category||'',ssSupName(r.ov.preferred_supplier_id),ppc(r.it)||'',r.startReliable?r.start:'estimated',r.age==null?'':(r.age+(r.ageInferred?'*':'')),r.soh,sb==null?'':Math.round(sb*100)/100,r.onOrder,r.incTr,r.outTr,c.available,ab==null?'':Math.round(ab*100)/100,r.eta||'',r.w.u60||0,r.w.u180||0,c.ads.toFixed(2),c.doc===Infinity?'Inf':Math.round(c.doc),r.w.last_sale_date||'',r.abc,SS_ST[c.key].l,c.warn.join('; '),c.orderQty,ceilBox(c.orderQty,r.it)==null?'':ceilBox(c.orderQty,r.it),(r.soh*(r.it.unit_cost||0)).toFixed(2)];});
   ssDownload('stock-status',header,data,fmt);
 }
 function ssDownload(base,header,data,fmt){
@@ -1614,7 +1619,7 @@ async function openPkScanner(t){
   requestAnimationFrame(loop);
 }
 /* New transfer */
-let dLines=[],tfExceed=false;
+let dLines=[],tfExceed=false,tfUnit='pkt';
 /* Source availability for ANY centre (works even for centres the user can't otherwise read) */
 let tfSrc={loc:null,avail:{},onhand:{}};
 async function loadTfSrc(locId){
@@ -1635,8 +1640,8 @@ function newTransfer(presetItem){
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer QTY</span><span></span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><select id="tf-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1681,11 +1686,12 @@ function edLines(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
-  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const u=has?usage2(l.item):null;const mc=(has&&to)?monthsCover(to,l.item):null;const low=has&&to&&isLow(to,l.item);return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item):'—'}</div><div class="lbox" title="Units the destination sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'the requesting centre'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${has&&to?onHand(to,l.item):'—'}</div><div class="lbox" title="Months of stock the destination has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" value="${l.qty}" data-lq="${ix}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const u=has?usage2(l.item):null;const mc=(has&&to)?monthsCover(to,l.item):null;const low=has&&to&&isLow(to,l.item);return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item):'—'}</div><div class="lbox" title="Units the destination sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'the requesting centre'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${has&&to?onHand(to,l.item):'—'}</div><div class="lbox" title="Months of stock the destination has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&ppc(item(l.item)))?(Math.round((l.qty/ppc(item(l.item)))*100)/100):l.qty}" data-lq="${ix}" title="${has&&ppc(item(l.item))?(l.qty+' pkts = '+boxTxt(l.qty,item(l.item))):''}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
-  ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{dLines[+e.target.dataset.lq].qty=Math.max(1,+e.target.value||1);sum();});
+  ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const raw=Math.max(0,+e.target.value||0);const pk=(tfUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw);dLines[ix].qty=Math.max(1,pk);sum();});
   ed.querySelectorAll('[data-lr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-lr]').dataset.lr;if(dLines.length>1)dLines.splice(ix,1);edLines();});
+  const uSel=document.getElementById('tf-unit');if(uSel){uSel.value=tfUnit;const lb=document.getElementById('lbl-tqty');if(lb)lb.textContent=tfUnit==='box'?'Transfer (boxes)':'Transfer QTY';uSel.onchange=e=>{tfUnit=e.target.value;edLines();};}
   sum();
 }
 function sum(){
@@ -1766,7 +1772,7 @@ function openOrder(id){
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,body,act);
 }
-let poLines=[];
+let poLines=[],poUnit='pkt';
 function newOrder(){
   poLines=[{item:'',qty:1,cost:0}];
   const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
@@ -1775,7 +1781,7 @@ function newOrder(){
   const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
     <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">Pre-filled from supplier lead time — adjust as needed.</div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden><select id="po-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
       <div id="ped"></div><button class="btn sm" id="pAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
   modal('New supplier order','Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Place order</button>`);
@@ -1789,12 +1795,13 @@ function newOrder(){
 function pEd(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('ped');
-  ed.innerHTML=poLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 62px 80px 34px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-pq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const bx=poUnit==='box'&&ppc(it0);return `<div class="linerow" style="grid-template-columns:1fr 62px 80px 34px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="0" step="${bx?'0.01':'1'}" value="${bx?(Math.round((l.qty/ppc(it0))*100)/100):l.qty}" data-pq="${ix}" title="${l.item&&ppc(it0)?(l.qty+' pkts = '+boxTxt(l.qty,it0)):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pSum();});
-  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pq].qty=Math.max(1,+e.target.value||1);pSum();});
+  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const raw=Math.max(0,+e.target.value||0);poLines[ix].qty=Math.max(1,(poUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw));pSum();});
   ed.querySelectorAll('[data-pc]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pc].cost=Math.max(0,+e.target.value||0);pSum();});
   ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
+  const pu=document.getElementById('po-unit');if(pu){pu.value=poUnit;pu.onchange=ev=>{poUnit=ev.target.value;pEd();};}
   pSum();
 }
 function pSum(){const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
@@ -1925,7 +1932,7 @@ function renderStRows(st,editable,filter){
   return lines.map(l=>{const it=item(l.item_id);
     if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
       const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Counted</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"><input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional — sets this item's expiry)" style="${ist}"></div></div>`;}
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}${ppc(it)?` · ${ppc(it)}/carton`:''}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}"><input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional — sets this item's expiry)" style="${ist}"></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
@@ -2034,6 +2041,7 @@ function vCatalog(v){
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
       <div class="spacer"></div>
       <button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
+      ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
   const cenSel=document.getElementById('cen');cenSel.value=catCentre;cenSel.onchange=e=>{catCentre=e.target.value;catList();};
@@ -2041,6 +2049,7 @@ function vCatalog(v){
   document.getElementById('c').onchange=e=>{catCat=e.target.value;catList();};
   document.getElementById('cat-csv').onclick=()=>exportCatalogue('csv');
   document.getElementById('cat-xls').onclick=()=>exportCatalogue('xlsx');
+  const ci=document.getElementById('cat-import');if(ci)ci.onclick=importCostCarton;
   catList();
 }
 function catFiltered(){
@@ -2054,15 +2063,63 @@ function catList(){
   const list=catFiltered();
   const ohLbl=catCentre?('On hand ('+loc(catCentre).code+')'):(scoped()?'On hand (your centres)':'Total on hand');
   const showLoc=!!catCentre;
-  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost</th><th class="num">Price</th><th class="num">${ohLbl}</th>${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td>${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/carton</th><th class="num">Price</th><th class="num">${ohLbl}</th>${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${i.pack_per_carton||'<span style="color:var(--faint)">—</span>'}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}${ppc(i)?`<div style="font-size:10.5px;color:var(--faint)">${boxTxt(t,i)}</div>`:''}</td>${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
 }
 function exportCatalogue(fmt){
   const list=catFiltered();const cen=catCentre;
-  const header=['Item','Product code','Category','Cost','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','Store area','Aisle'];
-  const rows=list.map(i=>[i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,Number(i.price)||0,catOnHand(i),cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):'']);
+  const header=['Item','Product code','Category','Cost/packet','Packets/carton','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','On hand (boxes)','Store area','Aisle'];
+  const rows=list.map(i=>{const oh=catOnHand(i);const b=pktToBox(oh,i);return [i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,i.pack_per_carton||'',Number(i.price)||0,oh,b==null?'':Math.round(b*100)/100,cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):''];});
   const stamp=today();const suffix=cen?loc(cen).code:'all';
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,`catalogue_${suffix}_${stamp}.xlsx`);toast('Excel exported ('+rows.length+' items)');}
   else{downloadCSV(`catalogue_${suffix}_${stamp}.csv`,header,rows);toast('CSV exported ('+rows.length+' items)');}
+}
+/* Import cost per packet + packets-per-carton from a supplier cost sheet (matched by SKU / name). */
+function importCostCarton(){
+  if(!(ROLE==='super_admin'||ROLE==='national_admin'))return toast('Admins only',true);
+  if(!window.XLSX)return toast('Spreadsheet library still loading — try again in a moment',true);
+  modal('Import cost / carton','Update cost per packet & packets-per-carton from your sheet',
+    `<div class="banner info">${svg(I.info,17)}<div>Upload your cost sheet (Excel or CSV). It matches on <b>item code (SKU)</b> (falling back to item name), updates <b>cost per packet</b> and <b>packets per carton</b>, and downloads a sheet of any items it can't find.</div></div>
+     <div class="field"><label>Cost sheet (.xlsx / .csv)</label><input type="file" id="cc-file" accept=".xlsx,.xls,.csv"></div>
+     <div id="cc-map"></div>`,
+    `<button class="btn" data-close>Close</button><button class="btn primary" id="cc-go" disabled>${svg(I.check,16)} Match &amp; apply</button>`);
+  let AOA=null,hdrRow=0;
+  document.getElementById('cc-file').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{const buf=await f.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];
+      AOA=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});}catch(err){return toast('Could not read the file: '+(err.message||err),true);}
+    hdrRow=0;for(let i=0;i<Math.min(AOA.length,25);i++){if(AOA[i].filter(c=>String(c).trim()!=='').length>=3){hdrRow=i;break;}}
+    const hdr=(AOA[hdrRow]||[]).map((c,ix)=>({ix,label:String(c).trim()||XLSX.utils.encode_col(ix),letter:XLSX.utils.encode_col(ix)}));
+    const guess=re=>{const h=hdr.find(x=>re.test(x.label.toLowerCase()));return h?h.ix:'';};
+    const colV=(hdr.find(x=>x.letter==='V')||{}).ix;
+    const skuG=guess(/sku|item ?code|product ?code|^code$/);
+    const costG=(colV!=null?colV:guess(/cost.*packet|cost\/pk|unit ?cost|\bcost\b/));
+    const ppcG=guess(/carton|per ?carton|pack.*carton|\bbox|units?\/?carton/);
+    const opts=sel=>hdr.map(h=>`<option value="${h.ix}"${h.ix===sel?' selected':''}>${esc(h.letter)} — ${esc(h.label)}</option>`).join('');
+    document.getElementById('cc-map').innerHTML=`<div class="grid2">
+      <div class="field"><label>Item code (SKU) column</label><select id="cc-sku">${opts(skuG===''?0:skuG)}</select></div>
+      <div class="field"><label>Cost per packet column</label><select id="cc-cost">${opts(costG)}</select></div>
+      <div class="field"><label>Packets per carton column (optional)</label><select id="cc-ppc"><option value="">— none —</option>${hdr.map(h=>`<option value="${h.ix}"${h.ix===ppcG?' selected':''}>${esc(h.letter)} — ${esc(h.label)}</option>`).join('')}</select></div>
+      <div class="field"><label>&nbsp;</label><div style="font-size:12px;color:var(--muted);padding-top:8px">Header row: ${hdrRow+1} · ${Math.max(0,AOA.length-hdrRow-1)} data rows</div></div></div>`;
+    document.getElementById('cc-go').disabled=false;
+  };
+  document.getElementById('cc-go').onclick=async()=>{
+    if(!AOA)return toast('Choose a file first',true);
+    const si=+document.getElementById('cc-sku').value,cii=+document.getElementById('cc-cost').value;const pv=document.getElementById('cc-ppc').value;const pi=pv===''?null:+pv;
+    const bySku={},byName={};S.items.forEach(it=>{if(it.sku)bySku[String(it.sku).trim().toLowerCase()]=it;byName[String(it.name).trim().toLowerCase()]=it;});
+    const payload=[],unmatched=[];const numOf=x=>{const n=parseFloat(String(x).replace(/[^0-9.\-]/g,''));return isFinite(n)?n:'';};
+    for(let r=hdrRow+1;r<AOA.length;r++){const row=AOA[r];if(!row)continue;const key=String(row[si]==null?'':row[si]).trim();if(!key)continue;
+      const cost=numOf(row[cii]);const ppcv=pi!=null?parseInt(String(row[pi]).replace(/[^0-9]/g,''),10):null;
+      const it=bySku[key.toLowerCase()]||byName[key.toLowerCase()];
+      if(it)payload.push({item:it.id,cost:cost===''?'':cost,ppc:(ppcv&&ppcv>0)?ppcv:''});
+      else unmatched.push([key,cost,(ppcv&&ppcv>0)?ppcv:'']);
+    }
+    if(!payload.length&&!unmatched.length)return toast('No rows found — check the column mapping',true);
+    let updated=0;
+    if(payload.length){const{data,error}=await sb.rpc('update_items_cost_carton',{p_rows:payload});if(error)return toast(error.message||'Import failed',true);updated=data||0;}
+    if(unmatched.length)downloadCSV('cost-import-not-found_'+today()+'.csv',['Item code (not found in system)','Cost per packet','Packets per carton'],unmatched);
+    closeOverlay();await refresh();
+    toast('Updated '+updated+' item(s). '+(unmatched.length?unmatched.length+' not found — downloaded as a sheet.':'All matched.'),unmatched.length>0);
+  };
 }
 /* ---- per-item stock ledger (history) ---- */
 const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
