@@ -60,10 +60,10 @@
   .brand-sub{font-size:11px;color:var(--faint)}
   .nav{padding:6px 10px;overflow-y:auto;flex:1;min-height:0}
   .nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:600;padding:14px 10px 6px}
-  .nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;color:var(--muted);padding:9px 11px;border-radius:9px;font-weight:500}
+  .nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:10px 11px;border-radius:9px;font-weight:600;font-size:16px}
   .nav-item:hover{background:var(--surface-2);color:var(--ink)}
   .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
-  .nav-item svg{width:18px;height:18px;flex:none}
+  .nav-item svg{width:20px;height:20px;flex:none}
   .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
   .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
   .sq-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
@@ -201,9 +201,9 @@
   .rep-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
   .rep-actions{display:flex;align-items:center;gap:8px;flex:none}
   .rep-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 18px;border-bottom:1px solid var(--border);padding-bottom:0}
-  .rep-tab{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:var(--muted);font-weight:600;font-size:13px;padding:9px 13px;border-radius:9px 9px 0 0;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-  .rep-tab:hover{color:var(--ink);background:var(--surface-2)}
-  .rep-tab.active{color:var(--accent-ink);border-bottom-color:var(--accent);background:var(--accent-soft)}
+  .rep-tab{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-weight:600;font-size:13.5px;padding:9px 15px;border-radius:9px;cursor:pointer;margin-bottom:2px}
+  .rep-tab:hover{color:var(--ink);background:var(--surface-2);border-color:var(--border-strong)}
+  .rep-tab.active{color:#fff;background:var(--accent);border-color:var(--accent);font-weight:700;box-shadow:var(--shadow)}
   .rep-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-6px 0 16px}
   .rep-hint{display:flex;align-items:center;gap:7px;margin:-6px 0 16px;color:var(--muted);font-size:12.5px}
   .fchip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);color:var(--accent-ink);border-radius:20px;padding:4px 6px 4px 12px;font-size:12.5px}
@@ -1678,7 +1678,7 @@ async function openPkScanner(t){
   requestAnimationFrame(loop);
 }
 /* New transfer */
-let dLines=[],tfExceed=false,tfUnit='pkt';
+let dLines=[],tfExceed=false,tfUnit='pkt',tfUploaded=false;
 /* Source availability for ANY centre (works even for centres the user can't otherwise read) */
 let tfSrc={loc:null,avail:{},onhand:{}};
 async function loadTfSrc(locId){
@@ -1698,7 +1698,7 @@ let tfDraftId=null;
 function newTransfer(presetItem){
   const draft=(presetItem&&typeof presetItem==='object'&&presetItem.id)?presetItem:null;
   const pre=(presetItem&&typeof presetItem==='object'&&presetItem.prefill)?presetItem:null;
-  tfDraftId=draft?draft.id:null;
+  tfDraftId=draft?draft.id:null;tfUploaded=!!(draft||pre); // draft/auto-filled → check at submit, not per line
   dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
@@ -1708,7 +1708,7 @@ function newTransfer(presetItem){
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><select id="tf-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span>You'll get</span><span></span></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span>Trns box (rnd)</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1720,12 +1720,12 @@ function newTransfer(presetItem){
   if(draft){from.value=draft.from_location;to.value=draft.to_location;document.getElementById('tf-notes').value=draft.notes||'';}
   if(pre){if(pre.to)to.value=pre.to;if(pre.from)from.value=pre.from;}
   edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=()=>{loadTfDest(to.value);edLines();sum();};
-  const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
+  const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;tfUploaded=true;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
-  document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));edLines();sum();});
+  document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));tfUploaded=true;edLines();sum();});
   document.getElementById('go').onclick=submitTransfer;
   document.getElementById('go-draft').onclick=saveTransferDraft;
 }
@@ -1753,24 +1753,34 @@ function edLines(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
-  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const avPk=(has&&from)?av(l.item):0;const rboxes=(pc&&has)?Math.min(Math.round(l.qty/pc),Math.max(0,Math.floor(avPk/pc))):null;const rpk=(rboxes!=null)?rboxes*pc:null;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${pc?' ('+bxTag(av(l.item),it0)+')':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item)+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(av(l.item),it0)}</div>`:''):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&pc)?(Math.round((l.qty/pc)*100)/100):l.qty}" data-lq="${ix}" title="${has&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><div class="lbox" title="${pc?('Whole cartons the warehouse will pick — capped by what '+(from?loc(from).code:'source')+' holds. You will receive about '+(rpk||0)+' packets.'):'Set packets-per-carton on the item to convert to boxes'}" style="color:${rboxes?'var(--accent-ink)':'var(--faint)'}">${pc?(rboxes!=null?rboxes+' bx':'—'):'n/a'}${pc&&rpk?`<div style="font-size:9px;color:var(--faint);font-weight:400">${rpk} pk</div>`:''}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const rboxes=(pc&&has&&l.qty>0)?Math.round(l.qty/pc):null;const rpk=(rboxes!=null)?rboxes*pc:null;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${pc?' ('+bxTag(av(l.item),it0)+')':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item)+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(av(l.item),it0)}</div>`:''):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&pc)?(Math.round((l.qty/pc)*100)/100):l.qty}" data-lq="${ix}" title="${has&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><div class="lbox" title="${pc?('Transfer quantity converted to whole boxes (rounded) — about '+(rpk||0)+' packets'):'Set packets-per-carton on the item to convert to boxes'}" style="color:${rboxes?'var(--accent-ink)':'var(--faint)'}">${pc?(rboxes!=null?rboxes+' bx':'—'):'n/a'}${pc&&rpk?`<div style="font-size:9px;color:var(--faint);font-weight:400">${rpk} pk</div>`:''}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
-  ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const raw=Math.max(0,+e.target.value||0);const pk=(tfUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw);dLines[ix].qty=Math.max(1,pk);sum();});
+  ed.querySelectorAll('[data-lq]').forEach(s=>{s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const raw=Math.max(0,+e.target.value||0);const pk=(tfUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw);dLines[ix].qty=Math.max(1,pk);sum();};
+    s.onchange=e=>{if(!tfUploaded)tfWarnLine(dLines[+e.target.dataset.lq]);};});
   ed.querySelectorAll('[data-lr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-lr]').dataset.lr;if(dLines.length>1)dLines.splice(ix,1);edLines();});
   const uSel=document.getElementById('tf-unit');if(uSel){uSel.value=tfUnit;const lb=document.getElementById('lbl-tqty');if(lb)lb.textContent=tfUnit==='box'?'Transfer (boxes)':'Transfer QTY';uSel.onchange=e=>{tfUnit=e.target.value;edLines();};}
   sum();
 }
-/* Which lines are over-available, too low, or excess vs the destination's 2-month demand */
-function tfIssues(){
+/* Evaluate one line vs the destination's 2-month demand → 'low' | 'excess' | null */
+function tfLineFlag(l){
   const from=(document.getElementById('tf-from')||{}).value,to=(document.getElementById('tf-to')||{}).value;
-  const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
+  if(!l.item||l.qty<=0)return null;const it=item(l.item);const mv=to?monthlyAvg(to,l.item):0;const soh=to?destOH(to,l.item):0;const use2=Math.round(mv*2);const need=Math.max(0,use2-soh);
+  const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);
+  if(l.qty>av)return null; // over-available is a hard stop, handled in sum()/submit
+  if(mv>0&&need>0&&l.qty<need)return {type:'low',it,qty:l.qty,need,use2,soh,to,from};
+  if(mv>0&&need>0&&l.qty>Math.ceil(need*1.5))return {type:'excess',it,qty:l.qty,need,use2,soh,to,from};
+  return null;
+}
+function tfMsg(f){const t=loc(f.to).code,fr=loc(f.from).code;
+  if(f.type==='low')return `<b>Too low · ${esc(f.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requested <b>${f.qty}</b> — below the ~<b>${f.need}</b> needed to cover 2 months at ${esc(t)} (${esc(t)} sells ~${f.use2} every 2 months and holds ${f.soh}). ${esc(t)} is likely to run short before the next resupply. Consider increasing.</div>`;
+  return `<b>Excess · ${esc(f.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requested <b>${f.qty}</b> — above the ~<b>${f.need}</b> needed to cover 2 months at ${esc(t)} (${esc(t)} sells ~${f.use2} every 2 months and holds ${f.soh}). The surplus ties up stock ${esc(fr)} may need elsewhere. Consider reducing.</div>`;
+}
+function tfWarnLine(l){const f=tfLineFlag(l);if(!f)return;stackConfirm(f.type==='low'?'Quantity looks low':'Quantity looks high','',`<div style="padding-left:9px;border-left:3px solid ${f.type==='low'?'var(--warn)':'var(--transit)'}">${tfMsg(f)}</div>`,{okOnly:true,okLabel:'Got it'});}
+function tfIssues(){
+  const from=(document.getElementById('tf-from')||{}).value;const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
   const over=[],low=[],excess=[];
-  dLines.forEach(l=>{if(!l.item||l.qty<=0)return;const it=item(l.item);const a=av(l.item);const mv=to?monthlyAvg(to,l.item):0;const soh=to?destOH(to,l.item):0;const use2=Math.round(mv*2);const need=Math.max(0,use2-soh);
-    if(l.qty>a){over.push({it,qty:l.qty,avail:a});return;}
-    if(mv>0&&need>0&&l.qty<need)low.push({it,qty:l.qty,need,use2,soh});
-    else if(mv>0&&need>0&&l.qty>Math.ceil(need*1.5))excess.push({it,qty:l.qty,need,use2,soh});
-  });
+  dLines.forEach(l=>{if(!l.item||l.qty<=0)return;if(l.qty>av(l.item)){over.push({it:item(l.item),qty:l.qty,avail:av(l.item)});return;}const f=tfLineFlag(l);if(f&&f.type==='low')low.push(f);else if(f&&f.type==='excess')excess.push(f);});
   return {over,low,excess};
 }
 function sum(){
@@ -1790,12 +1800,14 @@ function submitTransfer(){
   if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
   if(!lines.length)return toast('Add an item',true);
   if(tfExceed)return toast('Some items are over available stock — reduce them first',true);
-  const iss=tfIssues();
-  if(iss.low.length||iss.excess.length){
-    const detail=iss.low.map(x=>`<div style="margin-bottom:9px;padding-left:9px;border-left:3px solid var(--warn)"><b>Too low · ${esc(x.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:2px">You're sending <b>${x.qty}</b>, but ${esc(loc(to).code)} needs about <b>${x.need}</b> more to cover 2 months — it sells ~${x.use2} every 2 months and has ${x.soh} on hand. It may run short before the next resupply.</div></div>`)
-      .concat(iss.excess.map(x=>`<div style="margin-bottom:9px;padding-left:9px;border-left:3px solid var(--transit)"><b>Excess · ${esc(x.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:2px">You're sending <b>${x.qty}</b>, well above the ~<b>${x.need}</b> needed for 2 months at ${esc(loc(to).code)} (sells ~${x.use2}/2mo, has ${x.soh} on hand). This ties up stock ${esc(loc(from).code)} may need elsewhere.</div></div>`)).join('');
-    stackConfirm('Confirm these quantities',(iss.low.length+iss.excess.length)+' item(s) look off versus 2-month demand',detail,{okLabel:'Submit anyway',cancelLabel:'Review',onOk:()=>doSubmitTransfer(from,to,notes,lines)});
-    return;
+  // Manually-typed lines are flagged inline as entered; only uploaded/auto-filled transfers are checked here at submit.
+  if(tfUploaded){
+    const iss=tfIssues();
+    if(iss.low.length||iss.excess.length){
+      const detail=iss.low.concat(iss.excess).map(f=>`<div style="margin-bottom:9px;padding-left:9px;border-left:3px solid ${f.type==='low'?'var(--warn)':'var(--transit)'}">${tfMsg(f)}</div>`).join('');
+      stackConfirm('Confirm these quantities',(iss.low.length+iss.excess.length)+' item(s) look off versus 2-month demand',detail,{okLabel:'Submit anyway',cancelLabel:'Review',onOk:()=>doSubmitTransfer(from,to,notes,lines)});
+      return;
+    }
   }
   doSubmitTransfer(from,to,notes,lines);
 }
@@ -2158,12 +2170,12 @@ function catList(){
   const list=catFiltered();
   const ohLbl=catCentre?('On hand ('+loc(catCentre).code+')'):(scoped()?'On hand (your centres)':'Total on hand');
   const showLoc=!!catCentre;
-  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/box</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600">${esc(i.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(i.sku||'')}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${i.pack_per_carton||'<span style="color:var(--faint)">—</span>'}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
 }
 function exportCatalogue(fmt){
   const list=catFiltered();const cen=catCentre;
-  const header=['Item','Product code','Category','Cost/packet','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','On hand (boxes)','Store area','Aisle'];
-  const rows=list.map(i=>{const oh=catOnHand(i);const b=pktToBox(oh,i);return [i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,Number(i.price)||0,oh,b==null?'':Math.round(b*100)/100,cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):''];});
+  const header=['Item','Product code','Category','Cost/packet','Packets/box','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','On hand (boxes)','Store area','Aisle'];
+  const rows=list.map(i=>{const oh=catOnHand(i);const b=pktToBox(oh,i);return [i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,i.pack_per_carton||'',Number(i.price)||0,oh,b==null?'':Math.round(b*100)/100,cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):''];});
   const stamp=today();const suffix=cen?loc(cen).code:'all';
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,`catalogue_${suffix}_${stamp}.xlsx`);toast('Excel exported ('+rows.length+' items)');}
   else{downloadCSV(`catalogue_${suffix}_${stamp}.csv`,header,rows);toast('CSV exported ('+rows.length+' items)');}
