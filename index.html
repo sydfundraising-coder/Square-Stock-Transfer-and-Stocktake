@@ -929,6 +929,23 @@ function ssFilteredRows(skipStatus){
   return rows;
 }
 function ssSupName(id){const s=S.suppliers.find(x=>x.id===id);return s?s.name:'—';}
+/* Super-admin / national quick view: value, unit count and attention flags per centre */
+function ssCentreCards(){
+  if(scoped())return ''; // all-centre overview only for unscoped roles (National / Super Admin)
+  const cards=visLocs().map(locId=>{
+    const rows=(SS._all[locId]||[]).filter(r=>r.calc.key!=='inactive');
+    let value=0,units=0;const cnt={};
+    rows.forEach(r=>{value+=r.soh*(r.it.unit_cost||0);units+=r.soh;cnt[r.calc.key]=(cnt[r.calc.key]||0)+1;});
+    const under=(cnt.out||0)+(cnt.out_inc||0)+(cnt.low||0)+(cnt.low_new||0);
+    const over=(cnt.excess||0)+(cnt.dead||0)+(cnt.clearance||0)+(cnt.slow||0);
+    const col=under>0?'var(--crit)':(over>0?'var(--warn)':'var(--good)');
+    const b=(k,l,c)=>cnt[k]?`<span style="background:${c}22;color:${c};border:1px solid ${c}55;padding:1px 6px;border-radius:999px;font-size:10.5px;font-weight:700;margin:1px 4px 1px 0;display:inline-block">${cnt[k]} ${l}</span>`:'';
+    const badges=[b('out','out','#dc2626'),b('out_inc','out·inc','#dc2626'),b('low','low','#ea580c'),b('low_new','low','#ea580c'),b('excess','excess','#2563eb'),b('slow','slow','#ca8a04'),b('dead','dead','#6b7280'),b('clearance','clear','#7c3aed')].join('');
+    const sel=(SS.fStores&&SS.fStores.length===1&&SS.fStores[0]===locId);
+    return `<div class="tile" data-sscentre="${locId}" style="cursor:pointer;border-left:4px solid ${col}${sel?';outline:2px solid '+col:''}"><div class="lbl">${esc(loc(locId).code)} · ${esc(loc(locId).name)}</div><div class="val tnum" style="font-size:20px">${money0(value)}</div><div class="meta">${Math.round(units).toLocaleString()} units · ${rows.length} items</div><div style="margin-top:7px;line-height:2">${badges||'<span style="font-size:11px;color:var(--good);font-weight:600">healthy</span>'}</div></div>`;
+  }).join('');
+  return `<div class="section-head" style="margin-top:2px"><h2>By centre</h2><span class="tag">value · count · attention</span></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));margin-bottom:18px">${cards}</div>`;
+}
 function ssReportHtml(){
   const rows=ssFilteredRows();const cancel=ssRecentCancelKeys();const pend=ssPendingMap();
   // summary by status — computed ignoring the status filter so all tiles stay visible & clickable
@@ -965,7 +982,7 @@ function ssReportHtml(){
       <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}${c.orderQty>0&&ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${ceilBox(c.orderQty,r.it)} box${ceilBox(c.orderQty,r.it)===1?'':'es'}</div>`:''}</td>
       <td class="num tnum">${money(val)}</td>
       <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
-  return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
+  return `${ssCentreCards()}<div class="section-head" style="margin-top:2px"><h2>By status</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
     ${flagged.length?`<div class="banner crit">${svg(I.alert,17)}<div><b>${flagged.length} item(s) hit by a rejected/cancelled transfer</b> — shown at the top; reorder needed.</div></div>`:''}
     <div class="tablewrap" style="overflow-x:auto"><table style="min-width:1500px;font-size:12.5px"><thead><tr>
       <th>Code / Item</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
@@ -2977,6 +2994,7 @@ function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('o
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
+  const ssc2=e.target.closest('[data-sscentre]');if(ssc2){const id=ssc2.dataset.sscentre;SS.fStores=(SS.fStores&&SS.fStores.length===1&&SS.fStores[0]===id)?[]:[id];SS.tab='report';renderView();return;}
   const ssf=e.target.closest('[data-ssfilter]');if(ssf){const val=ssf.dataset.ssfilter;if(val==='all')SS.fStatuses=[];else{const a=SS.fStatuses||[];SS.fStatuses=a.includes(val)?a.filter(x=>x!==val):a.concat(val);}SS.tab='report';renderView();return;}
   const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
   const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
