@@ -372,7 +372,9 @@ const canRecvOrder=o=>can('order.receive')&&(!scoped()||mine(o.location_id)); //
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[],recvDrafts:[]};
+function recvDraftFor(kind,refId){return (S.recvDrafts||[]).find(d=>d.kind===kind&&d.ref_id===refId)||null;}
+async function reloadRecvDrafts(){try{const{data}=await sb.from('receive_drafts').select('*');S.recvDrafts=data||[];}catch(e){console.error('reloadRecvDrafts',e);}}
 /* For DISPLAY, centres are shown by full name everywhere — .code returns the name too
    (the short code stays only in the raw S.locations rows, used for internal matching). */
 const loc=id=>{const l=S.locations.find(x=>x.id===id);return l?{...l,code:l.name}:{name:'—',code:'—'};};
@@ -426,6 +428,13 @@ function plRender(key,loc,hub){const host=document.getElementById('pl-'+key);if(
 function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return;const tot=plSum(key),max=PLMAX[key],over=max!=null&&tot>max;el.innerHTML=`Receiving <b>${tot}</b>${max!=null?' of '+max:''}`;el.style.color=over?'var(--crit)':'var(--muted)';}
 /* validate + return placements for a line; returns {ok, qty, rows} */
 function plCollect(key,hub){const rows=(PL[key]||[]).filter(r=>(+r.qty||0)>0);const qty=rows.reduce((s,r)=>s+(+r.qty||0),0);return {qty,rows};}
+/* ---- save / resume an in-progress receipt ---- */
+async function plSaveDraft(kind,refId,locId,note,keys){const payload={};(keys||Object.keys(PL)).forEach(k=>{payload[k]=(PL[k]||[]).map(r=>({qty:+r.qty||0,area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));});const{error}=await sb.from('receive_drafts').upsert({kind,ref_id:refId,location_id:locId,payload,note:note||null,updated_at:new Date().toISOString()},{onConflict:'kind,ref_id'});if(error){toast(error.message||'Could not save draft',true);return false;}await reloadRecvDrafts();closeOverlay();toast('Saved — you can finish this receipt later');renderView();return true;}
+function plApplyDraft(kind,refId){const d=recvDraftFor(kind,refId);if(!d||!d.payload)return null;Object.keys(d.payload).forEach(k=>{if(PL[k]!==undefined&&Array.isArray(d.payload[k])&&d.payload[k].length){PL[k]=d.payload[k].map(r=>({qty:(r.qty===0?0:(r.qty||'')),area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));}});return d;}
+async function plDeleteDraft(kind,refId){const d=recvDraftFor(kind,refId);if(!d)return;try{await sb.from('receive_drafts').delete().eq('id',d.id);}catch(e){console.error('del recv draft',e);}await reloadRecvDrafts();}
+/* discrepancies = lines whose received total ≠ expected. returns [{name,expected,received}] */
+function plDiscrepancies(lines){return lines.map(l=>{const rec=plCollect(l.key).qty;return {name:l.name,expected:l.expected,received:rec,diff:rec-l.expected};}).filter(x=>x.diff!==0);}
+function discrepancyHtml(disc){return `<div class="banner warn">${svg(I.alert,17)}<div>Some lines don't match what was expected. Confirm only if this is correct — shortfalls are recorded as a costed discrepancy.</div></div><div class="tablewrap"><table style="font-size:12.5px"><thead><tr><th>Item</th><th class="num">Expected</th><th class="num">Receiving</th><th class="num">Diff</th></tr></thead><tbody>${disc.map(d=>`<tr><td>${esc(d.name)}</td><td class="num tnum">${d.expected}</td><td class="num tnum">${d.received}</td><td class="num tnum" style="font-weight:700;color:${d.diff<0?'var(--crit)':'var(--warn)'}">${d.diff>0?'+':''}${d.diff}</td></tr>`).join('')}</tbody></table></div>`;}
 /* ---- bin-level FIFO storage (multiple aisles per item) ---- */
 async function loadBins(){try{let rows=[],from=0;const size=1000;for(;;){const{data,error}=await sb.from('item_bins').select('*').order('received_at').range(from,from+size-1);if(error){console.error('bins',error);break;}rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}const m={};rows.forEach(r=>{const k=r.location_id+'__'+r.item_id;(m[k]=m[k]||[]).push({area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0,rc:r.received_at});});Object.values(m).forEach(a=>a.sort((x,y)=>new Date(x.rc)-new Date(y.rc)));S.bins2=m;}catch(e){console.error('loadBins',e);}}
 const binsFor=(l,i)=>((S.bins2&&S.bins2[l+'__'+i])||[]);
@@ -567,7 +576,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
-    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas]=await Promise.all([
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
@@ -582,10 +591,11 @@ async function loadAll(){
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
       q(sb.from('store_areas').select('*')).catch(()=>[]),
+      q(sb.from('receive_drafts').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
-    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[];
+    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadBins();
@@ -602,7 +612,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -615,9 +625,10 @@ async function loadOps(){
       q(sb.from('invoices').select('*, lines:invoice_lines(*)').order('issue_date',{ascending:false})).catch(()=>[]),
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
       q(sb.from('store_areas').select('*')).catch(()=>[]),
+      q(sb.from('receive_drafts').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -685,6 +696,7 @@ const NAV=[
   {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
   {id:'freight',label:'Freight',icon:I.truck,group:'Operations'},
   {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
+  {id:'expiry',label:'Near Expiry',icon:I.alert,group:'Operations',badge:()=>nearExpiryCount()},
   {id:'invoices',label:'Sales Invoices',icon:I.cost,group:'Operations',need:'*'},
   {id:'catalog',label:'Catalogue',icon:I.catalog,group:'Operations'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
@@ -706,7 +718,7 @@ function renderNav(){
   NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','freight','receipts','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','freight','receipts','expiry','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
 }
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
@@ -927,6 +939,9 @@ function ssExpiryRows(stores){
 function ssExpiryHtml(){
   const rows=ssExpiryRows();const cfg=ssSettings();
   if(!rows.length)return `<div class="banner info">${svg(I.check,17)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) or at risk of not selling in time. Best-before dates are captured as stock is received; existing stock shows no date until the next stock take.</div></div>`;
+  return expiryBodyHtml(rows,cfg);
+}
+function expiryBodyHtml(rows,cfg){
   const totRiskVal=rows.reduce((s,r)=>s+r.risk*(r.it.unit_cost||0),0);
   const expired=rows.filter(r=>r.dte<0).length,soon=rows.filter(r=>r.dte>=0&&r.dte<=30).length;
   const body=rows.map(r=>{const c=expColor(r.expiry);const willSell=Math.round(r.dailyADS*Math.max(0,r.dte));return `<tr>
@@ -948,6 +963,16 @@ function ssExpiryHtml(){
     <div class="banner info">${svg(I.info,17)}<div><b>At-risk</b> = units that likely won't sell before their best-before date, based on each centre's sales rate (ADS). Sending soon-to-expire stock to a busier centre, or discounting, avoids the loss.</div></div>
     <div class="tablewrap" style="overflow-x:auto"><table style="min-width:900px;font-size:12.5px"><thead><tr><th>Item</th><th>Centre</th><th>Best before</th><th class="num">Days left</th><th class="num">Qty</th><th class="num">ADS/mo</th><th class="num">Will sell by exp.</th><th class="num">At-risk</th><th class="num">At-risk $</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
+/* Standalone Near-Expiry view — open to ALL users, scoped to their own centre(s) */
+function nearExpiryCount(){const sset=new Set(visLocs());let n=0;for(const k in (S.batches||{})){if(!sset.has(k.split('__')[0]))continue;for(const b of (S.batches[k]||[])){if((+b.qty||0)>0&&daysToExp(b.expiry)<=30)n++;}}return n;}
+function vExpiry(v){
+  const cfg=ssSettings();const rows=ssExpiryRows(visLocs());
+  const head=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Stock nearing its best-before date across your centre(s) — within ${cfg.expiry_warn_days} days, or at risk of not selling in time.</div></div><div class="rep-actions no-print">${rows.length?`<button class="btn" data-expexport="csv">${svg(I.receipt,15)} CSV</button><button class="btn" data-expexport="xlsx">${svg(I.receipt,15)} Excel</button>`:''}</div></div>`;
+  v.innerHTML=head+(rows.length?expiryBodyHtml(rows,cfg):`<div class="card empty">${svg(I.check,34)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) right now. Best-before dates are captured as stock is received; older stock shows no date until the next stock take.</div></div>`);
+}
+function expExport(fmt){const rows=ssExpiryRows(visLocs());const header=['Item','SKU','Centre','Best before','Days left','Qty','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
+  const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
+  ssDownload('near-expiry',header,data,fmt);}
 function ssFilteredRows(skipStatus){
   let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
   if(!skipStatus&&(SS.fStatuses||[]).length)rows=rows.filter(r=>SS.fStatuses.includes(r.calc.key));
@@ -1139,13 +1164,13 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -1904,22 +1929,28 @@ function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   const hubR=isHub(t.to_location);
   PL={};PLMAX={};(t.lines||[]).forEach(l=>{plInit(l.id,l.qty_dispatched-l.qty_received,areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));});
+  const draft=plApplyDraft('transfer',id);
   const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   (t.lines||[]).forEach(l=>plRender(l.id,t.to_location,hubR));
+  document.getElementById('go-draft').onclick=()=>plSaveDraft('transfer',id,t.to_location,(document.getElementById('rc-note')||{}).value||'',(t.lines||[]).map(l=>l.id));
   document.getElementById('go').onclick=async()=>{
     const note=(document.getElementById('rc-note')||{}).value||'';
     for(const l of (t.lines||[])){const c=plCollect(l.id,hubR);const rem=l.qty_dispatched-l.qty_received;
       if(c.qty>rem)return toast(item(l.item_id).name+': receiving ('+c.qty+') is more than what is in transit ('+rem+')',true);
       for(const r of c.rows){if(!r.exp)return toast(item(l.item_id).name+': enter a Best Before date for every location',true);if(hubR&&(!r.area||!r.aisle))return toast(item(l.item_id).name+': pick a store area and aisle # for every location',true);}}
-    const recv=(t.lines||[]).map(l=>({line:l.id,qty:plCollect(l.id,hubR).qty}));
-    await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
-    const locPrimary=[],binRows=[],batchOps=[];
-    for(const l of (t.lines||[])){const c=plCollect(l.id,hubR);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
-    if(locPrimary.length)await setItemLocations(t.to_location,locPrimary);
-    await binReceiveLines(t.to_location,binRows);
-    for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:t.to_location,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'transfer',p_ref:t.code});}catch(e){console.error('batch_add',e);}}
-    await loadBatches();
+    const finish=async()=>{
+      const recv=(t.lines||[]).map(l=>({line:l.id,qty:plCollect(l.id,hubR).qty}));
+      await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
+      const locPrimary=[],binRows=[],batchOps=[];
+      for(const l of (t.lines||[])){const c=plCollect(l.id,hubR);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
+      if(locPrimary.length)await setItemLocations(t.to_location,locPrimary);
+      await binReceiveLines(t.to_location,binRows);
+      for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:t.to_location,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'transfer',p_ref:t.code});}catch(e){console.error('batch_add',e);}}
+      await plDeleteDraft('transfer',id);await loadBatches();};
+    const disc=plDiscrepancies((t.lines||[]).map(l=>({key:l.id,name:item(l.item_id).name,expected:l.qty_dispatched-l.qty_received})));
+    if(disc.length)stackConfirm('Receiving doesn’t match what was sent',t.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
+    else finish();
   };
 }
 /* Orders */
@@ -2161,8 +2192,8 @@ function vReceipts(v){
   const trDue=S.transfers.filter(t=>(!scoped()||mine(t.to_location))&&(t.status==='in_transit'||t.status==='partially_received')).sort((a,b)=>new Date(a.dispatched_at||0)-new Date(b.dispatched_at||0));
   const dueBlock=(poDue.length||trDue.length)?`<div class="section-head"><h2>${svg(I.truck,17)} To receive</h2><div class="spacer"></div><span style="font-size:12.5px;color:var(--muted)">${poDue.length} order(s) · ${trDue.length} transfer(s)</span></div>
     <div class="tablewrap"><table><thead><tr><th>Type</th><th>Ref</th><th>From / Supplier</th><th>Into</th><th>Expected</th><th class="num">Value</th><th></th></tr></thead><tbody>
-    ${poDue.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="pill p-transit">Order</span></td><td class="mono">${esc(o.code)}</td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td style="white-space:nowrap;font-size:12.5px;color:${daysUntil(o.expected_on)<0?'var(--crit)':'var(--muted)'}">${fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td><td style="text-align:right">${canRecvOrder(o)?`<button class="btn sm" data-orecv="${o.id}">Receive</button>`:''}</td></tr>`).join('')}
-    ${trDue.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="pill p-req">Transfer</span></td><td class="mono">${esc(t.code)}</td><td>${loc(t.from_location).code}</td><td>${loc(t.to_location).code}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(t.dispatched_at)}</td><td class="num tnum">${money(trTransit(t))}</td><td style="text-align:right">${canReceiveT(t)?`<button class="btn sm" data-receive="${t.id}">Receive</button>`:''}</td></tr>`).join('')}
+    ${poDue.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="pill p-transit">Order</span></td><td class="mono">${esc(o.code)}</td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td style="white-space:nowrap;font-size:12.5px;color:${daysUntil(o.expected_on)<0?'var(--crit)':'var(--muted)'}">${fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td><td style="text-align:right;white-space:nowrap">${recvDraftFor('order',o.id)?`<span class="pill p-draft" title="A saved receipt is in progress">In progress</span> `:''}${canRecvOrder(o)?`<button class="btn sm" data-orecv="${o.id}">${recvDraftFor('order',o.id)?'Resume':'Receive'}</button>`:''}</td></tr>`).join('')}
+    ${trDue.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="pill p-req">Transfer</span></td><td class="mono">${esc(t.code)}</td><td>${loc(t.from_location).code}</td><td>${loc(t.to_location).code}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(t.dispatched_at)}</td><td class="num tnum">${money(trTransit(t))}</td><td style="text-align:right;white-space:nowrap">${recvDraftFor('transfer',t.id)?`<span class="pill p-draft" title="A saved receipt is in progress">In progress</span> `:''}${canReceiveT(t)?`<button class="btn sm" data-receive="${t.id}">${recvDraftFor('transfer',t.id)?'Resume':'Receive'}</button>`:''}</td></tr>`).join('')}
     </tbody></table></div>`:`<div class="banner info">${svg(I.check,17)}<div>Nothing outstanding to receive right now.</div></div>`;
   v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search GRN, supplier…" value="${esc(rcSearch)}"></div><div class="spacer"></div>${can('receipt.create')?`<button class="btn primary" data-act="new-receipt">${svg(I.plus,16)} New receipt</button>`:''}</div>
     ${dueBlock}
@@ -3037,21 +3068,27 @@ function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
   PL={};PLMAX={};(o.lines||[]).forEach(l=>{plInit(l.item_id,+l.qty||0,areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
+  const draft=plApplyDraft('order',id);
   const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oq=+l.qty||0;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oq}</div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what arrived for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
+  document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
     for(const l of (o.lines||[])){const c=plCollect(l.item_id,hub);const oq=+l.qty||0;
       if(c.qty>oq)return toast(item(l.item_id).name+': receiving ('+c.qty+') is more than ordered ('+oq+')',true);
       for(const r of c.rows){if(!r.exp)return toast(item(l.item_id).name+': enter a Best Before date for every location',true);if(hub&&(!r.area||!r.aisle))return toast(item(l.item_id).name+': pick a store area and aisle # for every location',true);}}
-    const recv=(o.lines||[]).map(l=>({item:l.item_id,qty:plCollect(l.item_id,hub).qty}));
-    await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
-    const locPrimary=[],binRows=[],batchOps=[];
-    for(const l of (o.lines||[])){const c=plCollect(l.item_id,hub);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
-    if(locPrimary.length)await setItemLocations(o.location_id,locPrimary);
-    await binReceiveLines(o.location_id,binRows);
-    for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}
-    await loadBatches();};
+    const finish=async()=>{
+      const recv=(o.lines||[]).map(l=>({item:l.item_id,qty:plCollect(l.item_id,hub).qty}));
+      await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
+      const locPrimary=[],binRows=[],batchOps=[];
+      for(const l of (o.lines||[])){const c=plCollect(l.item_id,hub);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
+      if(locPrimary.length)await setItemLocations(o.location_id,locPrimary);
+      await binReceiveLines(o.location_id,binRows);
+      for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}
+      await plDeleteDraft('order',id);await loadBatches();};
+    const disc=plDiscrepancies((o.lines||[]).map(l=>({key:l.item_id,name:item(l.item_id).name,expected:+l.qty||0})));
+    if(disc.length)stackConfirm('Receiving doesn’t match the order',o.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
+    else finish();};
 }
 /* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
 async function doReverse(fn,id,label,affectedLocs,itemIds){
@@ -3103,6 +3140,7 @@ document.addEventListener('click',e=>{
   const ssf=e.target.closest('[data-ssfilter]');if(ssf){const val=ssf.dataset.ssfilter;if(val==='all')SS.fStatuses=[];else{const a=SS.fStatuses||[];SS.fStatuses=a.includes(val)?a.filter(x=>x!==val):a.concat(val);}SS.tab='report';renderView();return;}
   const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
   const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
+  const exx=e.target.closest('[data-expexport]');if(exx){expExport(exx.dataset.expexport);return;}
   const ssc=e.target.closest('[data-ssconvert]');if(ssc){ssConvertToTransfer();return;}
   const sxp=e.target.closest('[data-ssexpiry]');if(sxp){SS.tab='expiry';go('stockstatus');return;}
   const sse=e.target.closest('[data-ssedit]');if(sse){ssEditItem(sse.dataset.ssedit);return;}
