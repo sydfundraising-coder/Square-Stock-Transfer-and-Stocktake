@@ -1877,13 +1877,18 @@ function tfLineFlag(l){
   if(!l.item||l.qty<=0)return null;const it=item(l.item);const mv=to?monthlyAvg(to,l.item):0;const soh=to?destOH(to,l.item):0;const use2=Math.round(mv*2);const need=Math.max(0,use2-soh);
   const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);
   if(l.qty>av)return null; // over-available is a hard stop, handled in sum()/submit
-  if(mv>0&&need>0&&l.qty<need)return {type:'low',it,qty:l.qty,need,use2,soh,to,from};
-  if(mv>0&&need>0&&l.qty>Math.ceil(need*1.5))return {type:'excess',it,qty:l.qty,need,use2,soh,to,from};
+  if(mv<=0)return null;
+  const after=soh+l.qty;                 // what the destination would hold AFTER this transfer
+  // Too low: even after the transfer they're still under a 2-month cover.
+  if(after<use2)return {type:'low',it,qty:l.qty,need,use2,soh,after,mv,to,from};
+  // Excess: after the transfer they'd hold more than ~3 months (1.5× the 2-month demand) —
+  // this now catches the case where the centre is ALREADY overstocked (need=0).
+  if(after>Math.ceil(use2*1.5))return {type:'excess',it,qty:l.qty,need,use2,soh,after,mv,to,from};
   return null;
 }
-function tfMsg(f){const t=loc(f.to).code,fr=loc(f.from).code;
-  if(f.type==='low')return `<b>Too low · ${esc(f.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requested <b>${f.qty}</b> — below the ~<b>${f.need}</b> needed to cover 2 months at ${esc(t)} (${esc(t)} sells ~${f.use2} every 2 months and holds ${f.soh}). ${esc(t)} is likely to run short before the next resupply. Consider increasing.</div>`;
-  return `<b>Excess · ${esc(f.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requested <b>${f.qty}</b> — above the ~<b>${f.need}</b> needed to cover 2 months at ${esc(t)} (${esc(t)} sells ~${f.use2} every 2 months and holds ${f.soh}). The surplus ties up stock ${esc(fr)} may need elsewhere. Consider reducing.</div>`;
+function tfMsg(f){const t=loc(f.to).code,fr=loc(f.from).code;const it=f.it;const B=pk=>ppc(it)?pk2boxWhole(pk,it)+' bx':pk+' pk';const mc=f.mv>0?Math.round(f.after/f.mv):null;
+  if(f.type==='low')return `<b>Too low · ${esc(it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requesting <b>${B(f.qty)}</b>. After this, ${esc(t)} would hold <b>${B(f.after)}</b> — still under the ~<b>${B(f.use2)}</b> it sells in 2 months (${esc(t)} currently holds ${B(f.soh)}). Likely to run short before the next resupply. Consider increasing.</div>`;
+  return `<b>Excess · ${esc(it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:3px">Requesting <b>${B(f.qty)}</b>. After this, ${esc(t)} would hold <b>${B(f.after)}</b>${mc!=null?` (~<b>${mc} months</b> of cover)`:''} — well above the ~<b>${B(f.use2)}</b> it needs for 2 months (${esc(t)} already holds ${B(f.soh)}). The surplus ties up stock ${esc(fr)} may need elsewhere. Consider reducing.</div>`;
 }
 function tfWarnLine(l){const f=tfLineFlag(l);if(!f)return;stackConfirm(f.type==='low'?'Quantity looks low':'Quantity looks high','',`<div style="padding-left:9px;border-left:3px solid ${f.type==='low'?'var(--warn)':'var(--transit)'}">${tfMsg(f)}</div>`,{okOnly:true,okLabel:'Got it'});}
 function tfIssues(){
