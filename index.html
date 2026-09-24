@@ -25,26 +25,26 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
   :root{
-    --bg:#eef1f4;--surface:#ffffff;--surface-2:#f6f8fa;--ink:#141b22;--muted:#5b6b7a;--faint:#8a99a7;
-    --border:#dde3ea;--border-strong:#c7d0da;--accent:#127a72;--accent-soft:#d7ece9;--accent-ink:#0c534d;
-    --good:#157f3c;--good-soft:#dcf2e3;--warn:#a45a00;--warn-soft:#fbecd6;--crit:#b4231d;--crit-soft:#fadedb;
-    --transit:#5b3bc4;--transit-soft:#e7e0fb;
-    --shadow:0 1px 2px rgba(20,27,34,.06),0 4px 16px rgba(20,27,34,.05);--shadow-lg:0 8px 40px rgba(20,27,34,.18);
-    --r:12px;--sans:"Public Sans",system-ui,-apple-system,Segoe UI,sans-serif;--disp:"Manrope",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+    --bg:#f5f7fa;--surface:#ffffff;--surface-2:#f4f7fa;--ink:#0f1a2a;--muted:#546174;--faint:#93a0b2;
+    --border:#e7ecf3;--border-strong:#d3dae4;--accent:#0e8f83;--accent-soft:#dcf1ee;--accent-ink:#0a5f57;
+    --good:#12894a;--good-soft:#dcf3e6;--warn:#b26a00;--warn-soft:#fbeed5;--crit:#c62828;--crit-soft:#fbe0de;
+    --transit:#4f46e5;--transit-soft:#e6e6fb;
+    --shadow:0 1px 2px rgba(15,26,42,.04),0 6px 20px rgba(15,26,42,.06);--shadow-lg:0 12px 48px rgba(15,26,42,.16);
+    --r:14px;--sans:"Inter",system-ui,-apple-system,Segoe UI,sans-serif;--disp:"Sora","Inter",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   }
   @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-    --bg:#0d1218;--surface:#151d26;--surface-2:#1b2530;--ink:#e7eef4;--muted:#9db0bf;--faint:#6d7f8d;
-    --border:#25303b;--border-strong:#324150;--accent:#33b3a8;--accent-soft:#123832;--accent-ink:#8fe0d7;
-    --good:#43c46f;--good-soft:#123020;--warn:#e39b3c;--warn-soft:#31240f;--crit:#f0645d;--crit-soft:#3a1512;
-    --transit:#9b83ef;--transit-soft:#231a45;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);--shadow-lg:0 10px 46px rgba(0,0,0,.6);}}
+    --bg:#0b1017;--surface:#141b24;--surface-2:#1a232e;--ink:#e9eff6;--muted:#a3b2c2;--faint:#69788a;
+    --border:#232e3a;--border-strong:#33404f;--accent:#2dd4bf;--accent-soft:#10312d;--accent-ink:#7fe7db;
+    --good:#4ade80;--good-soft:#0f2c1d;--warn:#f0ab4c;--warn-soft:#31240f;--crit:#f87171;--crit-soft:#3a1512;
+    --transit:#a5b4fc;--transit-soft:#1e1b40;--shadow:0 1px 2px rgba(0,0,0,.45),0 8px 26px rgba(0,0,0,.4);--shadow-lg:0 14px 50px rgba(0,0,0,.62);}}
   :root[data-theme="dark"]{
-    --bg:#0d1218;--surface:#151d26;--surface-2:#1b2530;--ink:#e7eef4;--muted:#9db0bf;--faint:#6d7f8d;
-    --border:#25303b;--border-strong:#324150;--accent:#33b3a8;--accent-soft:#123832;--accent-ink:#8fe0d7;
-    --good:#43c46f;--good-soft:#123020;--warn:#e39b3c;--warn-soft:#31240f;--crit:#f0645d;--crit-soft:#3a1512;
-    --transit:#9b83ef;--transit-soft:#231a45;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);--shadow-lg:0 10px 46px rgba(0,0,0,.6);}
+    --bg:#0b1017;--surface:#141b24;--surface-2:#1a232e;--ink:#e9eff6;--muted:#a3b2c2;--faint:#69788a;
+    --border:#232e3a;--border-strong:#33404f;--accent:#2dd4bf;--accent-soft:#10312d;--accent-ink:#7fe7db;
+    --good:#4ade80;--good-soft:#0f2c1d;--warn:#f0ab4c;--warn-soft:#31240f;--crit:#f87171;--crit-soft:#3a1512;
+    --transit:#a5b4fc;--transit-soft:#1e1b40;--shadow:0 1px 2px rgba(0,0,0,.45),0 8px 26px rgba(0,0,0,.4);--shadow-lg:0 14px 50px rgba(0,0,0,.62);}
   *{box-sizing:border-box}html,body{height:100%}
   [hidden]{display:none!important}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
@@ -92,9 +92,9 @@
   .section-head{display:flex;align-items:center;gap:12px;margin:24px 0 12px}.section-head h2{font-size:16px}
   .tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--shadow)}
   table{border-collapse:collapse;width:100%;min-width:560px}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface-2);white-space:nowrap}
-  td{padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle}tr:last-child td{border-bottom:0}
-  tbody tr.clickable{cursor:pointer}tbody tr.clickable:hover{background:var(--surface-2)}th.num,td.num{text-align:right}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border-strong);background:var(--surface-2);white-space:nowrap;position:sticky;top:0}
+  td{padding:12px 16px;border-bottom:1px solid var(--border);vertical-align:middle;font-size:13.5px}tr:last-child td{border-bottom:0}
+  tbody tr.clickable{cursor:pointer;transition:background .1s}tbody tr.clickable:hover{background:var(--accent-soft)}th.num,td.num{text-align:right}
   .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
   .p-draft{background:var(--surface-2);color:var(--muted)}.p-req{background:var(--warn-soft);color:var(--warn)}.p-appr{background:var(--accent-soft);color:var(--accent-ink)}
   .p-transit{background:var(--transit-soft);color:var(--transit)}.p-partial{background:var(--warn-soft);color:var(--warn)}.p-done{background:var(--good-soft);color:var(--good)}.p-cancel{background:var(--crit-soft);color:var(--crit)}
@@ -181,9 +181,9 @@
   .modal.full{width:97vw;max-width:1500px;height:95vh;max-height:95vh;display:flex;flex-direction:column}
   .modal.full .panel-body{flex:1;overflow:auto}
   .panel.wide{width:min(1100px,97vw)}
-  .linerow-lbl{display:grid;grid-template-columns:1fr 56px 72px 58px 60px 78px 32px;gap:7px;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);font-weight:600;margin-bottom:4px}
+  .linerow-lbl{display:grid;grid-template-columns:1fr 50px 62px 52px 50px 74px 66px 30px;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--faint);font-weight:600;margin-bottom:4px}
   .linerow-lbl span{text-align:center}.linerow-lbl span:first-child{text-align:left}
-  .tf-line{display:grid;grid-template-columns:1fr 56px 72px 58px 60px 78px 32px;gap:7px;align-items:center;margin-bottom:9px}
+  .tf-line{display:grid;grid-template-columns:1fr 50px 62px 52px 50px 74px 66px 30px;gap:6px;align-items:center;margin-bottom:9px}
   .lbox{border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;font-weight:700;font-size:13px;background:var(--surface-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ssmp>summary{cursor:pointer}.ssmp>summary::-webkit-details-marker{display:none}.ssmp>summary::marker{content:''}
   /* ---- invoice printing ---- */
@@ -352,6 +352,7 @@ const canSee=t=>!scoped()||mine(t.from_location)||mine(t.to_location);
 const canApproveT=t=>can('transfer.approve')&&(!scoped()||mine(t.from_location));
 const canDispatchT=t=>can('transfer.dispatch')&&(!scoped()||mine(t.from_location));
 const canReceiveT=t=>can('transfer.receive')&&(!scoped()||mine(t.to_location));
+const canRecvOrder=o=>can('order.receive')&&(!scoped()||mine(o.location_id)); // only into your own centre
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
@@ -425,6 +426,17 @@ function openBatchSplit(title,total,rows,onSave){
   host.querySelector('#bs-x').onclick=close;host.querySelector('#bs-cancel').onclick=close;
   host.querySelector('#bs-ok').onclick=()=>{const out=R.filter(r=>(+r.qty>0)&&r.exp);if(!out.length)return toast('Add at least one dated quantity',true);if(total!=null&&out.reduce((s,r)=>s+(+r.qty||0),0)!==+total)return toast('Quantities must total '+total,true);close();onSave(out.map(r=>({qty:+r.qty,exp:r.exp})));};
   wireRows();
+}
+// A confirmation dialog that floats OVER the current form (its own overlay) without replacing it.
+function stackConfirm(title,sub,html,opts){
+  opts=opts||{};
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+  const close=()=>{try{host.remove();}catch(e){}};
+  host.innerHTML=`<div class="modal" style="max-width:540px;width:100%;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg)"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">${esc(sub||'')}</div></div><button class="x" id="sc-x">${svg(I.x,20)}</button></div><div class="panel-body">${html}</div><div class="panel-foot">${opts.okOnly?'':`<button class="btn" id="sc-cancel">${esc(opts.cancelLabel||'Go back')}</button>`}<button class="btn ${opts.danger?'':'primary'}" id="sc-ok"${opts.danger?' style="background:var(--crit);border-color:var(--crit);color:#fff"':''}>${esc(opts.okLabel||'Confirm')}</button></div></div>`;
+  document.body.appendChild(host);
+  host.querySelector('#sc-x').onclick=close;const cc=host.querySelector('#sc-cancel');if(cc)cc.onclick=close;
+  host.querySelector('#sc-ok').onclick=()=>{close();if(opts.onOk)opts.onOk();};
 }
 // Write a set of dated batches for one item at a centre (clears existing, then adds each).
 async function batchesSet(loc,item,rows){try{const rs=(rows||[]).filter(r=>r.qty>0&&r.exp);if(!rs.length){return;}await sb.rpc('batch_reset',{p_loc:loc,p_item:item,p_qty:rs[0].qty,p_expiry:rs[0].exp});for(let i=1;i<rs.length;i++){await sb.rpc('batch_add',{p_loc:loc,p_item:item,p_qty:rs[i].qty,p_expiry:rs[i].exp,p_source:'stocktake',p_ref:null});}}catch(e){console.error('batchesSet',e);}}
@@ -833,7 +845,7 @@ function vStockStatus(v){
   else if(SS.tab==='expiry')bodyHtml=ssExpiryHtml();
   else if(SS.tab==='log')bodyHtml=ssLogHtml();
   else bodyHtml=ssSettingsHtml();
-  v.innerHTML=`<div class="banner info">${svg(I.box,17)}<div><b>Stock status by item & category.</b> Available = stock on hand + incoming (orders + open transfers in) − outgoing transfers. Status drives the suggested order. Set lead time, safety days and pack sizes under <b>Settings</b>.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.box,17)}<div>Stock health by item &amp; category, with suggested reorder in boxes.</div></div>
     ${warnData}
     <div class="toolbar" style="flex-wrap:wrap;gap:8px">
       ${ssMultipick('fStores','Centres',stores.map(s=>({v:s,l:loc(s).code+' — '+loc(s).name})))}
@@ -1093,12 +1105,12 @@ function destroyCharts(){CHARTS.forEach(c=>{try{c.destroy();}catch(e){}});CHARTS
 function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||'#888';}
 function chartTheme(){return {ink:cssVar('--ink'),muted:cssVar('--muted'),grid:cssVar('--border'),surface:cssVar('--surface'),
   accent:cssVar('--accent'),transit:cssVar('--transit'),good:cssVar('--good'),warn:cssVar('--warn'),crit:cssVar('--crit')};}
-function palette(){const t=chartTheme();return [t.accent,t.transit,t.warn,t.good,t.crit,'#0891b2','#c026d3','#65a30d','#e11d48','#7c3aed','#0284c7','#ca8a04'];}
+function palette(){const t=chartTheme();return [t.accent,t.transit,'#0ea5e9','#f59e0b','#ec4899','#84cc16','#8b5cf6','#14b8a6','#ef4444','#6366f1','#06b6d4','#eab308'];}
 function mkChart(id,cfg){const el=document.getElementById(id);if(!el||!window.Chart)return;const t=chartTheme();
-  Chart.defaults.font.family='"Public Sans",system-ui,sans-serif';Chart.defaults.color=t.muted;
+  Chart.defaults.font.family='"Inter",system-ui,sans-serif';Chart.defaults.color=t.muted;Chart.defaults.borderColor=cssVar('--border');
   cfg.options=cfg.options||{};cfg.options.responsive=true;cfg.options.maintainAspectRatio=false;
-  cfg.options.animation={duration:300};
-  cfg.options.plugins=Object.assign({legend:{labels:{color:t.muted,boxWidth:12,font:{size:11}}}},cfg.options.plugins||{});
+  cfg.options.animation={duration:320};
+  cfg.options.plugins=Object.assign({legend:{labels:{color:t.muted,boxWidth:10,usePointStyle:true,pointStyle:'circle',font:{size:11}}}},cfg.options.plugins||{});
   const c=new Chart(el.getContext('2d'),cfg);CHARTS.push(c);return c;}
 function axes(){const t=chartTheme();return {x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid},beginAtZero:true}};}
 
@@ -1586,7 +1598,7 @@ function openPicking(id){
   pkId=id; pkCounts={}; pkDirty=new Set(); pkFrom={}; pkAisle={}; pkTouched=new Set(); pkSrc={loc:null,onhand:{}}; (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);if((l.qty_picked||0)>0)pkTouched.add(l.id);pkFrom[l.id]=areaOf(t.from_location,l.item_id);pkAisle[l.id]=aisleOf(t.from_location,l.item_id);});
   sb.rpc('centre_stock',{p_loc:t.from_location}).then(({data})=>{pkSrc={loc:t.from_location,onhand:{}};(data||[]).forEach(r=>{pkSrc.onhand[r.item_id]=r.on_hand;});renderPkList(t);}).catch(()=>{});
   const camOk=('BarcodeDetector' in window);
-  const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Scan each item (USB scanner or camera) or search, and enter the quantity you're sending — <b>enter 0 for anything you're not sending</b>. Every item must be confirmed before Dispatch unlocks. Progress is shared and saved — others can pick alongside you. An Admin dispatches when done.</div></div>
+  const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Enter the quantity you're sending — <b>0 if not sending</b>. Every line must be confirmed before Dispatch unlocks.</div></div>
     <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="pk-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="pk-cam">${svg(I.box,16)} Camera</button>`:''}</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px"><span id="pk-prog"></span></div>`;
   const foot=`<button class="btn" data-close>Close</button><button class="btn" id="pk-save">Save</button>${canDispatchT(t)?`<button class="btn primary" id="pk-disp">${svg(I.truck,16)} Dispatch</button>`:''}`;
@@ -1696,7 +1708,7 @@ function newTransfer(presetItem){
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><select id="tf-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span></span></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span>You'll get</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1741,7 +1753,7 @@ function edLines(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
-  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${pc?' ('+bxTag(av(l.item),it0)+')':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item)+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(av(l.item),it0)}</div>`:''):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&pc)?(Math.round((l.qty/pc)*100)/100):l.qty}" data-lq="${ix}" title="${has&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const avPk=(has&&from)?av(l.item):0;const rboxes=(pc&&has)?Math.min(Math.round(l.qty/pc),Math.max(0,Math.floor(avPk/pc))):null;const rpk=(rboxes!=null)?rboxes*pc:null;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${pc?' ('+bxTag(av(l.item),it0)+')':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item)+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(av(l.item),it0)}</div>`:''):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&pc)?(Math.round((l.qty/pc)*100)/100):l.qty}" data-lq="${ix}" title="${has&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><div class="lbox" title="${pc?('Whole cartons the warehouse will pick — capped by what '+(from?loc(from).code:'source')+' holds. You will receive about '+(rpk||0)+' packets.'):'Set packets-per-carton on the item to convert to boxes'}" style="color:${rboxes?'var(--accent-ink)':'var(--faint)'}">${pc?(rboxes!=null?rboxes+' bx':'—'):'n/a'}${pc&&rpk?`<div style="font-size:9px;color:var(--faint);font-weight:400">${rpk} pk</div>`:''}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
   ed.querySelectorAll('[data-lq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const raw=Math.max(0,+e.target.value||0);const pk=(tfUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw);dLines[ix].qty=Math.max(1,pk);sum();});
@@ -1749,27 +1761,45 @@ function edLines(){
   const uSel=document.getElementById('tf-unit');if(uSel){uSel.value=tfUnit;const lb=document.getElementById('lbl-tqty');if(lb)lb.textContent=tfUnit==='box'?'Transfer (boxes)':'Transfer QTY';uSel.onchange=e=>{tfUnit=e.target.value;edLines();};}
   sum();
 }
-function sum(){
-  const from=document.getElementById('tf-from').value,to=(document.getElementById('tf-to')||{}).value,btn=document.getElementById('go');let val=0;tfExceed=false;const over=[],under=[];
-  dLines.forEach(l=>{if(!l.item)return;const it=item(l.item);val+=l.qty*it.unit_cost;
-    const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);
-    if(l.qty>av){tfExceed=true;over.push(`<div>${esc(it.name)} — need ${l.qty}, only <b>${av}</b> available at ${esc(loc(from).code)}</div>`);}
-    const mv=to?monthlyAvg(to,l.item):0;const rq=(to&&mv>0)?Math.max(0,Math.ceil(mv*(2+leadMonths()))-destOH(to,l.item)):0;
-    if(rq>0&&l.qty<rq&&l.qty<=av){under.push(`<div>${esc(it.name)} — requesting ${l.qty}; about <b>${rq}</b> needed for 2 months at ${esc(loc(to).code)}</div>`);}
+/* Which lines are over-available, too low, or excess vs the destination's 2-month demand */
+function tfIssues(){
+  const from=(document.getElementById('tf-from')||{}).value,to=(document.getElementById('tf-to')||{}).value;
+  const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
+  const over=[],low=[],excess=[];
+  dLines.forEach(l=>{if(!l.item||l.qty<=0)return;const it=item(l.item);const a=av(l.item);const mv=to?monthlyAvg(to,l.item):0;const soh=to?destOH(to,l.item):0;const use2=Math.round(mv*2);const need=Math.max(0,use2-soh);
+    if(l.qty>a){over.push({it,qty:l.qty,avail:a});return;}
+    if(mv>0&&need>0&&l.qty<need)low.push({it,qty:l.qty,need,use2,soh});
+    else if(mv>0&&need>0&&l.qty>Math.ceil(need*1.5))excess.push({it,qty:l.qty,need,use2,soh});
   });
+  return {over,low,excess};
+}
+function sum(){
+  const from=document.getElementById('tf-from').value,to=(document.getElementById('tf-to')||{}).value,btn=document.getElementById('go');let val=0;tfExceed=false;let overN=0;
+  dLines.forEach(l=>{if(!l.item)return;val+=l.qty*item(l.item).unit_cost;const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);if(l.qty>av){tfExceed=true;overN++;}});
+  const iss=tfIssues();const flagN=iss.low.length+iss.excess.length;
   const s=document.getElementById('sum');if(!s)return;
-  if(over.length)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>More than available.</b> Reserved stock (open requests) doesn’t count — reduce to submit.<div style="margin-top:6px;display:grid;gap:3px;font-size:12.5px">${over.join('')}</div></div>`;
-  else if(under.length)s.className='banner warn',s.innerHTML=`${svg(I.alert,17)}<div><b>Below 2-month cover.</b> These may run short before the next resupply — consider increasing:<div style="margin-top:6px;display:grid;gap:3px;font-size:12.5px">${under.join('')}</div></div>`;
-  else s.className='banner info',s.innerHTML=`${svg(I.cost,17)}<div>Value <b>${money(val)}</b> · all within available at <b>${esc(loc(from).code)}</b>.</div>`;
+  if(overN)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>${overN} item(s) over ${esc(loc(from).code)}'s available stock.</b> Reduce those quantities to submit.</div>`;
+  else if(flagN)s.className='banner warn',s.innerHTML=`${svg(I.alert,17)}<div><b>${money(val)}.</b> ${flagN} item(s) flagged vs 2-month demand — you'll confirm the details on submit.</div>`;
+  else s.className='banner info',s.innerHTML=`${svg(I.cost,17)}<div><b>${money(val)}.</b> Quantities look right.</div>`;
   if(btn){btn.disabled=tfExceed;btn.style.opacity=tfExceed?'.5':'';}
 }
-async function submitTransfer(){
+function submitTransfer(){
   const from=document.getElementById('tf-from').value,to=document.getElementById('tf-to').value,notes=document.getElementById('tf-notes').value.trim();
   const lines=dLines.filter(l=>l.item&&l.qty>0);
   if(from===to)return toast('Source and destination must differ',true);
   if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
   if(!lines.length)return toast('Add an item',true);
-  if(tfExceed)return toast('Reduce quantities over available',true);
+  if(tfExceed)return toast('Some items are over available stock — reduce them first',true);
+  const iss=tfIssues();
+  if(iss.low.length||iss.excess.length){
+    const detail=iss.low.map(x=>`<div style="margin-bottom:9px;padding-left:9px;border-left:3px solid var(--warn)"><b>Too low · ${esc(x.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:2px">You're sending <b>${x.qty}</b>, but ${esc(loc(to).code)} needs about <b>${x.need}</b> more to cover 2 months — it sells ~${x.use2} every 2 months and has ${x.soh} on hand. It may run short before the next resupply.</div></div>`)
+      .concat(iss.excess.map(x=>`<div style="margin-bottom:9px;padding-left:9px;border-left:3px solid var(--transit)"><b>Excess · ${esc(x.it.name)}</b><div style="font-size:12.5px;color:var(--muted);margin-top:2px">You're sending <b>${x.qty}</b>, well above the ~<b>${x.need}</b> needed for 2 months at ${esc(loc(to).code)} (sells ~${x.use2}/2mo, has ${x.soh} on hand). This ties up stock ${esc(loc(from).code)} may need elsewhere.</div></div>`)).join('');
+    stackConfirm('Confirm these quantities',(iss.low.length+iss.excess.length)+' item(s) look off versus 2-month demand',detail,{okLabel:'Submit anyway',cancelLabel:'Review',onOk:()=>doSubmitTransfer(from,to,notes,lines)});
+    return;
+  }
+  doSubmitTransfer(from,to,notes,lines);
+}
+async function doSubmitTransfer(from,to,notes,lines){
   if(tfDraftId){
     // save the draft then submit it (validates availability + reserves)
     const{error:e1}=await sb.rpc('save_transfer_draft',{p_id:tfDraftId,p_from:from,p_to:to,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))});
@@ -1808,7 +1838,7 @@ function openReceive(id){
 let oSearch='';
 function vOrders(v){
   const inc=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on));
-  v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div><b>What’s coming in.</b> Orders placed on suppliers, with expected arrival. Receiving adds stock and updates cost.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div>Supplier orders and their expected arrival.</div></div>
     ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
     <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New order</button>`:''}</div><div id="list"></div>`;
   document.getElementById('q').oninput=e=>{oSearch=e.target.value;oList();};oList();
@@ -1822,8 +1852,9 @@ function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   let act='';
-  if(o.status==='placed'&&can('order.receive'))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
-  else if(o.status==='shipped'&&can('order.receive'))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
+  if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
+  else if(o.status==='shipped'&&canRecvOrder(o))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
+  else if((o.status==='placed'||o.status==='shipped')&&scoped()&&!mine(o.location_id))act=`<span class="lock">${svg(I.lock,14)} ${loc(o.location_id).code} receives</span>`;
   if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
@@ -1853,7 +1884,7 @@ function newOrder(){
 function pEd(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('ped');
-  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const bx=poUnit==='box'&&ppc(it0);return `<div class="linerow" style="grid-template-columns:1fr 62px 80px 34px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="0" step="${bx?'0.01':'1'}" value="${bx?(Math.round((l.qty/ppc(it0))*100)/100):l.qty}" data-pq="${ix}" title="${l.item&&ppc(it0)?(l.qty+' pkts = '+boxTxt(l.qty,it0)):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const bx=poUnit==='box'&&pc;const ob=(pc&&l.item)?Math.ceil(l.qty/pc):null;return `<div class="linerow" style="grid-template-columns:1fr 58px 74px 62px 30px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="0" step="${bx?'0.01':'1'}" value="${bx?(Math.round((l.qty/pc)*100)/100):l.qty}" data-pq="${ix}" title="${l.item&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><div class="lbox" title="${pc?('Whole cartons ordered — you will receive about '+(ob*pc)+' packets'):'Set packets-per-carton to show boxes'}" style="color:${ob?'var(--accent-ink)':'var(--faint)'};padding:6px 4px">${pc?(ob!=null?ob+' bx':'—'):'n/a'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pSum();});
   ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const raw=Math.max(0,+e.target.value||0);poLines[ix].qty=Math.max(1,(poUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw));pSum();});
@@ -1871,7 +1902,7 @@ async function submitOrder(){
 /* Stock take */
 function vStock(v){
   const list=S.stocktakes.filter(s=>!scoped()||mine(s.location_id));
-  v.innerHTML=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Live-adjusted counts.</b> While a count is open, sales keep updating the system figure so your variance is always current. Finalising posts a physical count to Square.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.stocktake,17)}<div>Physical counts, live-adjusted against sales until you finalise.</div></div>
     <div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
     ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>No stock takes yet.</div></div>`}`;
 }
@@ -2031,13 +2062,13 @@ function vReceipts(v){
   const trDue=S.transfers.filter(t=>(!scoped()||mine(t.to_location))&&(t.status==='in_transit'||t.status==='partially_received')).sort((a,b)=>new Date(a.dispatched_at||0)-new Date(b.dispatched_at||0));
   const dueBlock=(poDue.length||trDue.length)?`<div class="section-head"><h2>${svg(I.truck,17)} To receive</h2><div class="spacer"></div><span style="font-size:12.5px;color:var(--muted)">${poDue.length} order(s) · ${trDue.length} transfer(s)</span></div>
     <div class="tablewrap"><table><thead><tr><th>Type</th><th>Ref</th><th>From / Supplier</th><th>Into</th><th>Expected</th><th class="num">Value</th><th></th></tr></thead><tbody>
-    ${poDue.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="pill p-transit">Order</span></td><td class="mono">${esc(o.code)}</td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td style="white-space:nowrap;font-size:12.5px;color:${daysUntil(o.expected_on)<0?'var(--crit)':'var(--muted)'}">${fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td><td style="text-align:right"><button class="btn sm" data-orecv="${o.id}">Receive</button></td></tr>`).join('')}
+    ${poDue.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="pill p-transit">Order</span></td><td class="mono">${esc(o.code)}</td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td style="white-space:nowrap;font-size:12.5px;color:${daysUntil(o.expected_on)<0?'var(--crit)':'var(--muted)'}">${fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td><td style="text-align:right">${canRecvOrder(o)?`<button class="btn sm" data-orecv="${o.id}">Receive</button>`:''}</td></tr>`).join('')}
     ${trDue.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="pill p-req">Transfer</span></td><td class="mono">${esc(t.code)}</td><td>${loc(t.from_location).code}</td><td>${loc(t.to_location).code}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(t.dispatched_at)}</td><td class="num tnum">${money(trTransit(t))}</td><td style="text-align:right">${canReceiveT(t)?`<button class="btn sm" data-receive="${t.id}">Receive</button>`:''}</td></tr>`).join('')}
     </tbody></table></div>`:`<div class="banner info">${svg(I.check,17)}<div>Nothing outstanding to receive right now.</div></div>`;
   v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search GRN, supplier…" value="${esc(rcSearch)}"></div><div class="spacer"></div>${can('receipt.create')?`<button class="btn primary" data-act="new-receipt">${svg(I.plus,16)} New receipt</button>`:''}</div>
     ${dueBlock}
     <div class="section-head" style="margin-top:22px"><h2>${svg(I.receipt,17)} Received (history)</h2></div>
-    <div class="banner info">${svg(I.info,17)}<div>Recording a receipt adds stock to a centre and updates the item’s weighted-average cost. Supplier orders and transfers received above also appear here.</div></div><div id="list"></div>`;
+    <div class="banner info">${svg(I.info,17)}<div>Record supplier deliveries into a centre.</div></div><div id="list"></div>`;
   document.getElementById('q').oninput=e=>{rcSearch=e.target.value;rcList();};rcList();
 }
 function rcList(){
@@ -2099,7 +2130,7 @@ function vCatalog(v){
   const cens=catCentres();
   if(catCentre===null)catCentre=scoped()?(HOME||(cens[0]&&cens[0].id)||''):'';
   const cenOpts=`${scoped()?'':`<option value="">All centres (total)</option>`}${cens.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}`;
-  v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div><b>Synced from Square.</b> ${S.items.length} items. Stock &amp; storage location shown per centre.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div>${S.items.length} items · stock &amp; storage per centre.</div></div>
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search name or SKU…" value="${esc(catSearch)}"></div>
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
@@ -2379,7 +2410,7 @@ function vUsers(v){
     const shown=codes.length?codes.map(c=>`<span class="tag" style="margin:0 3px 3px 0;display:inline-block">${esc(c)}</span>`).join(''):'<span style="color:var(--faint)">none</span>';
     return `${shown}${can('*')?` <button class="btn sm" data-ucentres="${u.id}">Edit</button>`:''}`;
   };
-  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres. <b>Sync team from Square</b> pulls everyone in automatically. A person can have <b>multiple centres</b> — use <b>Edit</b> under Centres.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres.</div></div>
     ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Centres</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
@@ -2539,7 +2570,7 @@ let invList=[],invCustomers=[],invSettings={},invLines=[],invEditId=null,invFilt
 const INVST={draft:{l:'Draft',c:'p-draft'},issued:{l:'Issued',c:'p-req'},paid:{l:'Paid',c:'p-done'},void:{l:'Void',c:'p-cancel'}};
 const invPill=s=>`<span class="pill ${(INVST[s]||{c:'p-draft'}).c}">${(INVST[s]||{l:s}).l}</span>`;
 async function vInvoices(v){
-  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Create GST tax invoices for the <b>Central Warehouse</b> and <b>Sydney</b>. Prices exclude GST (10% added).</div></div>
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>GST tax invoices — Central Warehouse &amp; Sydney.</div></div>
     <div class="rep-actions no-print"><select class="filter" id="in-f"><option value="all">All</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="paid">Paid</option><option value="void">Void</option></select><button class="btn" id="in-set">${svg(I.settings,15)} Invoice settings</button><button class="btn primary" id="in-new">${svg(I.plus,15)} New invoice</button></div></div>
     <div id="in-list"><div class="card empty">${svg(I.cost,30)}<div>Loading…</div></div></div>`;
   const[inv,cust,setg]=await Promise.all([
@@ -2727,7 +2758,7 @@ let frFilter='all';
 const CNST={booked:{l:'Booked',c:'p-req'},in_transit:{l:'In transit',c:'p-transit'},delivered:{l:'Delivered',c:'p-done'},exception:{l:'Exception',c:'p-cancel'}};
 const cnPill=s=>`<span class="pill ${(CNST[s]||{c:'p-draft'}).c}">${(CNST[s]||{l:s}).l}</span>`;
 function vFreight(v){
-  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.truck,17)}<div>Log carrier <b>consignment notes (connotes)</b> and track deliveries. Link one to a stock transfer to keep it together.</div></div>
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.truck,17)}<div>Carrier consignments (connotes) and deliveries.</div></div>
     <div class="rep-actions no-print"><select class="filter" id="fr-f"><option value="all">All</option><option value="booked">Booked</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option><option value="exception">Exception</option></select><button class="btn primary" id="fr-new">${svg(I.plus,15)} New consignment</button></div></div>
     <div id="fr-list"></div>`;
   document.getElementById('fr-f').value=frFilter;document.getElementById('fr-f').onchange=e=>{frFilter=e.target.value;frList();};
