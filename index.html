@@ -399,6 +399,17 @@ function areaField(locId,id,current,requiredHint){
   return `<input id="${id}" list="${id}-dl" value="${esc(current||'')}" placeholder="${requiredHint||'location (optional)'}"><datalist id="${id}-dl">${areasAt(locId).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;
 }
 async function setItemLocations(loc,rows,overwrite){if(!loc||!rows||!rows.length)return;try{await sb.rpc('set_item_locations',{p_loc:loc,p_rows:rows,p_overwrite:!!overwrite});}catch(e){console.error('set_item_locations',e);}}
+/* ---- saved storage areas + aisles for EVERY centre (pick from a list, or add a new one inline) ---- */
+async function reloadStoreAreas(){try{const{data}=await sb.from('store_areas').select('*');S.storeAreas=data||[];}catch(e){console.error('reloadStoreAreas',e);}}
+function savedAreas(loc){const m=(S.storeAreas||[]).filter(a=>a.location_id===loc&&(a.kind==='area'||!a.kind)&&a.active!==false).map(a=>a.name);return [...new Set([...m,...areasAt(loc)])].filter(Boolean).sort((a,b)=>a.localeCompare(b));}
+function savedAisles(loc){const m=(S.storeAreas||[]).filter(a=>a.location_id===loc&&a.kind==='aisle'&&a.active!==false).map(a=>a.name);return [...new Set([...m,...aislesAt(loc)])].filter(Boolean).sort((a,b)=>a.localeCompare(b));}
+function saOptions(kind,opts,cur){const has=cur&&!opts.includes(cur);return `<option value="">${kind==='area'?'— store area —':'— aisle # —'}</option>${opts.map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o)}</option>`).join('')}${has?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''}<option value="__add">➕ add new ${kind==='area'?'area':'aisle'}…</option>`;}
+/* a compact <select> for a store area or aisle, with an inline "add new" that saves for next time */
+function saSelect(kind,loc,key,current,extraStyle){const opts=kind==='area'?savedAreas(loc):savedAisles(loc);return `<select data-sapick="${kind}" data-saloc="${loc}" data-sakey="${key||''}" style="padding:5px 7px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px;${extraStyle||''}">${saOptions(kind,opts,current||'')}</select>`;}
+function saRebuild(kind,loc){const opts=kind==='area'?savedAreas(loc):savedAisles(loc);document.querySelectorAll(`[data-sapick="${kind}"][data-saloc="${loc}"]`).forEach(sel=>{const cur=(sel.value==='__add')?(sel.dataset.prev||''):sel.value;sel.innerHTML=saOptions(kind,opts,cur);sel.value=cur;sel.dataset.prev=cur;});}
+function wireSaPickers(root){(root||document).querySelectorAll('[data-sapick]').forEach(sel=>{sel.dataset.prev=sel.value;sel.onchange=async e=>{const s=e.target,kind=s.dataset.sapick,loc=s.dataset.saloc;if(s.value==='__add'){const nm=(window.prompt('Add a new '+(kind==='area'?'store area':'aisle #')+' for '+loc0name(loc)+':')||'').trim();if(!nm){s.value=s.dataset.prev||'';return;}const{error}=await sb.from('store_areas').upsert({location_id:loc,name:nm,kind},{onConflict:'location_id,kind,name',ignoreDuplicates:true});if(error){toast(error.message||('Could not save '+kind),true);s.value=s.dataset.prev||'';return;}await reloadStoreAreas();saRebuild(kind,loc);const me=document.querySelector(`[data-sapick="${kind}"][data-saloc="${loc}"][data-sakey="${s.dataset.sakey}"]`)||s;me.value=nm;me.dataset.prev=nm;toast(nm+' saved');}else{s.dataset.prev=s.value;}};});}
+function loc0name(id){const l=S.locations.find(x=>x.id===id);return l?l.name:'this centre';}
+const saVal=(kind,key)=>{const el=document.querySelector(`[data-sapick="${kind}"][data-sakey="${key}"]`);const v=el?el.value:'';return (v==='__add'||v==null)?'':v.trim();};
 /* ---- bin-level FIFO storage (multiple aisles per item) ---- */
 async function loadBins(){try{let rows=[],from=0;const size=1000;for(;;){const{data,error}=await sb.from('item_bins').select('*').order('received_at').range(from,from+size-1);if(error){console.error('bins',error);break;}rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}const m={};rows.forEach(r=>{const k=r.location_id+'__'+r.item_id;(m[k]=m[k]||[]).push({area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0,rc:r.received_at});});Object.values(m).forEach(a=>a.sort((x,y)=>new Date(x.rc)-new Date(y.rc)));S.bins2=m;}catch(e){console.error('loadBins',e);}}
 const binsFor=(l,i)=>((S.bins2&&S.bins2[l+'__'+i])||[]);
@@ -438,7 +449,7 @@ function openBatchSplit(title,total,rows,onSave){
     host.querySelectorAll('#bs-rows [data-bq]').forEach(el=>el.oninput=e=>{R[+e.target.dataset.bq].qty=e.target.value;const s=host.querySelector('#bs-sum');if(s)s.textContent=sumOf();});
     host.querySelectorAll('#bs-rows [data-bx]').forEach(el=>el.onchange=e=>{R[+e.target.dataset.bx].exp=e.target.value;});
     host.querySelectorAll('#bs-rows [data-brm]').forEach(el=>el.onclick=()=>{if(R.length>1){R.splice(+el.dataset.brm,1);rerenderBody();}});
-    host.querySelector('#bs-add').onclick=()=>{R.push({qty:'',exp:''});rerenderBody();};
+    host.querySelector('#bs-add').onclick=()=>{const rem=(total!=null)?Math.max(0,(+total||0)-sumOf()):'';R.push({qty:rem,exp:''});rerenderBody();};
   }
   host.innerHTML=shell();document.body.appendChild(host);
   host.querySelector('#bs-x').onclick=close;host.querySelector('#bs-cancel').onclick=close;
@@ -1875,21 +1886,24 @@ async function doSubmitTransfer(from,to,notes,lines){
 /* Receive */
 function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before *</span><input type="date" data-rx="${l.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-rxsplit="${l.id}" style="padding:4px 8px;font-size:12px">+ multiple dates</button></div></div>`;}).join('');
   const hubR=isHub(t.to_location);const rcSplit={};
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy. If an item arrived with several best-before dates, use <b>+ multiple dates</b>.</div></div>${rows}<div class="grid2" style="margin-top:14px"><div class="field"><label>Stored at${hubR?' *':' (optional)'}</label>${areaField(t.to_location,'rc-tarea','')}</div><div class="field"><label>Aisle #${hubR?' *':' (optional)'}</label><input id="rc-taisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="recv-row"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${rem}" value="${rem}" data-rc="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before${hubR?' *':''}</span><input type="date" data-rx="${l.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-rxsplit="${l.id}" style="padding:4px 8px;font-size:12px">+ dates</button><span class="cap" style="flex:none;margin-left:6px">Stored at${hubR?' *':''}</span>${saSelect('area',t.to_location,'ar_'+l.id,areaOf(t.to_location,l.item_id),'min-width:120px')}${saSelect('aisle',t.to_location,'ai_'+l.id,aisleOf(t.to_location,l.item_id),'min-width:88px')}</div></div>`;}).join('');
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Shortfalls are recorded as a costed discrepancy. Set each item's <b>Best before</b> and its <b>store area / aisle</b> — use <b>+ dates</b> if a line arrived with several dates.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  wireSaPickers();
   (t.lines||[]).forEach(l=>{const b=document.querySelector(`[data-rxsplit="${l.id}"]`);if(!b)return;b.onclick=()=>{const rem=l.qty_dispatched-l.qty_received;const q=Math.max(0,Math.min(rem,+((document.querySelector(`[data-rc="${l.id}"]`)||{}).value)||0));if(q<=0)return toast('Enter the receiving quantity first',true);openBatchSplit('Best-before — '+item(l.item_id).name,q,rcSplit[l.id]||null,rows=>{rcSplit[l.id]=rows;const di=document.querySelector(`[data-rx="${l.id}"]`);if(di){di.value='';di.disabled=true;di.placeholder=rows.length+' dates';}b.textContent=rows.length+' dates ✎';toast('Saved '+rows.length+' best-before dates');});};});
   document.getElementById('go').onclick=async()=>{
     const recv=(t.lines||[]).map(l=>({line:l.id,qty:Math.max(0,Math.min(l.qty_dispatched-l.qty_received,+document.querySelector(`[data-rc="${l.id}"]`).value||0))}));
-    const note=(document.getElementById('rc-note')||{}).value||'';const area=((document.getElementById('rc-tarea')||{}).value||'').trim(),aisle=((document.getElementById('rc-taisle')||{}).value||'').trim();
-    if(hubR&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
+    const note=(document.getElementById('rc-note')||{}).value||'';
+    const locByLine={};(t.lines||[]).forEach(l=>{locByLine[l.id]={area:saVal('area','ar_'+l.id),aisle:saVal('aisle','ai_'+l.id)};});
+    if(hubR){const miss=recv.filter(r=>r.qty>0&&(!locByLine[r.line].area||!locByLine[r.line].aisle));if(miss.length)return toast('Central Warehouse: pick a store area and aisle # for every item received ('+miss.length+' missing)',true);}
     const exps={};(t.lines||[]).forEach(l=>{exps[l.id]=((document.querySelector(`[data-rx="${l.id}"]`)||{}).value)||'';});
     const missing=recv.filter(r=>r.qty>0&&!exps[r.line]&&!(rcSplit[r.line]&&rcSplit[r.line].length));
     if(missing.length)return toast('Enter a Best Before date for every item received ('+missing.length+' missing)',true);
     for(const l of (t.lines||[])){if(rcSplit[l.id]&&rcSplit[l.id].length){const rv=recv.find(x=>x.line===l.id);const q=rv?rv.qty:0;const sum=rcSplit[l.id].reduce((s,r)=>s+r.qty,0);if(sum!==q)return toast(item(l.item_id).name+': dated quantities ('+sum+') must equal received ('+q+')',true);}}
     await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
-    if(area||aisle)await setItemLocations(t.to_location,(t.lines||[]).map(l=>({item:l.item_id,area,aisle})));
-    await binReceiveLines(t.to_location,(t.lines||[]).map(l=>{const rv=recv.find(x=>x.line===l.id);return {item:l.item_id,area,aisle,qty:rv?rv.qty:0};}));
+    const locRows=(t.lines||[]).filter(l=>locByLine[l.id].area||locByLine[l.id].aisle).map(l=>({item:l.item_id,area:locByLine[l.id].area,aisle:locByLine[l.id].aisle}));
+    if(locRows.length)await setItemLocations(t.to_location,locRows);
+    await binReceiveLines(t.to_location,(t.lines||[]).map(l=>{const rv=recv.find(x=>x.line===l.id);return {item:l.item_id,area:locByLine[l.id].area,aisle:locByLine[l.id].aisle,qty:rv?rv.qty:0};}));
     for(const l of (t.lines||[])){const rv=recv.find(x=>x.line===l.id);const q=rv?rv.qty:0;if(q<=0)continue;const rowsX=(rcSplit[l.id]&&rcSplit[l.id].length)?rcSplit[l.id]:(exps[l.id]?[{qty:q,exp:exps[l.id]}]:[]);for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:t.to_location,p_item:l.item_id,p_qty:r.qty,p_expiry:r.exp,p_source:'transfer',p_ref:t.code});}catch(e){console.error('batch_add',e);}}}
     await loadBatches();
   };
@@ -1915,6 +1929,8 @@ function openOrder(id){
   if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
   else if(o.status==='shipped'&&canRecvOrder(o))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
   else if((o.status==='placed'||o.status==='shipped')&&scoped()&&!mine(o.location_id))act=`<span class="lock">${svg(I.lock,14)} ${loc(o.location_id).code} receives</span>`;
+  if(o.status==='placed'&&can('order.create')&&(!scoped()||mine(o.location_id)))act+=`<button class="btn" data-oedit="${o.id}">${svg(I.edit||I.settings,15)} Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-odel="${o.id}">${svg(I.x,15)} Delete</button>`;
+  else if((o.status==='shipped'||o.status==='received')&&(!scoped()||mine(o.location_id))&&!o.reversed_at)act+=`<span class="lock" style="font-size:11.5px">${svg(I.lock,13)} Locked — ${o.status}</span>`;
   if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
@@ -1922,24 +1938,26 @@ function openOrder(id){
   slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,body,act);
 }
 let poLines=[],poUnit='pkt';
-function newOrder(){
-  poLines=[{item:'',qty:1,cost:0}];
+function newOrder(o){
+  o=(o&&o.id)?o:null;
+  poLines=o?(o.lines||[]).map(l=>({item:l.item_id,qty:l.qty,cost:l.unit_cost})):[{item:'',qty:1,cost:0}];
   const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  const sup=S.suppliers[0];const eta=new Date(Date.now()+((sup&&sup.lead_days)||30)*864e5).toISOString().slice(0,10);
+  const sup=S.suppliers[0];const eta=o?(o.expected_on||today()):new Date(Date.now()+((sup&&sup.lead_days)||30)*864e5).toISOString().slice(0,10);
   const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
-    <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">Pre-filled from supplier lead time — adjust as needed.</div></div>
+    <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">${o?'Adjust as needed.':'Pre-filled from supplier lead time — adjust as needed.'}</div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden><select id="po-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
       <div id="ped"></div><button class="btn sm" id="pAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
-  modal('New supplier order','Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Place order</button>`);
+  modal(o?'Edit supplier order '+o.code:'New supplier order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`);
   restrictLocSelect('po-loc');
+  if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();};
   document.getElementById('dlO').onclick=()=>downloadCSV('supplier-order-template.csv',['Product Code','Item Name','Category','Quantity','Unit Cost'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'',i.unit_cost]));
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:r.qty,cost:r.cost}));pEd();pSum();});
-  document.getElementById('go').onclick=submitOrder;
+  document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
 }
 function pEd(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
@@ -1954,10 +1972,17 @@ function pEd(){
   pSum();
 }
 function pSum(){const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
-async function submitOrder(){
+async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
   const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
-  await callRpc('create_order',{p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Order placed');
+  const payloadLines=lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}));
+  if(editId)await callRpc('edit_order',{p_id:editId,p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:payloadLines},'Order updated');
+  else await callRpc('create_order',{p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:payloadLines},'Order placed');
+}
+function doDeleteOrder(id){
+  const o=S.orders.find(x=>x.id===id);if(!o)return;
+  if(o.status!=='placed')return toast('This order can no longer be deleted — it is '+o.status+'.',true);
+  stackConfirm('Delete order '+o.code,esc(supplier(o.supplier_id).name)+' → '+esc(loc(o.location_id).name),`<div>Permanently delete order <b>${esc(o.code)}</b> (${money(oValue(o))})? This cannot be undone. You can only delete an order that has not yet shipped.</div>`,{okLabel:'Delete order',cancelLabel:'Keep',danger:true,onOk:async()=>{const{error}=await sb.rpc('delete_order',{p_id:id});if(error)return toast(error.message||'Delete failed',true);closeOverlay();toast('Order deleted');await refreshOps([o.location_id]);}});
 }
 /* Stock take */
 function vStock(v){
@@ -2147,9 +2172,9 @@ let recLines=[];
 function newReceipt(){
   recLines=[{item:'',qty:1,cost:0}];
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><input id="rc-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
+  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><div id="rc-aislewrap"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
   restrictLocSelect('rc-loc');
-  const rcArea=()=>{const lc=document.getElementById('rc-loc').value;const hub=isHub(lc);document.getElementById('rc-areawrap').innerHTML=areaField(lc,'rc-area','',hub?'select area (required)':'location (optional)');document.getElementById('rc-arealbl').textContent='Stored at'+(hub?' *':' (optional)');document.getElementById('rc-aislelbl').textContent='Aisle #'+(hub?' *':' (optional)');};
+  const rcArea=()=>{const lc=document.getElementById('rc-loc').value;const hub=isHub(lc);document.getElementById('rc-areawrap').innerHTML=saSelect('area',lc,'rcpt_area','','width:100%');document.getElementById('rc-aislewrap').innerHTML=saSelect('aisle',lc,'rcpt_aisle','','width:100%');document.getElementById('rc-arealbl').textContent='Stored at'+(hub?' *':' (optional)');document.getElementById('rc-aislelbl').textContent='Aisle #'+(hub?' *':' (optional)');wireSaPickers();};
   document.getElementById('rc-loc').addEventListener('change',rcArea);rcArea();
   rEd();document.getElementById('rAdd').onclick=()=>{recLines.push({item:'',qty:1,cost:0});rEd();};
   document.getElementById('go').onclick=submitReceipt;
@@ -2173,7 +2198,7 @@ async function submitReceipt(){
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
   if(lines.some(l=>!l.exp&&!(l.batches&&l.batches.length)))return toast('Enter a Best Before date for every item',true);
   for(const l of lines){if(l.batches&&l.batches.length){const sum=l.batches.reduce((s,r)=>s+r.qty,0);if(sum!==+l.qty)return toast(item(l.item).name+': dated quantities ('+sum+') must equal quantity ('+l.qty+')',true);}}
-  const area=((document.getElementById('rc-area')||{}).value||'').trim(),aisle=((document.getElementById('rc-aisle')||{}).value||'').trim();
+  const area=saVal('area','rcpt_area'),aisle=saVal('aisle','rcpt_aisle');
   if(isHub(lc)&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
   await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
   if(area||aisle)await setItemLocations(lc,lines.map(l=>({item:l.item,area,aisle})));
@@ -2643,7 +2668,7 @@ const INVST={draft:{l:'Draft',c:'p-draft'},issued:{l:'Issued',c:'p-req'},paid:{l
 const invPill=s=>`<span class="pill ${(INVST[s]||{c:'p-draft'}).c}">${(INVST[s]||{l:s}).l}</span>`;
 async function vInvoices(v){
   v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>GST tax invoices — Central Warehouse &amp; Sydney.</div></div>
-    <div class="rep-actions no-print"><select class="filter" id="in-f"><option value="all">All</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="paid">Paid</option><option value="void">Void</option></select><button class="btn" id="in-set">${svg(I.settings,15)} Invoice settings</button><button class="btn primary" id="in-new">${svg(I.plus,15)} New invoice</button></div></div>
+    <div class="rep-actions no-print"><select class="filter" id="in-f"><option value="all">All</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="paid">Paid</option><option value="void">Void</option></select><button class="btn" id="in-cust-mgr">${svg(I.users||I.settings,15)} Customers</button><button class="btn" id="in-set">${svg(I.settings,15)} Invoice settings</button><button class="btn primary" id="in-new">${svg(I.plus,15)} New invoice</button></div></div>
     <div id="in-list"><div class="card empty">${svg(I.cost,30)}<div>Loading…</div></div></div>`;
   const[inv,cust,setg]=await Promise.all([
     sb.from('invoices').select('*, lines:invoice_lines(*)').order('created_at',{ascending:false}),
@@ -2654,7 +2679,44 @@ async function vInvoices(v){
   document.getElementById('in-f').value=invFilter;document.getElementById('in-f').onchange=e=>{invFilter=e.target.value;renderInvList();};
   document.getElementById('in-new').onclick=()=>newInvoice();
   document.getElementById('in-set').onclick=invoiceSettingsForm;
+  document.getElementById('in-cust-mgr').onclick=()=>customerManager();
   renderInvList();
+}
+// ---- Saved customers manager ----
+async function reloadCustomers(){const{data}=await sb.from('customers').select('*').eq('active',true).order('name');invCustomers=data||[];}
+function customerManager(){
+  const rows=invCustomers.length?invCustomers.map(c=>`<tr><td><b>${esc(c.name)}</b>${c.abn?`<div style="font-size:11px;color:var(--faint)">ABN ${esc(c.abn)}</div>`:''}</td><td style="font-size:12.5px;color:var(--muted)">${esc(c.email||'—')}${c.phone?`<div>${esc(c.phone)}</div>`:''}</td><td style="font-size:12px;color:var(--muted);white-space:pre-line">${esc(c.address||'—')}</td><td class="no-print" style="white-space:nowrap;text-align:right"><button class="btn sm" data-ced="${c.id}">Edit</button> <button class="btn sm" data-cdel="${c.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button></td></tr>`).join(''):`<tr><td colspan="4" style="text-align:center;color:var(--faint);padding:18px">No saved customers yet.</td></tr>`;
+  const body=`<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn sm primary" id="cm-add">${svg(I.plus,14)} Add customer</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Customer</th><th>Contact</th><th>Address</th><th class="no-print"></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  modal('Customers','Saved bill-to customers for invoices',body,`<button class="btn" data-close>Close</button>`);
+  document.getElementById('cm-add').onclick=()=>customerEdit(null);
+  document.querySelectorAll('[data-ced]').forEach(b=>b.onclick=()=>customerEdit(invCustomers.find(x=>x.id===b.dataset.ced)));
+  document.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=()=>customerDelete(invCustomers.find(x=>x.id===b.dataset.cdel)));
+}
+function customerEdit(c){
+  c=c||{};
+  const body=`<div class="grid2"><div class="field"><label>Name *</label><input id="cf-name" value="${esc(c.name||'')}"></div><div class="field"><label>ABN</label><input id="cf-abn" value="${esc(c.abn||'')}"></div></div>
+    <div class="grid2"><div class="field"><label>Email</label><input id="cf-email" value="${esc(c.email||'')}"></div><div class="field"><label>Phone</label><input id="cf-phone" value="${esc(c.phone||'')}"></div></div>
+    <div class="field"><label>Address</label><textarea id="cf-addr" rows="2">${esc(c.address||'')}</textarea></div>
+    <div class="field"><label>Notes</label><input id="cf-notes" value="${esc(c.notes||'')}"></div>`;
+  modal(c.id?'Edit customer':'New customer','Saved bill-to for invoices',body,`<button class="btn" id="cf-back">Back to list</button><button class="btn primary" id="cf-save">Save</button>`);
+  document.getElementById('cf-back').onclick=()=>customerManager();
+  document.getElementById('cf-save').onclick=async()=>{
+    const name=document.getElementById('cf-name').value.trim();
+    if(!name)return toast('Enter a customer name',true);
+    const rec={name,abn:document.getElementById('cf-abn').value.trim(),email:document.getElementById('cf-email').value.trim(),phone:document.getElementById('cf-phone').value.trim(),address:document.getElementById('cf-addr').value.trim(),notes:document.getElementById('cf-notes').value.trim()};
+    const q=c.id?sb.from('customers').update(rec).eq('id',c.id):sb.from('customers').insert(rec);
+    const{error}=await q;if(error)return toast(error.message||'Save failed',true);
+    await reloadCustomers();toast(c.id?'Customer updated':'Customer added');customerManager();
+  };
+}
+function customerDelete(c){
+  if(!c)return;
+  stackConfirm('Remove customer',c.name,`<div>Remove <b>${esc(c.name)}</b> from your saved customers? Existing invoices keep their billing details.</div>`,{okLabel:'Remove',cancelLabel:'Cancel',danger:true,onOk:async()=>{
+    const{error}=await sb.from('customers').update({active:false}).eq('id',c.id);
+    if(error)return toast(error.message||'Remove failed',true);
+    await reloadCustomers();toast('Customer removed');customerManager();
+  }});
 }
 function renderInvList(){
   const el=document.getElementById('in-list');if(!el)return;
@@ -2960,16 +3022,24 @@ async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callR
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
-  const poSplit={};
-  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);return `<div class="recv-row" style="grid-template-columns:1fr 56px 170px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Qty</div><div class="tnum" style="font-weight:600">${+l.qty||0}</div></div><div><div class="cap">Best before *</div><div style="display:flex;gap:4px;align-items:center"><input type="date" data-px="${l.item_id}" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-pxsp="${l.item_id}" title="Multiple best-before dates" style="padding:2px 6px;font-size:11px">+</button></div></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adds the ordered quantities into <b>${esc(loc(o.location_id).name)}</b> and updates cost. Enter each item's <b>Best Before</b> date — use <b>+</b> if a line arrived with several dates.</div></div>${lineRows}<div class="grid2" style="margin-top:12px"><div class="field"><label>Stored at${hub?' *':' (optional)'}</label>${areaField(o.location_id,'po-area','')}</div><div class="field"><label>Aisle #${hub?' *':' (optional)'}</label><input id="po-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
-  (o.lines||[]).forEach(l=>{const b=document.querySelector(`[data-pxsp="${l.item_id}"]`);if(!b)return;b.onclick=()=>{const q=+l.qty||0;if(q<=0)return;openBatchSplit('Best-before — '+item(l.item_id).name,q,poSplit[l.item_id]||null,rows=>{poSplit[l.item_id]=rows;const di=document.querySelector(`[data-px="${l.item_id}"]`);if(di){di.value='';di.disabled=true;di.placeholder=rows.length+' dates';}b.textContent=rows.length+' ✎';toast('Saved '+rows.length+' best-before dates');});};});
-  document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';const area=((document.getElementById('po-area')||{}).value||'').trim(),aisle=((document.getElementById('po-aisle')||{}).value||'').trim();if(hub&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
+  const poSplit={};const recvQty={};(o.lines||[]).forEach(l=>{recvQty[l.item_id]=+l.qty||0;});
+  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oq=+l.qty||0;return `<div class="recv-row" style="grid-template-columns:1fr 58px 66px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oq}</div></div><div><div class="cap">Receiving</div><input type="number" min="0" max="${oq}" value="${oq}" data-prq="${l.item_id}" style="width:100%;padding:6px 7px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"></div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before${hub?' *':''}</span><input type="date" data-px="${l.item_id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><button type="button" class="btn sm" data-pxsp="${l.item_id}" title="Multiple best-before dates" style="padding:2px 6px;font-size:11px">+ dates</button><span class="cap" style="flex:none;margin-left:6px">Stored at${hub?' *':''}</span>${saSelect('area',o.location_id,'par_'+l.item_id,areaOf(o.location_id,l.item_id),'min-width:118px')}${saSelect('aisle',o.location_id,'pai_'+l.item_id,aisleOf(o.location_id,l.item_id),'min-width:84px')}</div></div>`;}).join('');
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`<div class="banner info">${svg(I.box,17)}<div>Adjust each line's <b>Receiving</b> quantity to what actually arrived, set its <b>Best before</b> and <b>store area / aisle</b>, then confirm. Cost and stock update by the received quantity.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside"></textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  wireSaPickers();
+  const rq=iid=>Math.max(0,Math.min(+((o.lines||[]).find(x=>x.item_id===iid)||{}).qty||0,+((document.querySelector(`[data-prq="${iid}"]`)||{}).value)||0));
+  (o.lines||[]).forEach(l=>{const b=document.querySelector(`[data-pxsp="${l.item_id}"]`);if(!b)return;b.onclick=()=>{const q=rq(l.item_id);if(q<=0)return toast('Enter the receiving quantity first',true);openBatchSplit('Best-before — '+item(l.item_id).name,q,poSplit[l.item_id]||null,rows=>{poSplit[l.item_id]=rows;const di=document.querySelector(`[data-px="${l.item_id}"]`);if(di){di.value='';di.disabled=true;di.placeholder=rows.length+' dates';}b.textContent=rows.length+' ✎';toast('Saved '+rows.length+' best-before dates');});};});
+  document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
+    const locByItem={};(o.lines||[]).forEach(l=>{locByItem[l.item_id]={area:saVal('area','par_'+l.item_id),aisle:saVal('aisle','pai_'+l.item_id)};});
+    if(hub){const miss=(o.lines||[]).filter(l=>rq(l.item_id)>0&&(!locByItem[l.item_id].area||!locByItem[l.item_id].aisle));if(miss.length)return toast('Central Warehouse: pick a store area and aisle # for every item received ('+miss.length+' missing)',true);}
     const exps={};(o.lines||[]).forEach(l=>{exps[l.item_id]=((document.querySelector(`[data-px="${l.item_id}"]`)||{}).value)||'';});
-    if((o.lines||[]).some(l=>(+l.qty||0)>0&&!exps[l.item_id]&&!(poSplit[l.item_id]&&poSplit[l.item_id].length)))return toast('Enter a Best Before date for every item',true);
-    for(const l of (o.lines||[])){if(poSplit[l.item_id]&&poSplit[l.item_id].length){const sum=poSplit[l.item_id].reduce((s,r)=>s+r.qty,0);if(sum!==(+l.qty||0))return toast(item(l.item_id).name+': dated quantities ('+sum+') must equal ordered ('+(+l.qty||0)+')',true);}}
-    await callRpc('receive_order',{p_id:id,p_note:note.trim()||null},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});if(area||aisle)await setItemLocations(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area,aisle})));await binReceiveLines(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area,aisle,qty:+l.qty||0})));
-    for(const l of (o.lines||[])){const q=+l.qty||0;if(q<=0)continue;const rowsX=(poSplit[l.item_id]&&poSplit[l.item_id].length)?poSplit[l.item_id]:(exps[l.item_id]?[{qty:q,exp:exps[l.item_id]}]:[]);for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:l.item_id,p_qty:r.qty,p_expiry:r.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}}
+    if((o.lines||[]).some(l=>rq(l.item_id)>0&&!exps[l.item_id]&&!(poSplit[l.item_id]&&poSplit[l.item_id].length)))return toast('Enter a Best Before date for every item received',true);
+    for(const l of (o.lines||[])){if(poSplit[l.item_id]&&poSplit[l.item_id].length){const sum=poSplit[l.item_id].reduce((s,r)=>s+r.qty,0);if(sum!==rq(l.item_id))return toast(item(l.item_id).name+': dated quantities ('+sum+') must equal received ('+rq(l.item_id)+')',true);}}
+    const recv=(o.lines||[]).map(l=>({item:l.item_id,qty:rq(l.item_id)}));
+    await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
+    const locRows=(o.lines||[]).filter(l=>locByItem[l.item_id].area||locByItem[l.item_id].aisle).map(l=>({item:l.item_id,area:locByItem[l.item_id].area,aisle:locByItem[l.item_id].aisle}));
+    if(locRows.length)await setItemLocations(o.location_id,locRows);
+    await binReceiveLines(o.location_id,(o.lines||[]).map(l=>({item:l.item_id,area:locByItem[l.item_id].area,aisle:locByItem[l.item_id].aisle,qty:rq(l.item_id)})));
+    for(const l of (o.lines||[])){const q=rq(l.item_id);if(q<=0)continue;const rowsX=(poSplit[l.item_id]&&poSplit[l.item_id].length)?poSplit[l.item_id]:(exps[l.item_id]?[{qty:q,exp:exps[l.item_id]}]:[]);for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:l.item_id,p_qty:r.qty,p_expiry:r.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}}
     await loadBatches();};
 }
 /* Super-admin reversal: posts a compensating correction, pushes affected locations to Square, logs it. */
@@ -3055,6 +3125,8 @@ document.addEventListener('click',e=>{
   const pk=e.target.closest('[data-pick]');if(pk){openPicking(pk.dataset.pick);return;}
   const os=e.target.closest('[data-oship]');if(os){doShipOrder(os.dataset.oship);return;}
   const orr=e.target.closest('[data-orecv]');if(orr){doReceiveOrder(orr.dataset.orecv);return;}
+  const oed=e.target.closest('[data-oedit]');if(oed){const o=S.orders.find(x=>x.id===oed.dataset.oedit);if(o)newOrder(o);return;}
+  const odl=e.target.closest('[data-odel]');if(odl){doDeleteOrder(odl.dataset.odel);return;}
   const trv=e.target.closest('[data-treverse]');if(trv){const t=S.transfers.find(x=>x.id===trv.dataset.treverse);if(t)doReverse('reverse_transfer',t.id,'transfer '+t.code,[t.from_location,t.to_location],txItems(t));return;}
   const rrv=e.target.closest('[data-rreverse]');if(rrv){const r=S.receipts.find(x=>x.id===rrv.dataset.rreverse);if(r)doReverse('reverse_receipt',r.id,'receipt '+r.code,[r.location_id],(r.lines||[]).map(l=>l.item_id));return;}
   const orv=e.target.closest('[data-oreverse]');if(orv){const o=S.orders.find(x=>x.id===orv.dataset.oreverse);if(o)doReverse('reverse_order',o.id,'order '+o.code,[o.location_id],(o.lines||[]).map(l=>l.item_id));return;}
