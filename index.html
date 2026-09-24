@@ -76,7 +76,16 @@
   .content{padding:22px;overflow-y:auto;flex:1;min-height:0}.content-inner{max-width:1120px;margin:0 auto}
   .rolechip{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted)}
   .userchip{display:flex;align-items:center;gap:9px}
-  .avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-family:var(--disp);font-size:13px}
+  .avatar{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700;font-family:var(--disp);font-size:13.5px;border:0;cursor:pointer;transition:filter .12s}
+  .avatar:hover{filter:brightness(1.08)}
+  .usermenu{position:relative}
+  .user-drop{position:absolute;right:0;top:46px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-lg);min-width:230px;padding:12px;z-index:60}
+  .ud-name{font-weight:700;font-size:14.5px}
+  .ud-email{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-all}
+  .ud-role{font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent-soft);border-radius:8px;padding:6px 9px;margin-top:9px}
+  .ud-sep{height:1px;background:var(--border);margin:9px 0}
+  .ud-item{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:0;padding:9px;border-radius:9px;color:var(--ink);font-weight:600;font-size:13.5px}
+  .ud-item:hover{background:var(--surface-2)}.ud-item.danger{color:var(--crit)}.ud-item.danger:hover{background:var(--crit-soft)}
   .theme-btn,.signout{background:none;border:1px solid var(--border);border-radius:9px;padding:7px;color:var(--muted);display:grid;place-items:center}
   .theme-btn:hover,.signout:hover{color:var(--ink)}
   .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:9px;font-weight:600;font-size:13px;transition:.12s}
@@ -264,9 +273,16 @@
       <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub"></div></div>
       <div class="spacer"></div>
       <button class="theme-btn" id="themeBtn" aria-label="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"/><circle cx="12" cy="12" r="3.5"/></svg></button>
-      <div class="rolechip" id="roleChip"></div>
-      <button class="signout" id="signout" title="Sign out" aria-label="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>
-      <div class="userchip"><div class="avatar" id="avatar">·</div></div>
+      <div class="usermenu">
+        <button class="avatar" id="avatar" aria-haspopup="menu" aria-expanded="false">·</button>
+        <div class="user-drop" id="userDrop" hidden>
+          <div class="ud-name" id="udName"></div>
+          <div class="ud-email" id="udEmail"></div>
+          <div class="ud-role" id="udRole"></div>
+          <div class="ud-sep"></div>
+          <button class="ud-item danger" id="signout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg> Sign out</button>
+        </div>
+      </div>
     </header>
     <div class="content"><div class="content-inner" id="view"></div></div>
     <nav class="mobile-tabs" id="mtabs"></nav>
@@ -623,8 +639,9 @@ async function startApp(){
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
 }
 function renderRoleChip(prof){
-  const c=document.getElementById('roleChip');
-  c.innerHTML=`<span class="rc-full">${esc((prof.full_name||prof.email).split(' ')[0])} ·</span> ${roleDef().name}${scoped()&&MYLOCS.length?` · ${MYLOCS.map(id=>loc(id).code).join(', ')}`:''}`;
+  const n=document.getElementById('udName');if(n)n.textContent=prof.full_name||(prof.email||'').split('@')[0];
+  const em=document.getElementById('udEmail');if(em)em.textContent=prof.email||'';
+  const rl=document.getElementById('udRole');if(rl)rl.textContent=roleDef().name+(scoped()&&MYLOCS.length?' · '+MYLOCS.map(id=>loc(id).code).join(', '):(scoped()?'':' · all centres'));
 }
 
 /* ---------- nav ---------- */
@@ -3005,6 +3022,8 @@ document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
 document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
 document.getElementById('themeBtn').onclick=()=>{const r=document.documentElement,c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':(c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark')));};
 document.getElementById('signout').onclick=async()=>{await sb.auth.signOut();location.reload();};
+(function(){const av=document.getElementById('avatar'),dp=document.getElementById('userDrop');if(av&&dp){av.onclick=e=>{e.stopPropagation();const open=dp.hidden;dp.hidden=!open;av.setAttribute('aria-expanded',open?'true':'false');};
+  document.addEventListener('click',e=>{if(!dp.hidden&&!e.target.closest('.usermenu')){dp.hidden=true;av.setAttribute('aria-expanded','false');}});}})();
 document.getElementById('googleBtn').onclick=async()=>{
   if(!sb){document.getElementById('loginMsg').textContent='Set your Supabase URL and key in index.html first.';return;}
   const{error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
