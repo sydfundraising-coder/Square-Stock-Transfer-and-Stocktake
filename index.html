@@ -387,6 +387,12 @@ const pktToBox=(pk,it)=>{const n=ppc(it);return n?pk/n:null;};
 const boxTxt=(pk,it)=>{const n=ppc(it);if(!n)return '';const b=pk/n;return (Math.round(b*100)/100)+(b===1?' box':' boxes');};
 const ceilBox=(pk,it)=>{const n=ppc(it);return n?Math.ceil(pk/n):null;};
 const bxTag=(pk,it)=>{const n=ceilBox(pk,it);return n==null?'':n+' bx';};
+/* ---- boxes-only quantity model (everything entered/received in WHOLE boxes; DB stays in packets) ---- */
+const hasPpc=it=>ppc(it)>0;                               // item usable in boxes only if a pack size is set
+const box2pk=(bx,it)=>{const n=ppc(it);return n?Math.round((+bx||0)*n):Math.round(+bx||0);};   // whole boxes → packets
+const pk2boxWhole=(pk,it)=>{const n=ppc(it);return n?Math.round(pk/n):Math.round(+pk||0);};      // packets → nearest whole box
+const boxDec=(pk,it)=>{const n=ppc(it);return n?(Math.round((pk/n)*100)/100):null;};             // packets → boxes with 2 decimals
+const recPk=(pk,it)=>box2pk(pk2boxWhole(pk,it),it);       // recommended packets snapped to the nearest whole box
 const binOf=(l,i)=>(S.bin&&S.bin[l+'__'+i])||{area:'',aisle:''};
 const areaOf=(l,i)=>binOf(l,i).area||'';
 const aisleOf=(l,i)=>binOf(l,i).aisle||'';
@@ -416,16 +422,16 @@ const saVal=(kind,key)=>{const el=document.querySelector(`[data-sapick="${kind}"
 let PL={},PLMAX={};
 function plInit(key,target,area,aisle){PL[key]=[{qty:(target!=null?target:''),area:area||'',aisle:aisle||'',exp:''}];PLMAX[key]=target;}
 function plSum(key){return (PL[key]||[]).reduce((s,r)=>s+(+r.qty||0),0);}
-function plBuild(key,loc,hub){const rows=PL[key]||[];const opa=savedAreas(loc),opi=savedAisles(loc);const body=rows.map((r,ix)=>`<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0"><input type="number" min="0" value="${r.qty}" data-plq="${key}|${ix}" title="Quantity in this spot" style="width:60px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px"><select data-plsel="area" data-plref="${key}|${ix}" data-plloc="${loc}" title="Store area" style="min-width:112px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('area',opa,r.area||'')}</select><select data-plsel="aisle" data-plref="${key}|${ix}" data-plloc="${loc}" title="Aisle #" style="min-width:84px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('aisle',opi,r.aisle||'')}</select><input type="date" value="${esc(r.exp||'')}" data-plx="${key}|${ix}" title="Best before${hub?' (required)':''}" style="padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${rows.length>1?`<button type="button" class="btn sm" data-plrm="${key}|${ix}" title="Remove this spot" style="color:var(--crit);border-color:var(--crit);padding:2px 6px">${svg(I.x,13)}</button>`:''}</div>`).join('');
+function plBuild(key,loc,hub){const rows=PL[key]||[];const opa=savedAreas(loc),opi=savedAisles(loc);const body=rows.map((r,ix)=>`<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0"><input type="number" min="0" step="1" value="${r.qty}" data-plq="${key}|${ix}" title="Boxes in this spot" style="width:56px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px"><span style="font-size:10px;color:var(--faint)">bx</span><select data-plsel="area" data-plref="${key}|${ix}" data-plloc="${loc}" title="Store area" style="min-width:112px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('area',opa,r.area||'')}</select><select data-plsel="aisle" data-plref="${key}|${ix}" data-plloc="${loc}" title="Aisle #" style="min-width:84px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('aisle',opi,r.aisle||'')}</select><input type="date" value="${esc(r.exp||'')}" data-plx="${key}|${ix}" title="Best before${hub?' (required)':''}" style="padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${rows.length>1?`<button type="button" class="btn sm" data-plrm="${key}|${ix}" title="Remove this spot" style="color:var(--crit);border-color:var(--crit);padding:2px 6px">${svg(I.x,13)}</button>`:''}</div>`).join('');
   const tot=plSum(key),max=PLMAX[key];const over=max!=null&&tot>max;
-  return body+`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px"><button type="button" class="btn sm" data-pladd="${key}" style="padding:3px 8px;font-size:12px">${svg(I.plus,13)} Add location / best-before</button><span id="pltot-${key}" style="font-size:11.5px;color:${over?'var(--crit)':'var(--muted)'}">Receiving <b>${tot}</b>${max!=null?' of '+max:''}</span></div>`;}
+  return body+`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px"><button type="button" class="btn sm" data-pladd="${key}" style="padding:3px 8px;font-size:12px">${svg(I.plus,13)} Add location / best-before</button><span id="pltot-${key}" style="font-size:11.5px;color:${over?'var(--crit)':'var(--muted)'}">Receiving <b>${tot}</b>${max!=null?' of '+max:''} boxes</span></div>`;}
 function plRender(key,loc,hub){const host=document.getElementById('pl-'+key);if(!host)return;host.innerHTML=plBuild(key,loc,hub);
-  host.querySelectorAll('[data-plq]').forEach(el=>el.oninput=e=>{const[k,ix]=e.target.dataset.plq.split('|');PL[k][+ix].qty=Math.max(0,+e.target.value||0);plTot(k);});
+  host.querySelectorAll('[data-plq]').forEach(el=>el.oninput=e=>{const[k,ix]=e.target.dataset.plq.split('|');PL[k][+ix].qty=Math.max(0,Math.floor(+e.target.value||0));plTot(k);});
   host.querySelectorAll('[data-plx]').forEach(el=>el.onchange=e=>{const[k,ix]=e.target.dataset.plx.split('|');PL[k][+ix].exp=e.target.value;});
   host.querySelectorAll('[data-plrm]').forEach(el=>el.onclick=e=>{const[k,ix]=e.target.closest('[data-plrm]').dataset.plrm.split('|');PL[k].splice(+ix,1);plRender(k,loc,hub);});
   const add=host.querySelector('[data-pladd]');if(add)add.onclick=()=>{const max=PLMAX[key];const rem=max!=null?Math.max(0,max-plSum(key)):'';PL[key].push({qty:rem,area:'',aisle:'',exp:''});plRender(key,loc,hub);};
   host.querySelectorAll('[data-plsel]').forEach(sel=>{sel.onchange=async e=>{const s=e.target;const kind=s.dataset.plsel;const[k,ix]=s.dataset.plref.split('|');if(s.value==='__add'){const nm=(window.prompt('Add a new '+(kind==='area'?'store area':'aisle #')+' for '+loc0name(loc)+':')||'').trim();if(!nm){s.value=PL[k][+ix][kind]||'';return;}const{error}=await sb.from('store_areas').upsert({location_id:loc,name:nm,kind},{onConflict:'location_id,kind,name',ignoreDuplicates:true});if(error){toast(error.message||'Could not save',true);s.value=PL[k][+ix][kind]||'';return;}await reloadStoreAreas();PL[k][+ix][kind]=nm;plRender(k,loc,hub);return;}PL[k][+ix][kind]=s.value;};});}
-function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return;const tot=plSum(key),max=PLMAX[key],over=max!=null&&tot>max;el.innerHTML=`Receiving <b>${tot}</b>${max!=null?' of '+max:''}`;el.style.color=over?'var(--crit)':'var(--muted)';}
+function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return;const tot=plSum(key),max=PLMAX[key],over=max!=null&&tot>max;el.innerHTML=`Receiving <b>${tot}</b>${max!=null?' of '+max:''} boxes`;el.style.color=over?'var(--crit)':'var(--muted)';}
 /* validate + return placements for a line; returns {ok, qty, rows} */
 function plCollect(key,hub){const rows=(PL[key]||[]).filter(r=>(+r.qty||0)>0);const qty=rows.reduce((s,r)=>s+(+r.qty||0),0);return {qty,rows};}
 /* ---- save / resume an in-progress receipt ---- */
@@ -943,6 +949,7 @@ function ssExpiryHtml(){
 }
 function expiryBodyHtml(rows,cfg){
   const totRiskVal=rows.reduce((s,r)=>s+r.risk*(r.it.unit_cost||0),0);
+  const totVal=rows.reduce((s,r)=>s+r.qty*(r.it.unit_cost||0),0);
   const expired=rows.filter(r=>r.dte<0).length,soon=rows.filter(r=>r.dte>=0&&r.dte<=30).length;
   const body=rows.map(r=>{const c=expColor(r.expiry);const willSell=Math.round(r.dailyADS*Math.max(0,r.dte));return `<tr>
     <td><div style="font-weight:600">${esc(r.it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.it.sku||'')}</div></td>
@@ -950,6 +957,7 @@ function expiryBodyHtml(rows,cfg){
     <td style="white-space:nowrap;color:${c};font-weight:600">${fmtDate(r.expiry)}</td>
     <td class="num tnum" style="color:${c};font-weight:700">${r.dte<0?r.dte:r.dte}</td>
     <td class="num tnum">${Math.round(r.qty)}</td>
+    <td class="num tnum" style="font-weight:600">${money(r.qty*(r.it.unit_cost||0))}</td>
     <td class="num tnum">${r.dailyADS>0?(r.dailyADS*30).toFixed(1):'0'}</td>
     <td class="num tnum">${r.dailyADS>0?willSell:'—'}</td>
     <td class="num tnum" style="font-weight:700;color:${r.risk>0.5?'var(--crit)':'var(--faint)'}">${r.risk>0.5?Math.round(r.risk):'—'}</td>
@@ -958,10 +966,11 @@ function expiryBodyHtml(rows,cfg){
       <div class="tile" style="border-left:3px solid #dc2626"><div class="lbl">Expired on hand</div><div class="val tnum" style="font-size:18px">${expired}</div></div>
       <div class="tile" style="border-left:3px solid #ea580c"><div class="lbl">Within 30 days</div><div class="val tnum" style="font-size:18px">${soon}</div></div>
       <div class="tile" style="border-left:3px solid #ca8a04"><div class="lbl">Near expiry (≤${cfg.expiry_warn_days}d)</div><div class="val tnum" style="font-size:18px">${rows.length}</div></div>
+      <div class="tile" style="border-left:3px solid #0369a1"><div class="lbl">Stock value (near exp.)</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">cost of stock listed</div></div>
       <div class="tile accent"><div class="lbl">At-risk value</div><div class="val tnum" style="font-size:18px">${money0(totRiskVal)}</div><div class="meta">won't sell before expiry</div></div>
     </div>
     <div class="banner info">${svg(I.info,17)}<div><b>At-risk</b> = units that likely won't sell before their best-before date, based on each centre's sales rate (ADS). Sending soon-to-expire stock to a busier centre, or discounting, avoids the loss.</div></div>
-    <div class="tablewrap" style="overflow-x:auto"><table style="min-width:900px;font-size:12.5px"><thead><tr><th>Item</th><th>Centre</th><th>Best before</th><th class="num">Days left</th><th class="num">Qty</th><th class="num">ADS/mo</th><th class="num">Will sell by exp.</th><th class="num">At-risk</th><th class="num">At-risk $</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    <div class="tablewrap" style="overflow-x:auto"><table style="min-width:960px;font-size:12.5px"><thead><tr><th>Item</th><th>Centre</th><th>Best before</th><th class="num">Days left</th><th class="num">Qty</th><th class="num">Value</th><th class="num">ADS/mo</th><th class="num">Will sell by exp.</th><th class="num">At-risk</th><th class="num">At-risk $</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 /* Standalone Near-Expiry view — open to ALL users, scoped to their own centre(s) */
 function nearExpiryCount(){const sset=new Set(visLocs());let n=0;for(const k in (S.batches||{})){if(!sset.has(k.split('__')[0]))continue;for(const b of (S.batches[k]||[])){if((+b.qty||0)>0&&daysToExp(b.expiry)<=30)n++;}}return n;}
@@ -970,8 +979,8 @@ function vExpiry(v){
   const head=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Stock nearing its best-before date across your centre(s) — within ${cfg.expiry_warn_days} days, or at risk of not selling in time.</div></div><div class="rep-actions no-print">${rows.length?`<button class="btn" data-expexport="csv">${svg(I.receipt,15)} CSV</button><button class="btn" data-expexport="xlsx">${svg(I.receipt,15)} Excel</button>`:''}</div></div>`;
   v.innerHTML=head+(rows.length?expiryBodyHtml(rows,cfg):`<div class="card empty">${svg(I.check,34)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) right now. Best-before dates are captured as stock is received; older stock shows no date until the next stock take.</div></div>`);
 }
-function expExport(fmt){const rows=ssExpiryRows(visLocs());const header=['Item','SKU','Centre','Best before','Days left','Qty','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
-  const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
+function expExport(fmt){const rows=ssExpiryRows(visLocs());const header=['Item','SKU','Centre','Best before','Days left','Qty','Value (cost)','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
+  const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.qty*(r.it.unit_cost||0)).toFixed(2),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
   ssDownload('near-expiry',header,data,fmt);}
 function ssFilteredRows(skipStatus){
   let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
@@ -1047,7 +1056,7 @@ function ssReportHtml(){
       <td style="text-align:center"><span class="tag">${r.abc}</span></td>
       <td>${ssPill(c.key,extra)}${c.note?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px">${esc(c.note)}</div>`:''}</td>
       <td style="font-size:11px;color:var(--warn);max-width:190px">${warns.map(w=>esc(w)).join('<br>')||''}</td>
-      <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty||'—'}${c.orderQty>0&&ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${ceilBox(c.orderQty,r.it)} box${ceilBox(c.orderQty,r.it)===1?'':'es'}</div>`:''}</td>
+      <td class="num tnum" style="font-weight:700;color:${c.orderQty>0?'var(--crit)':'var(--faint)'}">${c.orderQty>0&&ppc(r.it)?pk2boxWhole(c.orderQty,r.it)+' box'+(pk2boxWhole(c.orderQty,r.it)===1?'':'es'):(c.orderQty||'—')}${c.orderQty>0&&ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${c.orderQty} pk</div>`:''}</td>
       <td class="num tnum">${money(val)}</td>
       <td><button class="btn sm" data-ssedit="${r.id}">Edit</button></td></tr>`;};
   return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
@@ -1062,7 +1071,7 @@ function ssPoHtml(){
   const groups={};rows.forEach(r=>{const sid=r.ov.preferred_supplier_id||'none';(groups[sid]=groups[sid]||[]).push(r);});
   let html='';let grand=0;
   Object.keys(groups).forEach(sid=>{const g=groups[sid];let sub=0;
-    const body=g.sort((a,b)=>a.it.name.localeCompare(b.it.name)).map(r=>{const cost=r.it.unit_cost||0;const line=r.calc.orderQty*cost;sub+=line;const bx=ceilBox(r.calc.orderQty,r.it);return `<tr><td>${esc(r.it.name)}</td><td class="mono" style="font-size:11px">${esc(r.it.sku||'')}</td><td>${esc(loc(r.store).code)}</td><td class="num tnum">${r.soh}</td><td class="num tnum">${Math.round(r.calc.doc===Infinity?0:r.calc.doc)}</td><td class="num tnum" style="font-weight:700">${r.calc.orderQty}</td><td class="num tnum" style="font-weight:700;color:var(--transit)">${bx==null?'—':bx}</td><td class="num tnum">${money(cost)}</td><td class="num tnum">${money(line)}</td></tr>`;}).join('');
+    const body=g.sort((a,b)=>a.it.name.localeCompare(b.it.name)).map(r=>{const cost=r.it.unit_cost||0;const line=r.calc.orderQty*cost;sub+=line;const bx=pk2boxWhole(r.calc.orderQty,r.it);return `<tr><td>${esc(r.it.name)}</td><td class="mono" style="font-size:11px">${esc(r.it.sku||'')}</td><td>${esc(loc(r.store).code)}</td><td class="num tnum">${r.soh}</td><td class="num tnum">${Math.round(r.calc.doc===Infinity?0:r.calc.doc)}</td><td class="num tnum" style="font-weight:700">${r.calc.orderQty}</td><td class="num tnum" style="font-weight:700;color:var(--transit)">${ppc(r.it)?bx:'—'}</td><td class="num tnum">${money(cost)}</td><td class="num tnum">${money(line)}</td></tr>`;}).join('');
     grand+=sub;
     html+=`<div class="section-head"><h2>${esc(sid==='none'?'Unassigned supplier':ssSupName(sid))}</h2><span class="tag">${g.length} items · ${money(sub)}</span></div>
       <div class="tablewrap"><table style="min-width:0;font-size:12.5px"><thead><tr><th>Item</th><th>Code</th><th>Store</th><th class="num">SOH</th><th class="num">DOC</th><th class="num">Order (pkts)</th><th class="num">Order (boxes)</th><th class="num">Unit cost</th><th class="num">Line value</th></tr></thead><tbody>${body}</tbody></table></div>`;
@@ -1075,12 +1084,12 @@ function ssPoHtml(){
 function ssItemsByStatus(locId,keys){
   ssPrep();
   const rows=(SS._all[locId]||[]).filter(r=>keys.includes(r.calc.key));
-  return rows.map(r=>({item:r.id,qty:r.calc.orderQty>0?r.calc.orderQty:Math.max(1,Math.round(r.calc.rop)||1)})).filter(x=>x.qty>0);
+  return rows.map(r=>{const it=item(r.id);const pk=r.calc.orderQty>0?r.calc.orderQty:Math.max(1,Math.round(r.calc.rop)||1);return {item:r.id,qty:recPk(pk,it)};}).filter(x=>x.qty>0);
 }
 function ssOpenTransferFor(store,rows){
   const hub=S.locations.find(l=>l.is_hub);
   go('transfers');
-  newTransfer({prefill:true,to:store,from:(hub&&hub.id!==store)?hub.id:undefined,lines:rows.map(r=>({item:r.id,qty:r.calc.orderQty}))});
+  newTransfer({prefill:true,to:store,from:(hub&&hub.id!==store)?hub.id:undefined,lines:rows.map(r=>({item:r.id,qty:recPk(r.calc.orderQty,item(r.id))}))});
 }
 function ssConvertToTransfer(){
   const rows=ssPoRows();if(!rows.length)return toast('Nothing to convert — no items need reordering.',true);
@@ -1146,11 +1155,11 @@ async function ssSaveSettings(){
   await loadStockStatusData();renderView();toast('Settings saved');
 }
 function ssExport(fmt){
-  if(SS.tab==='expiry'){const rows=ssExpiryRows();const header=['Item','SKU','Centre','Best before','Days left','Qty','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
-    const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
+  if(SS.tab==='expiry'){const rows=ssExpiryRows();const header=['Item','SKU','Centre','Best before','Days left','Qty','Value (cost)','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
+    const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.qty*(r.it.unit_cost||0)).toFixed(2),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
     return ssDownload('expiry',header,data,fmt);}
   if(SS.tab==='po'){const rows=ssPoRows();const header=['Supplier','Item','Code','Store','SOH','DOC','Order (packets)','Order (boxes)','Unit cost','Line value'];
-    const data=rows.map(r=>[ssSupName(r.ov.preferred_supplier_id),r.it.name,r.it.sku||'',loc(r.store).code,r.soh,Math.round(r.calc.doc===Infinity?0:r.calc.doc),r.calc.orderQty,ceilBox(r.calc.orderQty,r.it)==null?'':ceilBox(r.calc.orderQty,r.it),(r.it.unit_cost||0).toFixed(2),(r.calc.orderQty*(r.it.unit_cost||0)).toFixed(2)]);
+    const data=rows.map(r=>[ssSupName(r.ov.preferred_supplier_id),r.it.name,r.it.sku||'',loc(r.store).code,r.soh,Math.round(r.calc.doc===Infinity?0:r.calc.doc),r.calc.orderQty,ppc(r.it)?pk2boxWhole(r.calc.orderQty,r.it):'',(r.it.unit_cost||0).toFixed(2),(r.calc.orderQty*(r.it.unit_cost||0)).toFixed(2)]);
     return ssDownload('suggested-po',header,data,fmt);}
   const rows=ssFilteredRows();
   const header=['Item','SKU','Category','Supplier','Start date','Age (days)','SOH','SOH (boxes)','On order','Incoming transfers','Outgoing transfers','Available','Available (boxes)','Expected arrival','Sold 60d','Sold 180d','ADS','DOC','Last sale','ABC','Status','Warnings','Order qty','Order (boxes)','Stock value'];
@@ -1807,8 +1816,8 @@ function newTransfer(presetItem){
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><select id="tf-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span id="lbl-tqty">Transfer QTY</span><span>Trns box (rnd)</span><span></span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><span class="btn sm" style="padding:6px 8px;pointer-events:none;background:var(--surface-2)">${svg(I.box,13)} Quantities in boxes</span></div>
+      <div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
       <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
@@ -1823,9 +1832,9 @@ function newTransfer(presetItem){
   const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;tfUploaded=true;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
-  document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'']));
+  document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity (boxes)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
-  document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:r.qty}));tfUploaded=true;edLines();sum();});
+  document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();});
   document.getElementById('go').onclick=submitTransfer;
   document.getElementById('go-draft').onclick=saveTransferDraft;
 }
@@ -1840,7 +1849,7 @@ async function saveTransferDraft(){
 }
 function fillRecommended(){
   const to=document.getElementById('tf-to').value;
-  const low=S.items.filter(i=>i.active!==false&&isLow(to,i.id)).map(i=>({item:i.id,qty:recQty(to,i.id)})).filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty);
+  const low=S.items.filter(i=>i.active!==false&&hasPpc(i)&&isLow(to,i.id)).map(i=>({item:i.id,qty:recPk(recQty(to,i.id),item(i.id))})).filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty);
   if(!low.length)return toast('Every item at '+loc(to).code+' has 2+ months cover, or there’s no sales data yet (run Square Sync → Update sales data).',true);
   dLines=low;edLines();sum();
   toast('Filled '+low.length+' item(s) below 2 months at '+loc(to).code);
@@ -1850,16 +1859,15 @@ function edLines(){
   const to=(document.getElementById('tf-to')||{}).value;
   const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
-  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · avail ${av(i.id)}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')} · ${boxDec(av(i.id),i)} bx</option>`).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
-  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const rboxes=(pc&&has&&l.qty>0)?Math.round(l.qty/pc):null;const rpk=(rboxes!=null)?rboxes*pc:null;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${pc?' ('+bxTag(av(l.item),it0)+')':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?av(l.item)+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(av(l.item),it0)}</div>`:''):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="0" step="${tfUnit==='box'?'0.01':'1'}" value="${(tfUnit==='box'&&has&&pc)?(Math.round((l.qty/pc)*100)/100):l.qty}" data-lq="${ix}" title="${has&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><div class="lbox" title="${pc?('Transfer quantity converted to whole boxes (rounded) — about '+(rpk||0)+' packets'):'Set packets-per-carton on the item to convert to boxes'}" style="color:${rboxes?'var(--accent-ink)':'var(--faint)'}">${pc?(rboxes!=null?rboxes+' bx':'—'):'n/a'}${pc&&rpk?`<div style="font-size:9px;color:var(--faint);font-weight:400">${rpk} pk</div>`:''}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const availBx=(has&&from&&pc)?boxDec(av(l.item),it0):null;const qBox=(has&&pc)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${has&&from?' — '+av(l.item)+' packets':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?(availBx!=null?availBx+'<div style="font-size:9px;color:var(--faint);font-weight:400">bx</div>':av(l.item)):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}${has&&u!=null&&pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(u,it0)}</div>`:''}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" step="1" value="${qBox}" data-lq="${ix}" title="${has&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><div class="lbox" title="Packets that will move (auto from boxes × pack size)" style="color:var(--faint)">${has&&pc?l.qty+`<div style="font-size:9px;color:var(--faint);font-weight:400">pk</div>`:'—'}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
-  ed.querySelectorAll('[data-lq]').forEach(s=>{s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const raw=Math.max(0,+e.target.value||0);const pk=(tfUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw);dLines[ix].qty=Math.max(1,pk);sum();};
+  ed.querySelectorAll('[data-lq]').forEach(s=>{s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));dLines[ix].qty=box2pk(bx,it0);sum();};
     s.onchange=e=>{if(!tfUploaded)tfWarnLine(dLines[+e.target.dataset.lq]);};});
   ed.querySelectorAll('[data-lr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-lr]').dataset.lr;if(dLines.length>1)dLines.splice(ix,1);edLines();});
-  const uSel=document.getElementById('tf-unit');if(uSel){uSel.value=tfUnit;const lb=document.getElementById('lbl-tqty');if(lb)lb.textContent=tfUnit==='box'?'Transfer (boxes)':'Transfer QTY';uSel.onchange=e=>{tfUnit=e.target.value;edLines();};}
   sum();
 }
 /* Evaluate one line vs the destination's 2-month demand → 'low' | 'excess' | null */
@@ -1899,6 +1907,8 @@ function submitTransfer(){
   if(from===to)return toast('Source and destination must differ',true);
   if(scoped()&&!mine(to))return toast('The destination must be one of your centres',true);
   if(!lines.length)return toast('Add an item',true);
+  const noPack=lines.filter(l=>!hasPpc(item(l.item)));
+  if(noPack.length)return toast('Set a pack size (packets per carton) for: '+noPack.slice(0,3).map(l=>item(l.item).name).join(', ')+(noPack.length>3?'…':'')+' — transfers are placed in boxes.',true);
   if(tfExceed)return toast('Some items are over available stock — reduce them first',true);
   // Manually-typed lines are flagged inline as entered; only uploaded/auto-filled transfers are checked here at submit.
   if(tfUploaded){
@@ -1928,27 +1938,27 @@ async function doSubmitTransfer(from,to,notes,lines){
 function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   const hubR=isHub(t.to_location);
-  PL={};PLMAX={};(t.lines||[]).forEach(l=>{plInit(l.id,l.qty_dispatched-l.qty_received,areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));});
+  PL={};PLMAX={};(t.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.id,pk2boxWhole(l.qty_dispatched-l.qty_received,it),areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));});
   const draft=plApplyDraft('transfer',id);
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${l.qty_dispatched}</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${l.qty_received}</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_dispatched,it)} bx</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_received,it)} bx</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
   modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   (t.lines||[]).forEach(l=>plRender(l.id,t.to_location,hubR));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('transfer',id,t.to_location,(document.getElementById('rc-note')||{}).value||'',(t.lines||[]).map(l=>l.id));
   document.getElementById('go').onclick=async()=>{
     const note=(document.getElementById('rc-note')||{}).value||'';
-    for(const l of (t.lines||[])){const c=plCollect(l.id,hubR);const rem=l.qty_dispatched-l.qty_received;
-      if(c.qty>rem)return toast(item(l.item_id).name+': receiving ('+c.qty+') is more than what is in transit ('+rem+')',true);
-      for(const r of c.rows){if(!r.exp)return toast(item(l.item_id).name+': enter a Best Before date for every location',true);if(hubR&&(!r.area||!r.aisle))return toast(item(l.item_id).name+': pick a store area and aisle # for every location',true);}}
+    for(const l of (t.lines||[])){const it=item(l.item_id);const c=plCollect(l.id,hubR);const remBox=pk2boxWhole(l.qty_dispatched-l.qty_received,it);
+      if(c.qty>remBox)return toast(it.name+': receiving ('+c.qty+' bx) is more than what is in transit ('+remBox+' bx)',true);
+      for(const r of c.rows){if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);if(hubR&&(!r.area||!r.aisle))return toast(it.name+': pick a store area and aisle # for every location',true);}}
     const finish=async()=>{
-      const recv=(t.lines||[]).map(l=>({line:l.id,qty:plCollect(l.id,hubR).qty}));
+      const recv=(t.lines||[]).map(l=>({line:l.id,qty:box2pk(plCollect(l.id,hubR).qty,item(l.item_id))}));
       await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
       const locPrimary=[],binRows=[],batchOps=[];
-      for(const l of (t.lines||[])){const c=plCollect(l.id,hubR);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
+      for(const l of (t.lines||[])){const it=item(l.item_id);const c=plCollect(l.id,hubR);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{const pk=box2pk(+r.qty||0,it);binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:pk});batchOps.push({item:l.item_id,qty:pk,exp:r.exp});});}
       if(locPrimary.length)await setItemLocations(t.to_location,locPrimary);
       await binReceiveLines(t.to_location,binRows);
       for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:t.to_location,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'transfer',p_ref:t.code});}catch(e){console.error('batch_add',e);}}
       await plDeleteDraft('transfer',id);await loadBatches();};
-    const disc=plDiscrepancies((t.lines||[]).map(l=>({key:l.id,name:item(l.item_id).name,expected:l.qty_dispatched-l.qty_received})));
+    const disc=plDiscrepancies((t.lines||[]).map(l=>({key:l.id,name:item(l.item_id).name,expected:pk2boxWhole(l.qty_dispatched-l.qty_received,item(l.item_id))})));
     if(disc.length)stackConfirm('Receiving doesn’t match what was sent',t.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
     else finish();
   };
@@ -1992,34 +2002,35 @@ function newOrder(o){
   const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
     <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">${o?'Adjust as needed.':'Pre-filled from supplier lead time — adjust as needed.'}</div></div>
     <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden><select id="po-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden><span class="btn sm" style="padding:6px 8px;pointer-events:none;background:var(--surface-2)">${svg(I.box,13)} Quantities in boxes</span></div>
       <div id="ped"></div><button class="btn sm" id="pAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
   modal(o?'Edit supplier order '+o.code:'New supplier order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`);
   restrictLocSelect('po-loc');
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();};
-  document.getElementById('dlO').onclick=()=>downloadCSV('supplier-order-template.csv',['Product Code','Item Name','Category','Quantity','Unit Cost'],S.items.filter(i=>i.active!==false).map(i=>[i.sku,i.name,i.category,'',i.unit_cost]));
+  document.getElementById('dlO').onclick=()=>downloadCSV('supplier-order-template.csv',['Product Code','Item Name','Category','Quantity (boxes)','Unit Cost (per packet)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'',i.unit_cost]));
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
-  document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:r.qty,cost:r.cost}));pEd();pSum();});
+  document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();});
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
 }
 function pEd(){
-  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('ped');
-  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const bx=poUnit==='box'&&pc;const ob=(pc&&l.item)?Math.ceil(l.qty/pc):null;return `<div class="linerow" style="grid-template-columns:1fr 58px 74px 62px 30px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="0" step="${bx?'0.01':'1'}" value="${bx?(Math.round((l.qty/pc)*100)/100):l.qty}" data-pq="${ix}" title="${l.item&&pc?(l.qty+' pkts = '+bxTag(l.qty,it0)):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-pc="${ix}"><div class="lbox" title="${pc?('Whole cartons ordered — you will receive about '+(ob*pc)+' packets'):'Set packets-per-carton to show boxes'}" style="color:${ob?'var(--accent-ink)':'var(--faint)'};padding:6px 4px">${pc?(ob!=null?ob+' bx':'—'):'n/a'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow" style="grid-template-columns:1fr 58px 74px 62px 30px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" title="Packets ordered (auto from boxes × pack size)" style="color:var(--faint);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
-  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pSum();});
-  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const raw=Math.max(0,+e.target.value||0);poLines[ix].qty=Math.max(1,(poUnit==='box'&&ppc(it0))?Math.round(raw*ppc(it0)):Math.round(raw));pSum();});
+  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pEd();pSum();});
+  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));poLines[ix].qty=box2pk(bx,it0);pSum();});
   ed.querySelectorAll('[data-pc]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pc].cost=Math.max(0,+e.target.value||0);pSum();});
   ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
-  const pu=document.getElementById('po-unit');if(pu){pu.value=poUnit;pu.onchange=ev=>{poUnit=ev.target.value;pEd();};}
   pSum();
 }
 function pSum(){const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
 async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
   const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
+  const noPack=lines.filter(l=>!hasPpc(item(l.item)));
+  if(noPack.length)return toast('Set a pack size (packets per carton) for: '+noPack.slice(0,3).map(l=>item(l.item).name).join(', ')+(noPack.length>3?'…':'')+' — orders are placed in boxes.',true);
   const payloadLines=lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}));
   if(editId)await callRpc('edit_order',{p_id:editId,p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:payloadLines},'Order updated');
   else await callRpc('create_order',{p_supplier:sup,p_loc:lc,p_eta:eta,p_notes:notes,p_lines:payloadLines},'Order placed');
@@ -2786,7 +2797,7 @@ function newInvoice(inv){
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px" id="in-savewrap"><input type="checkbox" id="in-savecust"> Save as a customer for next time</label>
     <div class="grid2"><div class="field"><label>Customer number</label><input id="in-cno" placeholder="e.g. C-1024"></div><div class="field"><label>Customer order number</label><input id="in-ref" placeholder="their PO number"></div></div>
     <div class="grid2"><div class="field"><label>Issue date</label><input type="date" id="in-date" value="${today()}"></div><div class="field"><label>Due date</label><input type="date" id="in-due" value="${new Date(Date.now()+dueDays*864e5).toISOString().slice(0,10)}"></div></div>
-    <div class="field"><label>Line items <span style="color:var(--faint);font-weight:400">· prices exclude GST</span></label><div id="in-lines"></div><button class="btn sm" id="in-add" style="margin-top:4px">${svg(I.plus,14)} Add line</button></div>
+    <div class="field"><label>Line items <span style="color:var(--faint);font-weight:400">· quantity in boxes · price per box · excl GST</span></label><div id="in-lines"></div><button class="btn sm" id="in-add" style="margin-top:4px">${svg(I.plus,14)} Add line</button></div>
     <div class="field"><label>Notes / terms</label><textarea id="in-notes" rows="2" placeholder="${esc((invSettings&&invSettings.default_terms)||'')}"></textarea></div>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="in-reduce"> Reduce stock at the issuing centre when issued (and push to Square)</label>
     <div class="banner info" id="in-tot" style="margin-top:12px"></div>`;
@@ -2801,11 +2812,11 @@ function newInvoice(inv){
   invRenderLines();invRecalc();
 }
 function invRenderLines(){
-  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')}</option>`).join('');
   const ed=document.getElementById('in-lines');
-  ed.innerHTML=invLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 54px 84px 84px 30px;gap:6px;align-items:center"><select data-ili="${ix}"><option value="">Custom / free text…</option>${io}</select><input type="number" min="0" step="1" value="${l.qty}" data-ilq="${ix}" title="Qty"><input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="$ ex-GST" data-ilp="${ix}"><div class="tnum" style="text-align:right;font-size:12.5px" data-ilt="${ix}">${money((l.qty||0)*(l.price||0))}</div><button class="rm" data-ilr="${ix}">${svg(I.x,15)}</button>${l.item?'':`<input placeholder="Description" data-ild="${ix}" value="${esc(l.desc||'')}" style="grid-column:1 / -1;margin-top:2px">`}</div>`).join('');
+  ed.innerHTML=invLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 54px 84px 84px 30px;gap:6px;align-items:center"><select data-ili="${ix}"><option value="">Custom / free text…</option>${io}</select><input type="number" min="0" step="1" value="${l.qty}" data-ilq="${ix}" title="Quantity in boxes"><input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="$/box ex-GST" title="Price per box (ex GST)" data-ilp="${ix}"><div class="tnum" style="text-align:right;font-size:12.5px" data-ilt="${ix}">${money((l.qty||0)*(l.price||0))}</div><button class="rm" data-ilr="${ix}">${svg(I.x,15)}</button>${l.item?'':`<input placeholder="Description" data-ild="${ix}" value="${esc(l.desc||'')}" style="grid-column:1 / -1;margin-top:2px">`}</div>`).join('');
   invLines.forEach((l,ix)=>{if(l.item){const s=ed.querySelector(`[data-ili="${ix}"]`);if(s)s.value=l.item;}});
-  ed.querySelectorAll('[data-ili]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ili;invLines[ix].item=e.target.value;if(e.target.value){const it=item(e.target.value);invLines[ix].desc=it.name;if(!invLines[ix].price)invLines[ix].price=it.price||0;}invRenderLines();invRecalc();});
+  ed.querySelectorAll('[data-ili]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ili;invLines[ix].item=e.target.value;if(e.target.value){const it=item(e.target.value);invLines[ix].desc=it.name;if(!invLines[ix].price)invLines[ix].price=Math.round((it.price||0)*ppc(it)*100)/100;}invRenderLines();invRecalc();});
   ed.querySelectorAll('[data-ilq]').forEach(s=>s.oninput=e=>{invLines[+e.target.dataset.ilq].qty=Math.max(0,+e.target.value||0);invRecalc();lineTot(+e.target.dataset.ilq);});
   ed.querySelectorAll('[data-ilp]').forEach(s=>s.oninput=e=>{invLines[+e.target.dataset.ilp].price=Math.max(0,+e.target.value||0);invRecalc();lineTot(+e.target.dataset.ilp);});
   ed.querySelectorAll('[data-ild]').forEach(s=>s.oninput=e=>{invLines[+e.target.dataset.ild].desc=e.target.value;});
@@ -3067,26 +3078,26 @@ async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callR
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
-  PL={};PLMAX={};(o.lines||[]).forEach(l=>{plInit(l.item_id,+l.qty||0,areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
+  PL={};PLMAX={};(o.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.item_id,pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
   const draft=plApplyDraft('order',id);
-  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oq=+l.qty||0;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oq}</div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
-    for(const l of (o.lines||[])){const c=plCollect(l.item_id,hub);const oq=+l.qty||0;
-      if(c.qty>oq)return toast(item(l.item_id).name+': receiving ('+c.qty+') is more than ordered ('+oq+')',true);
-      for(const r of c.rows){if(!r.exp)return toast(item(l.item_id).name+': enter a Best Before date for every location',true);if(hub&&(!r.area||!r.aisle))return toast(item(l.item_id).name+': pick a store area and aisle # for every location',true);}}
+    for(const l of (o.lines||[])){const it=item(l.item_id);const c=plCollect(l.item_id,hub);const oBox=pk2boxWhole(+l.qty||0,it);
+      if(c.qty>oBox)return toast(it.name+': receiving ('+c.qty+' bx) is more than ordered ('+oBox+' bx)',true);
+      for(const r of c.rows){if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);if(hub&&(!r.area||!r.aisle))return toast(it.name+': pick a store area and aisle # for every location',true);}}
     const finish=async()=>{
-      const recv=(o.lines||[]).map(l=>({item:l.item_id,qty:plCollect(l.item_id,hub).qty}));
+      const recv=(o.lines||[]).map(l=>({item:l.item_id,qty:box2pk(plCollect(l.item_id,hub).qty,item(l.item_id))}));
       await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
       const locPrimary=[],binRows=[],batchOps=[];
-      for(const l of (o.lines||[])){const c=plCollect(l.item_id,hub);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:+r.qty||0});batchOps.push({item:l.item_id,qty:+r.qty||0,exp:r.exp});});}
+      for(const l of (o.lines||[])){const it=item(l.item_id);const c=plCollect(l.item_id,hub);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{const pk=box2pk(+r.qty||0,it);binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:pk});batchOps.push({item:l.item_id,qty:pk,exp:r.exp});});}
       if(locPrimary.length)await setItemLocations(o.location_id,locPrimary);
       await binReceiveLines(o.location_id,binRows);
       for(const b of batchOps){if((+b.qty||0)<=0)continue;try{await sb.rpc('batch_add',{p_loc:o.location_id,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'po',p_ref:o.code});}catch(e){console.error('batch_add',e);}}
       await plDeleteDraft('order',id);await loadBatches();};
-    const disc=plDiscrepancies((o.lines||[]).map(l=>({key:l.item_id,name:item(l.item_id).name,expected:+l.qty||0})));
+    const disc=plDiscrepancies((o.lines||[]).map(l=>({key:l.item_id,name:item(l.item_id).name,expected:pk2boxWhole(+l.qty||0,item(l.item_id))})));
     if(disc.length)stackConfirm('Receiving doesn’t match the order',o.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
     else finish();};
 }
