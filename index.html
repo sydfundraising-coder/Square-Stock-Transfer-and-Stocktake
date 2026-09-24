@@ -934,9 +934,7 @@ function ssReportHtml(){
     const docTxt=c.doc===Infinity?'∞':Math.round(c.doc);
     const val=r.soh*(r.it.unit_cost||0);
     return `<tr${cx&&['out','out_inc','low','low_new'].includes(c.key)?' style="background:'+SS_ST.low.c+'0d"':''}>
-      <td><div style="font-weight:600">${esc(r.it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(r.it.sku||'')}${r.it.category?' · '+esc(r.it.category):''}</div></td>
-      <td>${esc(ssSupName(r.ov.preferred_supplier_id))}</td>
-      <td style="white-space:nowrap;font-size:12px">${r.startReliable?fmtDate(r.start):'<span style="color:var(--muted)" title="No in-app receipt; Square created date is unreliable, so age is estimated from sales history">est.</span>'}</td>
+      <td><div class="mono" style="font-size:11px;color:var(--accent-ink);font-weight:600">${esc(r.it.sku||'—')}</div><div style="font-weight:600">${esc(r.it.name)}</div>${r.it.category?`<div style="font-size:11px;color:var(--faint)">${esc(r.it.category)}</div>`:''}</td>
       <td class="num tnum"${r.ageInferred?' title="Estimated from sales history — add a stock receipt for an exact age"':''}>${r.age==null?'—':r.age}${r.ageInferred?'*':''}</td>
       <td class="num tnum">${r.soh}${ppc(r.it)?`<div style="font-size:10px;color:var(--faint)">${boxTxt(r.soh,r.it)}</div>`:''}</td><td class="num tnum">${r.onOrder||'—'}</td><td class="num tnum">${r.incTr||'—'}</td><td class="num tnum">${r.outTr?'−'+r.outTr:'—'}</td>
       <td class="num tnum" style="font-weight:700">${c.available}${ppc(r.it)?`<div style="font-size:10px;color:var(--faint);font-weight:400">${boxTxt(c.available,r.it)}</div>`:''}</td>
@@ -953,8 +951,8 @@ function ssReportHtml(){
   return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:6px 0 14px">${tiles||'<div class="tile"><div class="lbl">No items</div></div>'}<div class="tile accent" data-ssfilter="all" style="cursor:pointer${!(SS.fStatuses||[]).length?';outline:2px solid var(--accent,#2563eb)':''}"><div class="lbl">Total stock value</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">${rows.length} items · tap to clear</div></div></div>
     ${flagged.length?`<div class="banner crit">${svg(I.alert,17)}<div><b>${flagged.length} item(s) hit by a rejected/cancelled transfer</b> — shown at the top; reorder needed.</div></div>`:''}
     <div class="tablewrap" style="overflow-x:auto"><table style="min-width:1500px;font-size:12.5px"><thead><tr>
-      <th>Item</th><th>Supplier</th><th>Start</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
-    </tr></thead><tbody>${show.map(rowHtml).join('')||'<tr><td colspan="21" style="text-align:center;color:var(--faint);padding:24px">No items match.</td></tr>'}</tbody></table></div>`;
+      <th>Code / Item</th><th class="num">Age</th><th class="num">SOH</th><th class="num">On order</th><th class="num">In transf.</th><th class="num">Out transf.</th><th class="num">Avail</th><th>Exp. arrival</th><th class="num">Sold 60d</th><th class="num">Sold 180d</th><th class="num">ADS</th><th class="num">DOC</th><th>Last sale</th><th>ABC</th><th>Status</th><th>Warnings</th><th class="num">Order qty</th><th class="num">Value</th><th></th>
+    </tr></thead><tbody>${show.map(rowHtml).join('')||'<tr><td colspan="19" style="text-align:center;color:var(--faint);padding:24px">No items match.</td></tr>'}</tbody></table></div>`;
 }
 function ssPoRows(){return ssStoreRows().filter(r=>r.calc.orderQty>0&&(SS.fSupplier==='all'||(SS.fSupplier==='none'?!r.ov.preferred_supplier_id:r.ov.preferred_supplier_id===SS.fSupplier))).slice();}
 function ssPoHtml(){
