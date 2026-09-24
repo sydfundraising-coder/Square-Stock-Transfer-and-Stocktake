@@ -60,7 +60,7 @@
   .brand-sub{font-size:11px;color:var(--faint)}
   .nav{padding:6px 10px;overflow-y:auto;flex:1;min-height:0}
   .nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:600;padding:14px 10px 6px}
-  .nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:10px 11px;border-radius:9px;font-weight:600;font-size:16px}
+  .nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:9px 11px;border-radius:9px;font-weight:600;font-size:15px}
   .nav-item:hover{background:var(--surface-2);color:var(--ink)}
   .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
   .nav-item svg{width:20px;height:20px;flex:none}
@@ -2412,8 +2412,12 @@ async function linkLocations(){
     renderSq();
   }catch(e){toast('Failed: '+(e.message||e),true);}
 }
+let usrSort={key:'name',dir:1};
 function vUsers(v){
   const badge=r=>({user:'p-draft',admin:'p-appr',national_admin:'p-partial',super_admin:'p-transit'}[r]||'p-draft');
+  const arrow=k=>usrSort.key===k?(usrSort.dir>0?' ↑':' ↓'):'';
+  const roleRank=r=>({user:0,admin:1,national_admin:2,super_admin:3}[r]!=null?{user:0,admin:1,national_admin:2,super_admin:3}[r]:0);
+  const uList=S.profiles.slice().sort((a,b)=>{let x,y;if(usrSort.key==='role'){x=roleRank(a.role);y=roleRank(b.role);}else{x=(a.full_name||a.email||'').toLowerCase();y=(b.full_name||b.email||'').toLowerCase();}return (x<y?-1:x>y?1:0)*usrSort.dir;});
   const centresCell=u=>{
     if(u.role==='national_admin'||u.role==='super_admin')return '<span class="tag">All centres</span>';
     const codes=(S.plocs||[]).filter(p=>p.profile_id===u.id).map(p=>loc(p.location_id).code);
@@ -2422,9 +2426,10 @@ function vUsers(v){
   };
   v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres.</div></div>
     ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
-    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Centres</th></tr></thead><tbody>${S.profiles.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
+    <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th></tr></thead><tbody>${uList.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
       <td>${centresCell(u)}</td></tr>`).join('')}</tbody></table></div>`;
+  v.querySelectorAll('[data-usort]').forEach(th=>th.onclick=()=>{const k=th.dataset.usort;if(usrSort.key===k)usrSort.dir*=-1;else{usrSort.key=k;usrSort.dir=1;}renderView();});
   if(can('*')){
     document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
     document.querySelectorAll('[data-ucentres]').forEach(b=>b.onclick=()=>editUserCentres(b.dataset.ucentres));
