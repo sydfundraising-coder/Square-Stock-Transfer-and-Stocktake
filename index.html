@@ -373,7 +373,9 @@ function restrictLocSelect(id){ if(!scoped())return; const s=document.getElement
 
 /* state */
 let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[]};
-const loc=id=>S.locations.find(l=>l.id===id)||{name:'—',code:'?'};
+/* For DISPLAY, centres are shown by full name everywhere — .code returns the name too
+   (the short code stays only in the raw S.locations rows, used for internal matching). */
+const loc=id=>{const l=S.locations.find(x=>x.id===id);return l?{...l,code:l.name}:{name:'—',code:'—'};};
 const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
 const onHand=(l,i)=>S.stock[l+'__'+i]||0;
@@ -1613,7 +1615,7 @@ function doDeleteTransfer(id){const t=S.transfers.find(x=>x.id===id);if(!window.
 function openEditTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   dLines=(t.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested}));
-  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From (fixed)</label><select id="tf-from" disabled>${opts}</select></div><div class="field"><label>To (fixed)</label><select id="tf-to" disabled>${opts}</select></div></div>
     <div class="field"><label>Items</label><div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Adjust items and quantities.</div></div>`;
@@ -1674,7 +1676,7 @@ function refreshDispBtn(t){const d=document.getElementById('pk-disp');if(!d)retu
 /* Dispatch / picking slip — sender & receiver + addresses, item code & qty, total boxes */
 function printPickingSlip(t,boxes){
   const from=loc(t.from_location),to=loc(t.to_location);
-  const block=(l,who)=>`<div style="flex:1"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">${who}</div><div style="font-weight:700;margin-top:2px">${esc(l.name)} <span style="font-weight:400;color:#666">(${esc(l.code)})</span></div><div style="font-size:12px;white-space:pre-line;color:#333;margin-top:2px">${esc(l.address||l.city||'')}</div></div>`;
+  const block=(l,who)=>`<div style="flex:1"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">${who}</div><div style="font-weight:700;margin-top:2px">${esc(l.name)}</div><div style="font-size:12px;white-space:pre-line;color:#333;margin-top:2px">${esc(l.address||l.city||'')}</div></div>`;
   const lines=(t.lines||[]).map(l=>({it:item(l.item_id),qty:pkTouched.has(l.id)?(+pkCounts[l.id]||0):(l.qty_requested||0)})).filter(x=>x.qty>0)
     .sort((a,b)=>String(a.it.sku||'').localeCompare(String(b.it.sku||''))||a.it.name.localeCompare(b.it.name));
   const totUnits=lines.reduce((s,x)=>s+x.qty,0);
@@ -1746,11 +1748,11 @@ function newTransfer(presetItem){
   const pre=(presetItem&&typeof presetItem==='object'&&presetItem.prefill)?presetItem:null;
   tfDraftId=draft?draft.id:null;tfUploaded=!!(draft||pre); // draft/auto-filled → check at submit, not per line
   dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
-  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
   if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
-  const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
     <div class="field"><label>Items</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><select id="tf-unit" class="btn sm" style="padding:6px 8px"><option value="pkt">Qty in: Packets</option><option value="box">Qty in: Boxes</option></select></div>
@@ -1923,7 +1925,7 @@ let poLines=[],poUnit='pkt';
 function newOrder(){
   poLines=[{item:'',qty:1,cost:0}];
   const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
-  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const sup=S.suppliers[0];const eta=new Date(Date.now()+((sup&&sup.lead_days)||30)*864e5).toISOString().slice(0,10);
   const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
     <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">Pre-filled from supplier lead time — adjust as needed.</div></div>
@@ -1966,7 +1968,7 @@ function vStock(v){
 }
 function newStock(){
   const cats=['(all categories)',...new Set(S.items.map(i=>i.category).filter(Boolean))];
-  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
   restrictLocSelect('st-loc');
   document.getElementById('go').onclick=async()=>{
@@ -1990,7 +1992,7 @@ function pickByMovement(locId,n){
 /* Super Admin: auto-generate a spot-check stock take of N items chosen by movement */
 function cycleCountModal(){
   if(ROLE!=='super_admin')return toast('Super Admin only',true);
-  const lo=`<option value="__all">All centres</option>`+S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const lo=`<option value="__all">All centres</option>`+S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('Spot-check stock take','System picks items weighted by movement',`<div class="grid2">
       <div class="field"><label>Centre</label><select id="cc-loc">${lo}</select></div>
       <div class="field"><label>Number of items</label><input id="cc-n" type="number" min="1" max="200" value="25"></div>
@@ -2144,7 +2146,7 @@ function openReceipt(id){
 let recLines=[];
 function newReceipt(){
   recLines=[{item:'',qty:1,cost:0}];
-  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('');
+  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><input id="rc-aisle" placeholder="e.g. A3"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
   restrictLocSelect('rc-loc');
   const rcArea=()=>{const lc=document.getElementById('rc-loc').value;const hub=isHub(lc);document.getElementById('rc-areawrap').innerHTML=areaField(lc,'rc-area','',hub?'select area (required)':'location (optional)');document.getElementById('rc-arealbl').textContent='Stored at'+(hub?' *':' (optional)');document.getElementById('rc-aislelbl').textContent='Aisle #'+(hub?' *':' (optional)');};
@@ -2182,12 +2184,12 @@ async function submitReceipt(){
 /* Catalog */
 let catSearch='',catCat='all';
 let catCentre=null;
-function catCentres(){return scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice().sort((a,b)=>String(a.code).localeCompare(String(b.code)));}
+function catCentres(){return scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 function vCatalog(v){
   const cats=['all',...new Set(S.items.map(i=>i.category).filter(Boolean))];
   const cens=catCentres();
   if(catCentre===null)catCentre=scoped()?(HOME||(cens[0]&&cens[0].id)||''):'';
-  const cenOpts=`${scoped()?'':`<option value="">All centres (total)</option>`}${cens.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}`;
+  const cenOpts=`${scoped()?'':`<option value="">All centres (total)</option>`}${cens.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}`;
   v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div>${S.items.length} items · stock &amp; storage per centre.</div></div>
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search name or SKU…" value="${esc(catSearch)}"></div>
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
@@ -2290,7 +2292,7 @@ async function renderItemHistory(itemId){
 }
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
-  const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)} <span class="tag">${l.code}</span></td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
+  const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)}</td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
   const kinds=['all','sale','transfer_in','transfer_out','purchase','stocktake','damage','expire','write_off','found','correction','return','reversal'];
   const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
   const isApprover=['national_admin','super_admin'].includes(ROLE);
@@ -2329,7 +2331,7 @@ function openSetLocation(itemId){
   const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
   if(!locs.length)return toast('No centre available',true);
   modal('Set storage location',it.name,`
-    <div class="field"><label>Centre</label><select id="sl-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="field"><label>Centre</label><select id="sl-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
     <div class="grid2"><div class="field"><label id="sl-arealbl">Store area</label><div id="sl-areawrap"></div></div>
       <div class="field"><label>Aisle #</label><input id="sl-aisle" placeholder="e.g. A3"></div></div>
     <div class="hint" id="sl-hint"></div>`,
@@ -2348,7 +2350,7 @@ function openDamageRequest(itemId){
   const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
   if(!locs.length)return toast('No centre available',true);
   modal('Report damage / expired',it.name,`<div class="banner info">${svg(I.info,17)}<div>This raises a request to <b>National / Super Admin</b>. The quantity is <b>reserved</b> (can’t be transferred) until they approve or reject it.</div></div>
-    <div class="grid2"><div class="field"><label>Centre</label><select id="dr-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="grid2"><div class="field"><label>Centre</label><select id="dr-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Type</label><select id="dr-kind"><option value="damage">Damaged</option><option value="expire">Expired</option></select></div></div>
     <div class="field"><label>Quantity</label><input id="dr-qty" type="number" min="1" value="1"></div>
     <div class="field"><label>Reason / details</label><textarea id="dr-note" rows="2" placeholder="e.g. packet torn, best-before passed on 12 Aug"></textarea></div>`,
@@ -2364,7 +2366,7 @@ function openDamageRequest(itemId){
 /* Super Admin: quick single-item recount */
 function openRecount(itemId){
   const it=item(itemId);const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
-  modal('Recount '+it.name,'Set the true on-hand at a centre',`<div class="field"><label>Centre</label><select id="rc-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+  modal('Recount '+it.name,'Set the true on-hand at a centre',`<div class="field"><label>Centre</label><select id="rc-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Counted on hand</label><input id="rc-cnt" type="number" min="0" value="0"><div class="hint" id="rc-cur"></div></div>
     <div class="banner warn">${svg(I.alert,17)}<div>Sets stock to this number and pushes it to <b>live Square</b>.</div></div>`,
     `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save count</button>`);
@@ -2450,12 +2452,12 @@ async function linkLocations(){
     if(data&&data.error){toast(data.error,true);return;}
     await loadAll();
     const sq=(data&&data.squareLocations)||[];
-    const rows=sq.map(s=>{const linked=S.locations.find(l=>l.square_location_id===s.id);return `<tr><td style="font-weight:600">${esc(s.name)}</td><td class="mono" style="font-size:11px">${esc(s.id)}</td><td>${linked?`<span class="pill p-done">${esc(linked.code)}</span>`:'<span class="tag">—</span>'}</td></tr>`;}).join('');
+    const rows=sq.map(s=>{const linked=S.locations.find(l=>l.square_location_id===s.id);return `<tr><td style="font-weight:600">${esc(s.name)}</td><td class="mono" style="font-size:11px">${esc(s.id)}</td><td>${linked?`<span class="pill p-done">${esc(linked.name)}</span>`:'<span class="tag">—</span>'}</td></tr>`;}).join('');
     const unlinked=S.locations.filter(l=>!l.square_location_id);
     const parts=[]; if(data.createdLocations)parts.push('<b>'+data.createdLocations+'</b> new location(s) pulled from Square'); if(data.autoLinked)parts.push('<b>'+data.autoLinked+'</b> linked to existing');
     const body=`<div class="banner ${unlinked.length?'warn':'info'}">${svg(unlinked.length?I.alert:I.check,17)}<div>${parts.length?parts.join(' · ')+'. ':''}${unlinked.length?`<b>${unlinked.length}</b> of your centres aren’t in Square (that’s fine for a stockroom — leave them, or delete if unwanted).`:'Every centre is linked to Square. ✓'}</div></div>
       <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Square location</th><th>Square ID</th><th>Your centre</th></tr></thead><tbody>${rows||'<tr><td colspan="3" style="color:var(--faint)">No Square locations found.</td></tr>'}</tbody></table></div>
-      ${unlinked.length?`<div style="margin-top:12px;font-size:13px;color:var(--muted)">Not linked yet: ${unlinked.map(l=>esc(l.code)).join(', ')}.</div>`:''}`;
+      ${unlinked.length?`<div style="margin-top:12px;font-size:13px;color:var(--muted)">Not linked yet: ${unlinked.map(l=>esc(l.name)).join(', ')}.</div>`:''}`;
     modal('Square locations','Match your centres to Square',body,`<button class="btn" data-close>Close</button>`);
     renderSq();
   }catch(e){toast('Failed: '+(e.message||e),true);}
@@ -2468,8 +2470,11 @@ function vUsers(v){
   const uList=S.profiles.slice().sort((a,b)=>{let x,y;if(usrSort.key==='role'){x=roleRank(a.role);y=roleRank(b.role);}else{x=(a.full_name||a.email||'').toLowerCase();y=(b.full_name||b.email||'').toLowerCase();}return (x<y?-1:x>y?1:0)*usrSort.dir;});
   const centresCell=u=>{
     if(u.role==='national_admin'||u.role==='super_admin')return '<span class="tag">All centres</span>';
-    const codes=(S.plocs||[]).filter(p=>p.profile_id===u.id).map(p=>loc(p.location_id).code);
-    const shown=codes.length?codes.map(c=>`<span class="tag" style="margin:0 3px 3px 0;display:inline-block">${esc(c)}</span>`).join(''):'<span style="color:var(--faint)">none</span>';
+    const names=(S.plocs||[]).filter(p=>p.profile_id===u.id).map(p=>loc(p.location_id).name).filter(Boolean).sort();
+    let shown;
+    if(!names.length)shown='<span style="color:var(--faint)">none</span>';
+    else if(names.length<=2)shown=names.map(n=>`<span class="tag" style="margin:0 3px 3px 0;display:inline-block">${esc(n)}</span>`).join('');
+    else shown=`<details class="ssmp" style="display:inline-block;position:relative"><summary class="tag" style="cursor:pointer;list-style:none">${names.length} centres ▾</summary><div style="position:absolute;right:0;z-index:50;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:8px;min-width:180px;max-height:250px;overflow:auto">${names.map(n=>`<div style="font-size:13px;padding:3px 4px">${esc(n)}</div>`).join('')}</div></details>`;
     return `${shown}${can('*')?` <button class="btn sm" data-ucentres="${u.id}">Edit</button>`:''}`;
   };
   v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres.</div></div>
@@ -2488,7 +2493,7 @@ function editUserCentres(id){
   const allOn=S.locations.length>0&&S.locations.every(l=>have.has(l.id));
   const body=`<div class="banner info">${svg(I.location,17)}<div>Tick every centre <b>${esc(u?(u.full_name||u.email):'')}</b> can access. The first ticked is their default.</div></div>
     <label style="display:flex;gap:9px;align-items:center;font-size:14px;font-weight:700;margin-bottom:8px;padding-bottom:9px;border-bottom:1px solid var(--border)"><input type="checkbox" id="lc-all" ${allOn?'checked':''}> Select all centres</label>
-    <div style="display:grid;gap:8px">${S.locations.map(l=>`<label style="display:flex;gap:9px;align-items:center;font-size:14px"><input type="checkbox" value="${l.id}" ${have.has(l.id)?'checked':''} data-lc> ${esc(l.code)} — ${esc(l.name)}</label>`).join('')}</div>`;
+    <div style="display:grid;gap:8px">${S.locations.map(l=>`<label style="display:flex;gap:9px;align-items:center;font-size:14px"><input type="checkbox" value="${l.id}" ${have.has(l.id)?'checked':''} data-lc> ${esc(l.name)}</label>`).join('')}</div>`;
   modal('Centres — '+(u?(u.full_name||u.email):''),'Multi-location access',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="uc-save">Save</button>`);
   const allCb=document.getElementById('lc-all');if(allCb)allCb.onchange=e=>{document.querySelectorAll('[data-lc]').forEach(c=>c.checked=e.target.checked);};
   document.querySelectorAll('[data-lc]').forEach(c=>c.onchange=()=>{const boxes=[...document.querySelectorAll('[data-lc]')];if(allCb)allCb.checked=boxes.length>0&&boxes.every(x=>x.checked);});
@@ -2508,12 +2513,12 @@ async function fetchCentreSales(locId){
   if(error)throw error;return data||[];
 }
 function vInsights(v){
-  const centres=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.code).localeCompare(String(b.code)));
+  const centres=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(!centres.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available.</div></div>`;return;}
   if(!insCentre||!centres.find(c=>c.id===insCentre))insCentre=(HOME&&centres.find(c=>c.id===HOME))?HOME:centres[0].id;
   v.innerHTML=`<div class="rep-controls">
       <div class="banner info" style="flex:1;margin:0">${svg(I.chart,17)}<div>Best sellers and busiest items for a centre over the <b>last 12 months</b>. Sales come from Square — keep them current with <b>Square Sync → Update sales history</b>.</div></div>
-      <div class="rep-actions no-print"><select class="filter" id="ins-c">${centres.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.code})</option>`).join('')}</select><button class="btn" id="ins-csv">${svg(I.receipt,15)} CSV</button></div>
+      <div class="rep-actions no-print"><select class="filter" id="ins-c">${centres.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="btn" id="ins-csv">${svg(I.receipt,15)} CSV</button></div>
     </div><div id="ins-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
   document.getElementById('ins-c').value=insCentre;document.getElementById('ins-c').onchange=e=>{insCentre=e.target.value;renderInsights();};
   document.getElementById('ins-csv').onclick=exportInsights;
@@ -2581,7 +2586,7 @@ function newAdjustRequest(){
   if(!locs.length)return toast('No centre available',true);
   modal('Report damage / expired','Reserve stock for approval',`
     <div class="field"><label>Item</label><input id="ar-item" list="ar-items" placeholder="Search name or code…" autocomplete="off"><datalist id="ar-items">${S.items.filter(i=>i.active!==false).slice(0,4000).map(i=>`<option value="${esc(i.name)} — ${esc(i.sku||'')}" data-id="${i.id}"></option>`).join('')}</datalist></div>
-    <div class="grid2"><div class="field"><label>Centre</label><select id="ar-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+    <div class="grid2"><div class="field"><label>Centre</label><select id="ar-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Type</label><select id="ar-kind"><option value="damage">Damaged</option><option value="expire">Expired</option></select></div></div>
     <div class="field"><label>Quantity</label><input id="ar-qty" type="number" min="1" value="1"></div>
     <div class="field"><label>Reason / details</label><textarea id="ar-note" rows="2" placeholder="e.g. packet torn; best-before passed"></textarea></div>
@@ -2666,7 +2671,7 @@ function newInvoice(inv){
   if(!locs.length){toast('No invoice-enabled location. Set invoice_enabled on Warehouse/Sydney.',true);return;}
   const custOpts=`<option value="">— New / one-off customer —</option>`+invCustomers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const dueDays=(invSettings&&invSettings.due_days)||14;
-  const body=`<div class="grid2"><div class="field"><label>Issue from</label><select id="in-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
+  const body=`<div class="grid2"><div class="field"><label>Issue from</label><select id="in-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Customer</label><select id="in-cust">${custOpts}</select></div></div>
     <div class="grid2"><div class="field"><label>Bill to (name)</label><input id="in-bname"></div><div class="field"><label>ABN</label><input id="in-babn"></div></div>
     <div class="grid2"><div class="field"><label>Email</label><input id="in-bemail"></div><div class="field"><label>Phone</label><input id="in-bphone"></div></div>
@@ -2849,8 +2854,8 @@ function newConsignment(cn,presetTransfer){
   const body=`<div class="grid2"><div class="field"><label>Carrier / freighter</label><input id="cn-carrier" value="${esc(c.carrier||'')}" placeholder="e.g. TNT, Border Express"></div>
       <div class="field"><label>Connote / tracking number</label><input id="cn-connote" value="${esc(c.connote||'')}"></div></div>
     <div class="field"><label>Link to transfer (optional)</label><select id="cn-tr">${trOpts}</select></div>
-    <div class="grid2"><div class="field"><label>From</label><select id="cn-from"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div>
-      <div class="field"><label>To</label><select id="cn-to"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.code})</option>`).join('')}</select></div></div>
+    <div class="grid2"><div class="field"><label>From</label><select id="cn-from"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>To</label><select id="cn-to"><option value="">—</option>${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div></div>
     <div class="grid2"><div class="field"><label>Dispatch date</label><input type="date" id="cn-disp" value="${c.dispatch_date||''}"></div><div class="field"><label>ETA</label><input type="date" id="cn-eta" value="${c.eta||''}"></div></div>
     <div class="grid2"><div class="field"><label>Status</label><select id="cn-status"><option value="booked">Booked</option><option value="in_transit">In transit</option><option value="delivered">Delivered</option><option value="exception">Exception</option></select></div>
       <div class="field"><label>Freight cost (AUD)</label><input type="number" min="0" step="0.01" id="cn-cost" value="${c.cost||''}"></div></div>
