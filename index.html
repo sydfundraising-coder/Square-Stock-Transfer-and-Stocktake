@@ -868,7 +868,7 @@ function vStockStatus(v){
   v.innerHTML=`<div class="banner info">${svg(I.box,17)}<div>Stock health by item &amp; category, with suggested reorder in boxes.</div></div>
     ${warnData}
     <div class="toolbar" style="flex-wrap:wrap;gap:8px">
-      ${ssMultipick('fStores','Centres',stores.map(s=>({v:s,l:loc(s).code+' — '+loc(s).name})))}
+      ${ssMultipick('fStores','Centres',stores.map(s=>({v:s,l:loc(s).name})))}
       ${SS.tab==='report'?`${ssMultipick('fStatuses','Status',Object.keys(SS_ST).filter(k=>k!=='inactive').map(k=>({v:k,l:SS_ST[k].l})))}
       ${ssMultipick('fCats','Category',cats.map(cn=>({v:cn,l:cn})))}
       <select id="ss-abc"><option value="all">ABC: all</option><option value="A"${SS.fAbc==='A'?' selected':''}>A</option><option value="B"${SS.fAbc==='B'?' selected':''}>B</option><option value="C"${SS.fAbc==='C'?' selected':''}>C</option></select>
@@ -950,7 +950,7 @@ function ssCentresHtml(){
     const pct=k=>value>0?Math.round(abcV[k]/value*100):0;const pa=pct('A'),pb=pct('B'),pc=pct('C');
     const sel=(SS.fStores&&SS.fStores.length===1&&SS.fStores[0]===locId);
     return `<div class="card pad" data-sscentre="${locId}" style="cursor:pointer;border-left:5px solid ${col}${sel?';outline:2px solid '+col:''}">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div style="font-family:var(--disp);font-weight:700;font-size:16px">${esc(loc(locId).code)} <span style="color:var(--muted);font-weight:500;font-size:13px">${esc(loc(locId).name)}</span></div><span style="font-size:11px;font-weight:700;color:${col}">${flag}</span></div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div style="font-family:var(--disp);font-weight:700;font-size:16px">${esc(loc(locId).name)}</div><span style="font-size:11px;font-weight:700;color:${col}">${flag}</span></div>
       <div style="display:flex;gap:22px;margin:10px 0 4px"><div><div class="lbl">Stock value</div><div class="val tnum" style="font-size:24px">${money0(value)}</div></div><div><div class="lbl">On hand</div><div class="val tnum" style="font-size:24px">${Math.round(units).toLocaleString()}</div><div class="meta">${rows.length} items</div></div></div>
       <div style="margin:10px 0 3px">${badges||'<span style="font-size:12px;color:var(--good);font-weight:600">✓ All healthy</span>'}</div>
       <div class="lbl" style="margin-top:12px">Stock value by ABC class</div>
@@ -1035,7 +1035,7 @@ function ssConvertToTransfer(){
   const byStore={};rows.forEach(r=>{(byStore[r.store]=byStore[r.store]||[]).push(r);});
   const stores=Object.keys(byStore);
   if(stores.length===1)return ssOpenTransferFor(stores[0],byStore[stores[0]]);
-  modal('Convert to stock transfer','A transfer goes to one centre — choose which',stores.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)"><span><b>${esc(loc(s).name)}</b> <span class="tag">${loc(s).code}</span> — ${byStore[s].length} item(s)</span><button class="btn sm primary" data-sstconv="${s}">${svg(I.transfer,14)} Transfer</button></div>`).join(''),`<button class="btn" data-close>Close</button>`);
+  modal('Convert to stock transfer','A transfer goes to one centre — choose which',stores.map(s=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)"><span><b>${esc(loc(s).name)}</b> — ${byStore[s].length} item(s)</span><button class="btn sm primary" data-sstconv="${s}">${svg(I.transfer,14)} Transfer</button></div>`).join(''),`<button class="btn" data-close>Close</button>`);
   document.querySelectorAll('[data-sstconv]').forEach(b=>b.onclick=()=>{const s=b.dataset.sstconv;closeOverlay();ssOpenTransferFor(s,byStore[s]);});
 }
 function ssLogHtml(){
