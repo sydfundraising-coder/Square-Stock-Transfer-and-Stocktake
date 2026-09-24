@@ -3127,7 +3127,7 @@ function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(
 function overlayEl(){return document.getElementById('overlay');}
 function slideover(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function modal(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
-function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));s.addEventListener('click',e=>{if(e.target===s)closeOverlay();});}
+function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));/* Do NOT close on backdrop click — windows only close via a button (data-close) or after processing, so an accidental click can't wipe entered data. */}
 function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');setTimeout(()=>overlayEl().innerHTML='',180);}
 let toastT;
 function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
@@ -3180,7 +3180,7 @@ document.addEventListener('click',e=>{
   const rrv=e.target.closest('[data-rreverse]');if(rrv){const r=S.receipts.find(x=>x.id===rrv.dataset.rreverse);if(r)doReverse('reverse_receipt',r.id,'receipt '+r.code,[r.location_id],(r.lines||[]).map(l=>l.item_id));return;}
   const orv=e.target.closest('[data-oreverse]');if(orv){const o=S.orders.find(x=>x.id===orv.dataset.oreverse);if(o)doReverse('reverse_order',o.id,'order '+o.code,[o.location_id],(o.lines||[]).map(l=>l.item_id));return;}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOverlay();});
+/* Escape no longer closes an open window — a window closes only via its Cancel/Close/X button or once its action is processed, so nothing accidental (a stray click or key) wipes entered data. */
 document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
 document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
 document.getElementById('themeBtn').onclick=()=>{const r=document.documentElement,c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':(c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark')));};
