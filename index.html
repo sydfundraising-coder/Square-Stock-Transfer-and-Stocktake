@@ -1215,6 +1215,10 @@ function vDash(v){
 }
 /* ============================ Reports ============================ */
 /* ---- chart plumbing: destroy-on-rerender + theme colours from CSS vars ---- */
+/* Financial-year + payment palette matched to the national HTML sales report */
+const FY_PALETTE=['#2E8C85','#233A5E','#E39B1B','#7A5CC0','#0E9F6E','#B2403A'];
+const fyColor=fy=>FY_PALETTE[(((fy-2025)%FY_PALETTE.length)+FY_PALETTE.length)%FY_PALETTE.length];
+const PAY_COL={CARD:'#233A5E',CASH:'#E39B1B',SQUARE_GIFT_CARD:'#7A5CC0',WALLET:'#0E9F6E',BANK_ACCOUNT:'#3A6EA5',THIRD_PARTY_CARD:'#6E8AB0',BUY_NOW_PAY_LATER:'#C0652E',EXTERNAL:'#9AA4B0',OTHER:'#9AA4B0',NO_SALE:'#9AA4B0'};
 let CHARTS=[];
 function destroyCharts(){CHARTS.forEach(c=>{try{c.destroy();}catch(e){}});CHARTS=[];}
 function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()||'#888';}
@@ -2833,8 +2837,8 @@ async function renderPerfNational(){
   const sh=(n,title,sub)=>`<div class="section-head" style="margin-top:20px"><h2><span style="display:inline-flex;width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-size:12px;margin-right:8px">${n}</span>${title}</h2>${sub?`<small>${sub}</small>`:''}</div>`;
   {const nb={};yms.forEach(y=>{nb[y]={orders:byYm[y].o,units:byYm[y].u,sales:byYm[y].s};});window._perfData={yms,byYm:nb,byFy,fys};}
   // ---- location ranking (top 5 by share) per FY, and outlets table ----
-  const rankPanel=f=>{const rows=ids.map(id=>({id,s:(byLocFy[id+'|'+f]||{s:0}).s})).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);const tot=byFy[f]?byFy[f].s:0;const top=rows.slice(0,5);
-    return `<div class="card pad"><h3 style="font-size:14px;margin-bottom:2px">${FYL(f)}</h3><div style="font-size:12px;color:var(--muted);margin-bottom:10px">${rows.length} trading centre(s) · ${money0(tot)}</div>${top.map(r=>{const p=tot>0?Math.round(r.s/tot*100):0;return `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(loc(r.id).name)}</span><span class="tnum" style="flex:none;color:var(--muted)">${money0(r.s)} · ${p}%</span></div><div style="height:7px;border-radius:5px;background:var(--surface-2);margin-top:3px"><div style="height:100%;width:${p}%;background:var(--accent);border-radius:5px"></div></div></div>`;}).join('')||'<div style="color:var(--faint);font-size:13px">No sales.</div>'}</div>`;};
+  const rankPanel=f=>{const rows=ids.map(id=>({id,s:(byLocFy[id+'|'+f]||{s:0}).s})).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);const tot=byFy[f]?byFy[f].s:0;const top=rows.slice(0,5);const fc=fyColor(f);
+    return `<div class="card pad" style="border-top:3px solid ${fc}"><h3 style="font-size:14px;margin-bottom:2px">${FYL(f)}</h3><div style="font-size:12px;color:var(--muted);margin-bottom:10px">${rows.length} trading centre(s) · ${money0(tot)}</div>${top.map(r=>{const p=tot>0?Math.round(r.s/tot*100):0;return `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(loc(r.id).name)}</span><span class="tnum" style="flex:none;color:var(--muted)">${money0(r.s)} · ${p}%</span></div><div style="height:7px;border-radius:5px;background:var(--surface-2);margin-top:3px"><div style="height:100%;width:${p}%;background:${fc};border-radius:5px"></div></div></div>`;}).join('')||'<div style="color:var(--faint);font-size:13px">No sales.</div>'}</div>`;};
   const outletRows=ids.map(id=>({id,byf:fys.map(f=>(byLocFy[id+'|'+f]||{s:0}).s)})).filter(r=>r.byf.some(x=>x>0)).sort((a,b)=>b.byf[b.byf.length-1]-a.byf[a.byf.length-1]);
   // ---- payment table ----
   const methodList=[...methods].sort((a,b)=>{const A=fys.reduce((s,f)=>s+((payByFy[f]&&payByFy[f][a])?payByFy[f][a].amount:0),0);const B=fys.reduce((s,f)=>s+((payByFy[f]&&payByFy[f][b])?payByFy[f][b].amount:0),0);return B-A;});
@@ -2884,17 +2888,18 @@ async function renderPerfNational(){
     </tbody></table></div>`;
   function chgCell(a,b){const p=b>0?Math.round((a-b)/b*1000)/10:null;if(p==null)return '<td class="num tnum" style="color:var(--faint)">—</td>';const up=p>=0;return `<td class="num tnum" style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</td>`;}
   const fyLabels=fys.map(FYL);
-  mkChart('pfn-fy',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:t.accent,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-month',{type:'bar',data:{labels:yms.map(mLabel),datasets:[{label:'Net sales $',data:yms.map(y=>Math.round(byYm[y].s)),backgroundColor:t.transit,borderRadius:3}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-outlets',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Centres trading',data:fys.map(f=>(locSet[f]?locSet[f].size:0)),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-orders',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Orders',data:fys.map(f=>byFy[f].o),backgroundColor:t.accent,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-pay',{type:'doughnut',data:{labels:methodList.map(m=>PAY_LABEL[m]||m),datasets:[{data:methodList.map(m=>(payLatest[m]?Math.round(payLatest[m].amount):0)),backgroundColor:methodList.map((_,i)=>pal[i%pal.length])}]},options:{plugins:{legend:{position:'right'}}}});
-  mkChart('pfn-items',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Units',data:fys.map(f=>Math.round(byFy[f].u)),backgroundColor:t.transit,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-cust',{type:'bar',data:{labels:fyLabels,datasets:[{label:'New',data:fys.map(f=>(custByFy[f]||{}).neu||0),backgroundColor:t.accent,borderRadius:3},{label:'Returning',data:fys.map(f=>{const c=custByFy[f]||{uniq:0,neu:0};return Math.max(0,(c.uniq||0)-(c.neu||0));}),backgroundColor:t.transit,borderRadius:3}]},options:{scales:{x:Object.assign(axes().x,{stacked:true}),y:Object.assign(axes().y,{stacked:true})}}});
-  mkChart('pfn-bval',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Avg $/order',data:fys.map(f=>Math.round(avg(byFy[f].s,byFy[f].o)*100)/100),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
-  mkChart('pfn-bqty',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Items/order',data:fys.map(f=>Math.round(avg(byFy[f].u,byFy[f].o)*100)/100),backgroundColor:t.warn,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  const fyCols=fys.map(fyColor);
+  mkChart('pfn-fy',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-month',{type:'bar',data:{labels:yms.map(mLabel),datasets:[{label:'Net sales $',data:yms.map(y=>Math.round(byYm[y].s)),backgroundColor:yms.map(y=>fyColor(fyOfYm(y))),borderRadius:3}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-outlets',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Centres trading',data:fys.map(f=>(locSet[f]?locSet[f].size:0)),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-orders',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Orders',data:fys.map(f=>byFy[f].o),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-pay',{type:'doughnut',data:{labels:methodList.map(m=>PAY_LABEL[m]||m),datasets:[{data:methodList.map(m=>(payLatest[m]?Math.round(payLatest[m].amount):0)),backgroundColor:methodList.map((m,i)=>PAY_COL[m]||pal[i%pal.length])}]},options:{plugins:{legend:{position:'right'}}}});
+  mkChart('pfn-items',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Units',data:fys.map(f=>Math.round(byFy[f].u)),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-cust',{type:'bar',data:{labels:fyLabels,datasets:[{label:'New',data:fys.map(f=>(custByFy[f]||{}).neu||0),backgroundColor:'#2E8C85',borderRadius:3},{label:'Returning',data:fys.map(f=>{const c=custByFy[f]||{uniq:0,neu:0};return Math.max(0,(c.uniq||0)-(c.neu||0));}),backgroundColor:'#233A5E',borderRadius:3}]},options:{scales:{x:Object.assign(axes().x,{stacked:true}),y:Object.assign(axes().y,{stacked:true})}}});
+  mkChart('pfn-bval',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Avg $/order',data:fys.map(f=>Math.round(avg(byFy[f].s,byFy[f].o)*100)/100),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-bqty',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Items/order',data:fys.map(f=>Math.round(avg(byFy[f].u,byFy[f].o)*100)/100),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
   const cagrLine=(cagr!=null)?fys.map((f,i)=>Math.round(byFy[firstFy].s*Math.pow(1+cagr/100,i))):[];
-  mkChart('pfn-cagr',{type:'bar',data:{labels:fyLabels,datasets:[{type:'bar',label:'Actual net sales',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:t.accent,borderRadius:4},...(cagrLine.length?[{type:'line',label:'Steady CAGR path',data:cagrLine,borderColor:t.warn,borderDash:[6,4],pointRadius:2,tension:0}]:[])]},options:{scales:axes()}});
+  mkChart('pfn-cagr',{type:'bar',data:{labels:fyLabels,datasets:[{type:'bar',label:'Actual net sales',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:fyCols,borderRadius:4},...(cagrLine.length?[{type:'line',label:'Steady CAGR path',data:cagrLine,borderColor:'#E39B1B',borderDash:[6,4],pointRadius:2,tension:0}]:[])]},options:{scales:axes()}});
 }
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
