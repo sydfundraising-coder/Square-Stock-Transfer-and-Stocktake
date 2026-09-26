@@ -243,6 +243,60 @@
     .chart-box{height:230px!important}
     canvas{max-width:100%!important}
   }
+
+  /* ---- item-entry screens (transfers, orders, receipts, invoices, picking) ---- */
+  .form .panel-head{padding:18px 22px 16px;box-shadow:inset 0 4px 0 var(--accent);border-bottom:1px solid var(--border)}
+  .form .panel-head h2{font-size:18.5px;letter-spacing:-.015em}
+  .form .panel-head .sub{font-size:13px;color:var(--muted);margin-top:3px}
+  .form .panel-body{background:var(--bg);padding:18px 22px}
+  .form .panel-foot{padding:14px 22px;box-shadow:0 -8px 20px rgba(15,26,42,.05);align-items:center}
+  .form .panel-foot .btn{padding:10px 16px;font-size:13.5px;border-radius:10px}
+  .form .panel-foot .btn.primary{padding:10px 20px;box-shadow:0 4px 14px rgba(14,143,131,.28)}
+  .form .panel-foot .btn.primary:disabled{box-shadow:none}
+  .sec{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,26,42,.03)}
+  .sec-h{display:flex;align-items:center;gap:8px 12px;margin-bottom:14px;flex-wrap:wrap}
+  .sec-h h3{font-size:15px;font-weight:700}
+  .sec-hint{font-size:12.5px;color:var(--muted)}
+  .sec-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .sec-tools select{width:auto}
+  .sec-tools .btn.sm,.sec-tools select{padding:6px 11px;border-radius:8px;font-size:12.5px}
+  .sec>.field:last-child,.sec>.grid2:last-child>.field{margin-bottom:0}
+  .sec .grid2{gap:12px 16px}
+  .sec input:not([type=checkbox]):not([type=file]),.sec select,.sec textarea{border-radius:9px}
+  .form .sec select[data-sapick]{padding:9px 11px!important;font-size:14px!important;border:1px solid var(--border-strong)!important;border-radius:9px!important;background:var(--surface);color:var(--ink)}
+  .tray-count{display:inline-flex;align-items:center;background:var(--accent-soft);color:var(--accent-ink);font-weight:700;font-size:12px;border-radius:999px;padding:2px 10px;font-variant-numeric:tabular-nums}
+  .lines-scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+  .lines-scroll>.cols-po,.lines-scroll>.cols-rc,.lines-scroll>.cols-inv,.lines-scroll>#ped,.lines-scroll>#red,.lines-scroll>#in-lines{min-width:560px}
+  .tray .linerow-lbl{background:none;border:0;border-radius:0;padding:0 9px 7px;margin:0;text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--muted)}
+  .tray .tf-line,.tray .linerow{background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:8px;margin-bottom:8px;transition:border-color .12s,box-shadow .12s}
+  .tray .tf-line:hover,.tray .linerow:hover{border-color:var(--border-strong)}
+  .tray .tf-line:focus-within,.tray .linerow:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .tray .tf-line select,.tray .linerow select,.tray .tf-line input,.tray .linerow input{height:38px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);width:100%;min-width:0}
+  .tray .linerow input[type=number],.tray .tf-line input[type=number]{text-align:center;font-variant-numeric:tabular-nums;font-weight:600}
+  .tray .lbox{background:var(--surface);min-height:38px;display:flex;flex-direction:column;justify-content:center;line-height:1.15}
+  .tray .rm{width:34px;height:34px;padding:0;border:1px solid transparent;border-radius:8px;background:none;color:var(--faint);display:grid;place-items:center;transition:.12s}
+  .tray .rm:hover{background:var(--crit-soft);color:var(--crit);border-color:transparent}
+  .tray .tf-line,.tray .linerow-lbl:not(.cols-po):not(.cols-rc):not(.cols-inv){grid-template-columns:minmax(220px,1fr) 64px 72px 76px 60px 96px 72px 34px;gap:8px}
+  .lines-scroll>.linerow-lbl:not(.cols-po):not(.cols-rc):not(.cols-inv),.lines-scroll>#ed{min-width:760px}
+  .linerow-lbl.cols-po,.linerow.cols-po{grid-template-columns:minmax(200px,1fr) 84px 104px 84px 34px;gap:8px}
+  .linerow-lbl.cols-rc,.linerow.cols-rc{grid-template-columns:minmax(200px,1fr) 84px 104px 186px 34px;gap:8px}
+  .linerow-lbl.cols-inv,.linerow.cols-inv{grid-template-columns:minmax(200px,1fr) 84px 124px 104px 34px;gap:8px}
+  .linerow-lbl.cols-po,.linerow-lbl.cols-rc,.linerow-lbl.cols-inv{display:grid}
+  .cols-inv .ltot{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;padding-right:4px}
+  .linerow-lbl.cols-inv span:nth-child(4){text-align:right;padding-right:4px}
+  .addmore{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;padding:12px 14px;border:1.5px dashed var(--border-strong);border-radius:11px;background:transparent;color:var(--accent-ink);font-weight:700;font-size:13.5px;transition:background .12s,border-color .12s}
+  .addmore svg{width:17px;height:17px}
+  .addmore:hover{background:var(--accent-soft);border-color:var(--accent)}
+  .addmore:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .form #sum,.form #psum,.form #rsum,.form #in-tot{padding:14px 16px;border-radius:12px;font-size:13.5px;margin-bottom:0}
+  .pk-progress{display:flex;align-items:center;gap:12px;margin-bottom:14px;font-size:12.5px;color:var(--muted)}
+  .pk-track{flex:0 0 160px;height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden}
+  .pk-track span{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .25s}
+  .form .recv-row{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;border-left:4px solid var(--border-strong);transition:border-color .15s}
+  #pkList .recv-row{grid-template-columns:1fr 76px 112px!important;column-gap:12px}
+  .form .recv-row.done{border-left-color:var(--good)}
+  .form .recv-row input[data-pk]{height:38px;font-weight:700}
+  @media (max-width:700px){.form .panel-body{padding:14px}.sec{padding:14px}.pk-track{flex-basis:90px}}
 </style>
 </head>
 <body>
@@ -1704,15 +1758,15 @@ function openEditTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   dLines=(t.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested}));
   const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  const body=`<div class="grid2"><div class="field"><label>From (fixed)</label><select id="tf-from" disabled>${opts}</select></div><div class="field"><label>To (fixed)</label><select id="tf-to" disabled>${opts}</select></div></div>
-    <div class="field"><label>Items <span style="color:var(--faint);font-weight:400">· quantities in boxes</span></label>
-      <div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
-      <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
+  const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Fixed once a request is submitted</span></div><div class="grid2"><div class="field"><label>From</label><select id="tf-from" disabled>${opts}</select></div><div class="field"><label>To</label><select id="tf-to" disabled>${opts}</select></div></div></section>
+    <section class="sec tray field"><div class="sec-h"><h3>Items to transfer</h3><span class="tray-count" id="ed-count"></span><span class="sec-hint">Quantities in whole boxes</span></div>
+      <div class="lines-scroll"><div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
+      <div id="ed"></div></div><button type="button" class="addmore" id="addL">${svg(I.plus,16)} Add more items</button></section>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Adjust items and quantities.</div></div>`;
-  modal('Edit '+t.code,'Change items / quantities',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Save changes</button>`);
+  modal('Edit '+t.code,'Change items and quantities',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Save changes</button>`,'full form');
   document.getElementById('tf-from').value=t.from_location;document.getElementById('tf-to').value=t.to_location;
   edLines();
-  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
+  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
   document.getElementById('go').onclick=async()=>{const lines=dLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add at least one item',true);await callRpc('edit_transfer',{p_id:id,p_lines:lines.map(l=>({item:l.item,qty:l.qty}))},'Transfer updated');};
 }
 /* pick list (print → also "Save as PDF" from the print dialog) */
@@ -1748,9 +1802,9 @@ function openPicking(id){
   const camOk=('BarcodeDetector' in window);
   const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Enter the number of <b>boxes</b> you're sending — <b>0 if not sending</b>. Every line must be confirmed before Dispatch unlocks.</div></div>
     <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="pk-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="pk-cam">${svg(I.box,16)} Camera</button>`:''}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px"><span id="pk-prog"></span></div>`;
+    <div class="pk-progress"><div class="pk-track"><span id="pk-bar"></span></div><span id="pk-prog"></span></div>`;
   const foot=`<button class="btn" data-close>Close</button><button class="btn" id="pk-save">Save</button>${canDispatchT(t)?`<button class="btn primary" id="pk-disp">${svg(I.truck,16)} Dispatch</button>`:''}`;
-  slideover('Pick '+t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,`${head}<div id="pkList">${renderPkRows(t,'')}</div>`,foot,'wide');
+  slideover('Pick '+t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,`${head}<div id="pkList">${renderPkRows(t,'')}</div>`,foot,'wide form');
   const scan=document.getElementById('pk-scan');
   scan.oninput=()=>renderPkList(t);
   scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();pkScan(t,scan.value.trim());scan.value='';renderPkList(t);scan.focus();}};
@@ -1809,16 +1863,16 @@ function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=(t.
   const areaOpts=(hubP?storeAreasAt(t.from_location):areasAt(t.from_location));const aisleOpts=aislesAt(t.from_location);
   const areaCtl=l=>hubP?`<select data-pkfrom="${l.id}" style="${inpStyle}"><option value="">— area —</option>${areaOpts.map(a=>`<option value="${esc(a)}"${a===(pkFrom[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="pk-areas" data-pkfrom="${l.id}" value="${esc(pkFrom[l.id]||'')}" placeholder="area" style="${inpStyle}">`;
   const aisleCtl=l=>`<input list="pk-aisles" data-pkaisle="${l.id}" value="${esc(pkAisle[l.id]||'')}" placeholder="aisle" style="width:84px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px">`;
-  return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];const av=srcOH(t.from_location,l.item_id);const pc=ppc(it);return `<div class="recv-row" style="grid-template-columns:1fr 54px 92px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')} · <span style="color:${av>0?'var(--good)':'var(--crit)'};font-weight:700">avail ${pc?boxDec(av,it)+' bx':av}</span>${pc?` <span style="color:var(--faint)">(${av} pk)</span>`:''}</div></div><div><div class="cap">Req (bx)</div><div class="tnum" style="font-weight:600">${pc?pk2boxWhole(l.qty_requested,it):l.qty_requested}${pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${l.qty_requested} pk</div>`:''}</div></div><div><div class="cap">Pick (bx)</div><input type="number" min="0" step="1" inputmode="numeric" value="${pkTouched.has(l.id)?(c==null?'':pk2boxWhole(c,it)):''}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div>${expirySeqHtml(t.from_location,l.item_id)?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Use by (send earliest first)</span>${expirySeqHtml(t.from_location,l.item_id)}</div>`:''}${hubP&&binsFor(t.from_location,l.item_id).length?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Aisle (oldest received)</span>${binSeqHtml(t.from_location,l.item_id)}</div>`:''}<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before (sending)</span>${pkExpSelect(t,l)}</div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span>${areaCtl(l)}${aisleCtl(l)}</div><div data-pkwarn="${l.id}" style="grid-column:1 / -1">${pkWarnInner(t,l)}</div></div>`;}).join('')+`<datalist id="pk-areas">${areaOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="pk-aisles">${aisleOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;}
+  return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];const av=srcOH(t.from_location,l.item_id);const pc=ppc(it);return `<div class="recv-row${pkTouched.has(l.id)?' done':''}" style="grid-template-columns:1fr 54px 92px"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')} · <span style="color:${av>0?'var(--good)':'var(--crit)'};font-weight:700">avail ${pc?boxDec(av,it)+' bx':av}</span>${pc?` <span style="color:var(--faint)">(${av} pk)</span>`:''}</div></div><div><div class="cap">Req (bx)</div><div class="tnum" style="font-weight:600">${pc?pk2boxWhole(l.qty_requested,it):l.qty_requested}${pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${l.qty_requested} pk</div>`:''}</div></div><div><div class="cap">Pick (bx)</div><input type="number" min="0" step="1" inputmode="numeric" value="${pkTouched.has(l.id)?(c==null?'':pk2boxWhole(c,it)):''}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div>${expirySeqHtml(t.from_location,l.item_id)?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Use by (send earliest first)</span>${expirySeqHtml(t.from_location,l.item_id)}</div>`:''}${hubP&&binsFor(t.from_location,l.item_id).length?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Aisle (oldest received)</span>${binSeqHtml(t.from_location,l.item_id)}</div>`:''}<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before (sending)</span>${pkExpSelect(t,l)}</div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span>${areaCtl(l)}${aisleCtl(l)}</div><div data-pkwarn="${l.id}" style="grid-column:1 / -1">${pkWarnInner(t,l)}</div></div>`;}).join('')+`<datalist id="pk-areas">${areaOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="pk-aisles">${aisleOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;}
 function renderPkList(t){const el=document.getElementById('pkList');if(!el)return;const f=(document.getElementById('pk-scan')||{}).value||'';el.innerHTML=renderPkRows(t,f);bindPkInputs(t);updatePkProg(t);}
 function pkWarnRefresh(t,k){const l=(t.lines||[]).find(x=>x.id===k);const box=document.querySelector(`#pkList [data-pkwarn="${k}"]`);if(l&&box)box.innerHTML=pkWarnInner(t,l);}
-function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(inp=>{inp.oninput=e=>{const k=e.target.dataset.pk;const l=(t.lines||[]).find(x=>x.id===k);const it=l?item(l.item_id):null;if(e.target.value===''){pkCounts[k]=0;pkTouched.delete(k);}else{pkCounts[k]=box2pk(Math.max(0,Math.floor(+e.target.value||0)),it);pkTouched.add(k);}pkDirty.add(k);updatePkProg(t);pkWarnRefresh(t,k);};inp.onchange=()=>savePicks(t,false);});
+function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(inp=>{inp.oninput=e=>{const k=e.target.dataset.pk;const l=(t.lines||[]).find(x=>x.id===k);const it=l?item(l.item_id):null;if(e.target.value===''){pkCounts[k]=0;pkTouched.delete(k);}else{pkCounts[k]=box2pk(Math.max(0,Math.floor(+e.target.value||0)),it);pkTouched.add(k);}pkDirty.add(k);{const row=e.target.closest('.recv-row');if(row)row.classList.toggle('done',pkTouched.has(k));}updatePkProg(t);pkWarnRefresh(t,k);};inp.onchange=()=>savePicks(t,false);});
   document.querySelectorAll('#pkList [data-pkexp]').forEach(sel=>{sel.onchange=e=>{const k=e.target.dataset.pkexp;const mi=document.querySelector(`#pkList [data-pkexpm="${k}"]`);if(e.target.value==='__manual'){if(mi)mi.style.display='';pkExp[k]=(mi&&mi.value)||'';}else{if(mi)mi.style.display='none';pkExp[k]=e.target.value;}pkDirty.add(k);pkWarnRefresh(t,k);savePicks(t,false);};});
   document.querySelectorAll('#pkList [data-pkexpm]').forEach(inp=>{inp.onchange=e=>{const k=e.target.dataset.pkexpm;pkExp[k]=e.target.value;pkDirty.add(k);pkWarnRefresh(t,k);savePicks(t,false);};});
   const persistFrom=lid=>{const l=(t.lines||[]).find(x=>x.id===lid);if(!l)return;const a=pkFrom[lid]||'',ai=pkAisle[lid]||'';if((a&&a!==areaOf(t.from_location,l.item_id))||(ai&&ai!==aisleOf(t.from_location,l.item_id))){setItemLocations(t.from_location,[{item:l.item_id,area:a,aisle:ai}],true);toast('Pick-from location updated');}};
   document.querySelectorAll('#pkList [data-pkfrom]').forEach(inp=>{inp.onchange=e=>{pkFrom[e.target.dataset.pkfrom]=e.target.value.trim();persistFrom(e.target.dataset.pkfrom);};});
   document.querySelectorAll('#pkList [data-pkaisle]').forEach(inp=>{inp.onchange=e=>{pkAisle[e.target.dataset.pkaisle]=e.target.value.trim();persistFrom(e.target.dataset.pkaisle);};});}
-function updatePkProg(t){refreshDispBtn(t);const el=document.getElementById('pk-prog');if(!el)return;const total=(t.lines||[]).length;const done=(t.lines||[]).filter(l=>pkTouched.has(l.id)).length;const sending=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0).length;el.textContent=done+' of '+total+' items confirmed · '+sending+' being sent'+(done<total?' — enter a qty (0 if not sending) for the rest to unlock Dispatch':'');}
+function updatePkProg(t){refreshDispBtn(t);const total=(t.lines||[]).length;const done=(t.lines||[]).filter(l=>pkTouched.has(l.id)).length;const bar=document.getElementById('pk-bar');if(bar)bar.style.width=(total?Math.round(done/total*100):0)+'%';const el=document.getElementById('pk-prog');if(!el)return;const sending=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0).length;el.textContent=done+' of '+total+' items confirmed · '+sending+' being sent'+(done<total?' — enter a qty (0 if not sending) for the rest to unlock Dispatch':'');}
 function pkScan(t,code){if(!code)return;const cl=code.toLowerCase();const line=(t.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this transfer: '+code,true);return;}const cur=+pkCounts[line.id]||0;pkCounts[line.id]=cur+1;pkDirty.add(line.id);pkTouched.add(line.id);toast('+1 '+item(line.item_id).name+' = '+(cur+1));savePicks(t,false);updatePkProg(t);}
 function savePicks(t,announce){const picks=pkArray();if(!picks.length&&!announce)return;clearTimeout(pkSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_picks',{p_id:t.id,p_picks:picks});if(announce){toast(error?('Save failed: '+error.message):'Picking saved',!!error);if(!error)await refreshOps([]);}};if(announce)doSave();else pkSaveT=setTimeout(doSave,700);}
 async function openPkScanner(t){
@@ -1859,14 +1913,14 @@ function newTransfer(presetItem){
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
   if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  const body=`<div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div>
-    <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm" style="padding:6px 8px"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select><span class="btn sm" style="padding:6px 8px;pointer-events:none;background:var(--surface-2)">${svg(I.box,13)} Quantities in boxes</span></div>
-      <div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
-      <div id="ed"></div><button class="btn sm" id="addL" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
-    <div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="courier, reason, ETA…"></textarea></div>
+  const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Where the stock comes from and where it goes</span></div><div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div></section>
+    <section class="sec tray field"><div class="sec-h"><h3>Items to transfer</h3><span class="tray-count" id="ed-count"></span><span class="sec-hint">Quantities in whole boxes</span>
+      <div class="sec-tools"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select></div></div>
+      <div class="lines-scroll"><div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
+      <div id="ed"></div></div><button type="button" class="addmore" id="addL">${svg(I.plus,16)} Add more items</button></section>
+    <section class="sec"><div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="Courier, reason, ETA…"></textarea></div></section>
     <div class="banner info" id="sum">${svg(I.info,17)}<div>Add items to see availability.</div></div>`;
-  modal(draft?'Edit draft transfer':'New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save for later</button><button class="btn primary" id="go">Submit request</button>`,'full');
+  modal(draft?'Edit draft transfer':'New stock transfer','Request stock between two sites',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save for later</button><button class="btn primary" id="go">${svg(I.check,16)} Submit request</button>`,'full form');
   const hub=S.locations.find(l=>l.is_hub);const from=document.getElementById('tf-from'),to=document.getElementById('tf-to');
   // From = Central Warehouse (hub) by default; To = the user's centre.
   if(scoped()){to.value=HOME||(destLocs[0]&&destLocs[0].id);from.value=(hub&&hub.id!==to.value)?hub.id:(S.locations.find(l=>l.id!==to.value)||{}).id;}
@@ -1876,7 +1930,7 @@ function newTransfer(presetItem){
   edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=()=>{loadTfDest(to.value);edLines();sum();};
   const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;tfUploaded=true;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
-  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();};
+  document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity (boxes)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'']));
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();});
@@ -1945,6 +1999,7 @@ function sum(){
   const from=document.getElementById('tf-from').value,to=(document.getElementById('tf-to')||{}).value,btn=document.getElementById('go');let val=0;tfExceed=false;let overN=0;
   dLines.forEach(l=>{if(!l.item)return;val+=l.qty*item(l.item).unit_cost;const av=(tfSrc.loc===from&&tfSrc.avail[l.item]!=null)?tfSrc.avail[l.item]:availAt(from,l.item);if(l.qty>av){tfExceed=true;overN++;}});
   const iss=tfIssues();const flagN=iss.low.length+iss.excess.length;
+  trayCount('ed-count',dLines.filter(l=>l.item).length);
   const s=document.getElementById('sum');if(!s)return;
   if(overN)s.className='banner crit',s.innerHTML=`${svg(I.alert,17)}<div><b>${overN} item(s) over ${esc(loc(from).code)}'s available stock.</b> Reduce those quantities to submit.</div>`;
   else if(flagN)s.className='banner warn',s.innerHTML=`${svg(I.alert,17)}<div><b>${money(val)}.</b> ${flagN} item(s) flagged vs 2-month demand — you'll confirm the details on submit.</div>`;
@@ -1991,7 +2046,7 @@ function openReceive(id){
   PL={};PLMAX={};(t.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.id,pk2boxWhole(l.qty_dispatched-l.qty_received,it),areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));if(l.pick_expiry&&PL[l.id]&&PL[l.id][0])PL[l.id][0].exp=l.pick_expiry;});
   const draft=plApplyDraft('transfer',id);
   const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${it.sku}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_dispatched,it)} bx</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_received,it)} bx</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'form');
   (t.lines||[]).forEach(l=>plRender(l.id,t.to_location,hubR));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('transfer',id,t.to_location,(document.getElementById('rc-note')||{}).value||'',(t.lines||[]).map(l=>l.id));
   document.getElementById('go').onclick=async()=>{
@@ -2049,16 +2104,18 @@ function newOrder(o){
   const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const sup=S.suppliers[0];const eta=o?(o.expected_on||today()):new Date(Date.now()+((sup&&sup.lead_days)||30)*864e5).toISOString().slice(0,10);
-  const body=`<div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
+  const body=`<section class="sec"><div class="sec-h"><h3>Order details</h3></div><div class="grid2"><div class="field"><label>Supplier</label><select id="po-sup">${so}</select></div><div class="field"><label>Deliver to</label><select id="po-loc">${lo}</select></div></div>
     <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">${o?'Adjust as needed.':'Pre-filled from supplier lead time — adjust as needed.'}</div></div>
-    <div class="field"><label>Items</label>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden><span class="btn sm" style="padding:6px 8px;pointer-events:none;background:var(--surface-2)">${svg(I.box,13)} Quantities in boxes</span></div>
-      <div id="ped"></div><button class="btn sm" id="pAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div>
-    <div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
-  modal(o?'Edit supplier order '+o.code:'New supplier order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`);
+    </section>
+    <section class="sec tray field"><div class="sec-h"><h3>Items to order</h3><span class="tray-count" id="ped-count"></span><span class="sec-hint">Quantities in whole boxes</span>
+      <div class="sec-tools"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden></div></div>
+      <div class="lines-scroll"><div class="linerow-lbl cols-po"><span>Product</span><span>Boxes</span><span>Cost / packet</span><span>= packets</span><span></span></div>
+      <div id="ped"></div></div><button type="button" class="addmore" id="pAdd">${svg(I.plus,16)} Add more items</button></section>
+    <section class="sec"><div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div></section><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
+  modal(o?'Edit supplier order '+o.code:'New supplier order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`,'full form');
   restrictLocSelect('po-loc');
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
-  pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();};
+  pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
   document.getElementById('dlO').onclick=()=>downloadCSV('supplier-order-template.csv',['Product Code','Item Name','Category','Quantity (boxes)','Unit Cost (per packet)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'',i.unit_cost]));
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();});
@@ -2067,7 +2124,7 @@ function newOrder(o){
 function pEd(){
   const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('ped');
-  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow" style="grid-template-columns:1fr 58px 74px 62px 30px"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" title="Packets ordered (auto from boxes × pack size)" style="color:var(--faint);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
+  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pEd();pSum();});
   ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));poLines[ix].qty=box2pk(bx,it0);pSum();});
@@ -2075,7 +2132,7 @@ function pEd(){
   ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
   pSum();
 }
-function pSum(){const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
+function pSum(){trayCount('ped-count',poLines.filter(l=>l.item).length);const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('psum').innerHTML=`${svg(I.cost,17)}<div>Order total <b>${money(t)}</b>.</div>`;}
 async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
   const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
@@ -2278,17 +2335,17 @@ let recLines=[];
 function newReceipt(){
   recLines=[{item:'',qty:1,cost:0}];
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  modal('New goods receipt','Record a supplier delivery',`<div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><div id="rc-aislewrap"></div></div><div class="field"><label>Items received</label><div id="red"></div><button class="btn sm" id="rAdd" style="margin-top:4px">${svg(I.plus,14)} Add item</button></div><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`);
+  modal('New goods receipt','Record a supplier delivery',`<section class="sec"><div class="sec-h"><h3>Delivery details</h3></div><div class="grid2"><div class="field"><label>Into</label><select id="rc-loc">${lo}</select></div><div class="field"><label>Date</label><input type="date" id="rc-date" value="${today()}"></div></div><div class="grid2"><div class="field"><label>Supplier</label><input id="rc-sup" placeholder="Supplier name"></div><div class="field"><label>Invoice / ref</label><input id="rc-ref"></div></div><div class="grid2"><div class="field"><label id="rc-arealbl">Stored at</label><div id="rc-areawrap"></div></div><div class="field"><label id="rc-aislelbl">Aisle #</label><div id="rc-aislewrap"></div></div></div></section><section class="sec tray field"><div class="sec-h"><h3>Items received</h3><span class="tray-count" id="red-count"></span><span class="sec-hint">Use + beside the date for more than one best-before</span></div><div class="lines-scroll"><div class="linerow-lbl cols-rc"><span>Product</span><span>Qty</span><span>Unit cost</span><span>Best before</span><span></span></div><div id="red"></div></div><button type="button" class="addmore" id="rAdd">${svg(I.plus,16)} Add more items</button></section><section class="sec"><div class="field"><label>Notes</label><textarea id="rc-notes" rows="2"></textarea></div></section><div class="banner info" id="rsum">${svg(I.cost,17)}<div>Add items.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} Post receipt</button>`,'full form');
   restrictLocSelect('rc-loc');
   const rcArea=()=>{const lc=document.getElementById('rc-loc').value;const hub=isHub(lc);document.getElementById('rc-areawrap').innerHTML=saSelect('area',lc,'rcpt_area','','width:100%');document.getElementById('rc-aislewrap').innerHTML=saSelect('aisle',lc,'rcpt_aisle','','width:100%');document.getElementById('rc-arealbl').textContent='Stored at'+(hub?' *':' (optional)');document.getElementById('rc-aislelbl').textContent='Aisle #'+(hub?' *':' (optional)');wireSaPickers();};
   document.getElementById('rc-loc').addEventListener('change',rcArea);rcArea();
-  rEd();document.getElementById('rAdd').onclick=()=>{recLines.push({item:'',qty:1,cost:0});rEd();};
+  rEd();document.getElementById('rAdd').onclick=()=>{recLines.push({item:'',qty:1,cost:0});rEd();focusNewLine('red');};
   document.getElementById('go').onclick=submitReceipt;
 }
 function rEd(){
   const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.name)} — ${i.sku}</option>`).join('');
   const ed=document.getElementById('red');
-  ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 54px 70px 150px 30px"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><div style="display:flex;gap:4px;align-items:center;min-width:0">${(l.batches&&l.batches.length)?`<span style="font-size:11px;color:var(--muted);flex:1">${l.batches.length} dates</span>`:`<input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0;flex:1">`}<button type="button" class="btn sm" data-rxsp="${ix}" title="Multiple best-before dates" style="padding:2px 6px;font-size:11px">${(l.batches&&l.batches.length)?'✎':'+'}</button></div><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
+  ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow cols-rc"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><div style="display:flex;gap:4px;align-items:center;min-width:0">${(l.batches&&l.batches.length)?`<span style="font-size:11px;color:var(--muted);flex:1">${l.batches.length} dates</span>`:`<input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0;flex:1">`}<button type="button" class="btn sm" data-rxsp="${ix}" title="Multiple best-before dates" style="height:38px;padding:0 10px;font-size:13px">${(l.batches&&l.batches.length)?'✎':'+'}</button></div><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
   recLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-ri="${ix}"]`).value=l.item;});
   ed.querySelectorAll('[data-ri]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ri;recLines[ix].item=e.target.value;if(!recLines[ix].cost){recLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-rk="${ix}"]`).value=recLines[ix].cost;}rSum();});
   ed.querySelectorAll('[data-rq]').forEach(s=>s.oninput=e=>{recLines[+e.target.dataset.rq].qty=Math.max(1,+e.target.value||1);rSum();});
@@ -2298,7 +2355,7 @@ function rEd(){
   ed.querySelectorAll('[data-rr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-rr]').dataset.rr;if(recLines.length>1)recLines.splice(ix,1);rEd();});
   rSum();
 }
-function rSum(){const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('rsum').innerHTML=`${svg(I.cost,17)}<div>Total cost <b>${money(t)}</b>.</div>`;}
+function rSum(){trayCount('red-count',recLines.filter(l=>l.item).length);const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('rsum').innerHTML=`${svg(I.cost,17)}<div>Total cost <b>${money(t)}</b>.</div>`;}
 async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
@@ -3070,24 +3127,25 @@ function newInvoice(inv){
   if(!locs.length){toast('No invoice-enabled location. Set invoice_enabled on Warehouse/Sydney.',true);return;}
   const custOpts=`<option value="">— New / one-off customer —</option>`+invCustomers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const dueDays=(invSettings&&invSettings.due_days)||14;
-  const body=`<div class="grid2"><div class="field"><label>Issue from</label><select id="in-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
+  const body=`<section class="sec"><div class="sec-h"><h3>Customer</h3></div><div class="grid2"><div class="field"><label>Issue from</label><select id="in-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
       <div class="field"><label>Customer</label><select id="in-cust">${custOpts}</select></div></div>
     <div class="grid2"><div class="field"><label>Bill to (name)</label><input id="in-bname"></div><div class="field"><label>ABN</label><input id="in-babn"></div></div>
     <div class="grid2"><div class="field"><label>Email</label><input id="in-bemail"></div><div class="field"><label>Phone</label><input id="in-bphone"></div></div>
     <div class="field"><label>Address</label><textarea id="in-baddr" rows="2"></textarea></div>
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px" id="in-savewrap"><input type="checkbox" id="in-savecust"> Save as a customer for next time</label>
-    <div class="grid2"><div class="field"><label>Customer number</label><input id="in-cno" placeholder="e.g. C-1024"></div><div class="field"><label>Customer order number</label><input id="in-ref" placeholder="their PO number"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px" id="in-savewrap"><input type="checkbox" id="in-savecust"> Save as a customer for next time</label></section>
+    <section class="sec"><div class="sec-h"><h3>Invoice details</h3></div><div class="grid2"><div class="field"><label>Customer number</label><input id="in-cno" placeholder="e.g. C-1024"></div><div class="field"><label>Customer order number</label><input id="in-ref" placeholder="their PO number"></div></div>
     <div class="grid2"><div class="field"><label>Issue date</label><input type="date" id="in-date" value="${today()}"></div><div class="field"><label>Due date</label><input type="date" id="in-due" value="${new Date(Date.now()+dueDays*864e5).toISOString().slice(0,10)}"></div></div>
-    <div class="field"><label>Line items <span style="color:var(--faint);font-weight:400">· quantity in boxes · price per box · excl GST</span></label><div id="in-lines"></div><button class="btn sm" id="in-add" style="margin-top:4px">${svg(I.plus,14)} Add line</button></div>
-    <div class="field"><label>Notes / terms</label><textarea id="in-notes" rows="2" placeholder="${esc((invSettings&&invSettings.default_terms)||'')}"></textarea></div>
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="in-reduce"> Reduce stock at the issuing centre when issued (and push to Square)</label>
-    <div class="banner info" id="in-tot" style="margin-top:12px"></div>`;
-  modal(invEditId?'Edit invoice':'New sales invoice','GST tax invoice',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="in-draft">Save draft</button><button class="btn primary" id="in-issue">Save &amp; issue</button>`);
+    </section>
+    <section class="sec tray field"><div class="sec-h"><h3>Items</h3><span class="tray-count" id="in-count"></span><span class="sec-hint">Boxes, price per box excluding GST</span></div><div class="lines-scroll"><div class="linerow-lbl cols-inv"><span>Product or description</span><span>Boxes</span><span>Price / box</span><span>Line total</span><span></span></div><div id="in-lines"></div></div><button type="button" class="addmore" id="in-add">${svg(I.plus,16)} Add more items</button></section>
+    <section class="sec"><div class="field"><label>Notes / terms</label><textarea id="in-notes" rows="2" placeholder="${esc((invSettings&&invSettings.default_terms)||'')}"></textarea></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:12px"><input type="checkbox" id="in-reduce"> Reduce stock at the issuing centre when issued (and push to Square)</label></section>
+    <div class="banner info" id="in-tot"></div>`;
+  modal(invEditId?'Edit invoice':'New sales invoice','GST tax invoice',body,`<button class="btn" data-close>Cancel</button><button class="btn" id="in-draft">Save draft</button><button class="btn primary" id="in-issue">${svg(I.check,16)} Save &amp; issue</button>`,'full form');
   if(inv){document.getElementById('in-loc').value=inv.location_id;document.getElementById('in-cust').value=inv.customer_id||'';setBill(inv);document.getElementById('in-date').value=inv.issue_date||today();if(inv.due_date)document.getElementById('in-due').value=inv.due_date;document.getElementById('in-ref').value=inv.reference||'';document.getElementById('in-cno').value=inv.customer_no||'';document.getElementById('in-notes').value=inv.notes||'';document.getElementById('in-reduce').checked=!!inv.reduce_stock;}
   const cw=document.getElementById('in-savewrap');
   document.getElementById('in-cust').onchange=e=>{const c=invCustomers.find(x=>x.id===e.target.value);if(c){setBill(c);cw.style.display='none';}else{setBill({});cw.style.display='flex';}};
   if(inv&&inv.customer_id)cw.style.display='none';
-  document.getElementById('in-add').onclick=()=>{invLines.push({item:'',desc:'',qty:1,price:0});invRenderLines();invRecalc();};
+  document.getElementById('in-add').onclick=()=>{invLines.push({item:'',desc:'',qty:1,price:0});invRenderLines();invRecalc();focusNewLine('in-lines');};
   document.getElementById('in-draft').onclick=()=>saveInvoice(false);
   document.getElementById('in-issue').onclick=()=>saveInvoice(true);
   invRenderLines();invRecalc();
@@ -3095,7 +3153,7 @@ function newInvoice(inv){
 function invRenderLines(){
   const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.name)} — ${esc(i.sku||'')}</option>`).join('');
   const ed=document.getElementById('in-lines');
-  ed.innerHTML=invLines.map((l,ix)=>`<div class="linerow" style="grid-template-columns:1fr 54px 84px 84px 30px;gap:6px;align-items:center"><select data-ili="${ix}"><option value="">Custom / free text…</option>${io}</select><input type="number" min="0" step="1" value="${l.qty}" data-ilq="${ix}" title="Quantity in boxes"><input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="$/box ex-GST" title="Price per box (ex GST)" data-ilp="${ix}"><div class="tnum" style="text-align:right;font-size:12.5px" data-ilt="${ix}">${money((l.qty||0)*(l.price||0))}</div><button class="rm" data-ilr="${ix}">${svg(I.x,15)}</button>${l.item?'':`<input placeholder="Description" data-ild="${ix}" value="${esc(l.desc||'')}" style="grid-column:1 / -1;margin-top:2px">`}</div>`).join('');
+  ed.innerHTML=invLines.map((l,ix)=>`<div class="linerow cols-inv"><select data-ili="${ix}"><option value="">Custom / free text…</option>${io}</select><input type="number" min="0" step="1" value="${l.qty}" data-ilq="${ix}" title="Quantity in boxes"><input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="$ ex GST" title="Price per box (ex GST)" data-ilp="${ix}"><div class="ltot" data-ilt="${ix}">${money((l.qty||0)*(l.price||0))}</div><button class="rm" data-ilr="${ix}">${svg(I.x,15)}</button>${l.item?'':`<input placeholder="Description" data-ild="${ix}" value="${esc(l.desc||'')}" style="grid-column:1 / -1">`}</div>`).join('');
   invLines.forEach((l,ix)=>{if(l.item){const s=ed.querySelector(`[data-ili="${ix}"]`);if(s)s.value=l.item;}});
   ed.querySelectorAll('[data-ili]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.ili;invLines[ix].item=e.target.value;if(e.target.value){const it=item(e.target.value);invLines[ix].desc=it.name;if(!invLines[ix].price)invLines[ix].price=Math.round((it.price||0)*ppc(it)*100)/100;}invRenderLines();invRecalc();});
   ed.querySelectorAll('[data-ilq]').forEach(s=>s.oninput=e=>{invLines[+e.target.dataset.ilq].qty=Math.max(0,+e.target.value||0);invRecalc();lineTot(+e.target.dataset.ilq);});
@@ -3104,7 +3162,7 @@ function invRenderLines(){
   ed.querySelectorAll('[data-ilr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-ilr]').dataset.ilr;if(invLines.length>1)invLines.splice(ix,1);invRenderLines();invRecalc();});
 }
 function lineTot(ix){const el=document.querySelector(`[data-ilt="${ix}"]`);if(el)el.textContent=money((invLines[ix].qty||0)*(invLines[ix].price||0));}
-function invRecalc(){const sub=invLines.reduce((s,l)=>s+(l.qty||0)*(l.price||0),0);const rate=(invSettings&&invSettings.gst_rate)||10;const gst=sub*rate/100;const el=document.getElementById('in-tot');if(el)el.innerHTML=`${svg(I.cost,17)}<div style="display:grid;gap:2px;width:100%"><div style="display:flex;justify-content:space-between"><span>Subtotal (ex GST)</span><span class="tnum">${money(sub)}</span></div><div style="display:flex;justify-content:space-between"><span>GST (${rate}%)</span><span class="tnum">${money(gst)}</span></div><div style="display:flex;justify-content:space-between;font-weight:800;border-top:1px solid var(--border);padding-top:4px;margin-top:2px"><span>Total</span><span class="tnum">${money(sub+gst)}</span></div></div>`;}
+function invRecalc(){trayCount('in-count',invLines.filter(l=>l.item||l.desc).length);const sub=invLines.reduce((s,l)=>s+(l.qty||0)*(l.price||0),0);const rate=(invSettings&&invSettings.gst_rate)||10;const gst=sub*rate/100;const el=document.getElementById('in-tot');if(el)el.innerHTML=`${svg(I.cost,17)}<div style="display:grid;gap:2px;width:100%"><div style="display:flex;justify-content:space-between"><span>Subtotal (ex GST)</span><span class="tnum">${money(sub)}</span></div><div style="display:flex;justify-content:space-between"><span>GST (${rate}%)</span><span class="tnum">${money(gst)}</span></div><div style="display:flex;justify-content:space-between;font-weight:800;border-top:1px solid var(--border);padding-top:4px;margin-top:2px"><span>Total</span><span class="tnum">${money(sub+gst)}</span></div></div>`;}
 async function saveInvoice(issue){
   const lines=invLines.filter(l=>(l.item||l.desc)&&l.qty>0);
   if(!lines.length)return toast('Add at least one line with a quantity',true);
@@ -3362,7 +3420,7 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   PL={};PLMAX={};(o.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.item_id,pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
   const draft=plApplyDraft('order',id);
   const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`);
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Cost and stock update by the total received.</div></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'form');
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
@@ -3415,6 +3473,10 @@ async function pushAll(){if(!window.confirm('Push ALL system stock to Square? Th
 /* fire-and-forget system-event log; tolerant of the function not existing yet */
 function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(p&&typeof p.then==='function')p.then(()=>{},()=>{});}catch(e){}}
 
+
+/* item-entry helpers: running count + focus the row just added */
+function trayCount(id,n){const el=document.getElementById(id);if(el)el.textContent=n?(n+(n===1?' item':' items')):'None yet';}
+function focusNewLine(id){const ed=document.getElementById(id);if(!ed)return;const s=ed.querySelectorAll('select');const last=s[s.length-1];if(last){last.focus();last.scrollIntoView({block:'nearest'});}}
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
 function slideover(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
