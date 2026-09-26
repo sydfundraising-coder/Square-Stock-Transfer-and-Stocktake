@@ -14,6 +14,7 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
@@ -1225,6 +1226,22 @@ function mkChart(id,cfg){const el=document.getElementById(id);if(!el||!window.Ch
   cfg.options=cfg.options||{};cfg.options.responsive=true;cfg.options.maintainAspectRatio=false;
   cfg.options.animation={duration:320};
   cfg.options.plugins=Object.assign({legend:{labels:{color:t.muted,boxWidth:10,usePointStyle:true,pointStyle:'circle',font:{size:11}}}},cfg.options.plugins||{});
+  // ---- data labels on every chart (chartjs-plugin-datalabels) ----
+  if(window.ChartDataLabels&&!Chart._dlReg){try{Chart.register(window.ChartDataLabels);}catch(e){}Chart._dlReg=true;}
+  if(window.ChartDataLabels&&cfg.options.plugins.datalabels===undefined){
+    const shortNum=v=>{v=Math.round(v);const a=Math.abs(v);return a>=1000?((v/1000).toFixed(a>=10000?0:1).replace(/\.0$/,'')+'k'):(''+v);};
+    const isDonut=c=>{const ty=c.chart.config.type;return ty==='doughnut'||ty==='pie';};
+    cfg.options.plugins.datalabels={
+      display:'auto',clamp:true,offset:2,font:{size:10,weight:'600'},
+      color:c=>isDonut(c)?'#fff':t.ink,
+      anchor:c=>isDonut(c)?'center':'end',
+      align:c=>isDonut(c)?'center':(c.chart.config.type==='line'?'top':'end'),
+      formatter:(val,ctx)=>{const n=+((val&&typeof val==='object')?(val.y!=null?val.y:val):val);if(!isFinite(n)||n===0)return '';
+        const lbl=(ctx.dataset&&ctx.dataset.label)||'';const money=/\$|sales|basket|amount|value|order/i.test(lbl)&&!/items|units|\borders\b/i.test(lbl);
+        if(isDonut(ctx)){const ds=ctx.dataset.data||[];const tot=ds.reduce((s,x)=>s+(Math.abs(+x)||0),0);return tot>0?Math.round(n/tot*100)+'%':'';}
+        return (money?'$':'')+shortNum(n);}
+    };
+  }
   const c=new Chart(el.getContext('2d'),cfg);CHARTS.push(c);return c;}
 function axes(){const t=chartTheme();return {x:{ticks:{color:t.muted,font:{size:11}},grid:{color:'transparent'}},y:{ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid},beginAtZero:true}};}
 
