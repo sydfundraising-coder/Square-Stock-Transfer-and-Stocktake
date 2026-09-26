@@ -372,7 +372,7 @@ const canRecvOrder=o=>can('order.receive')&&(!scoped()||mine(o.location_id)); //
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[],recvDrafts:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[],recvDrafts:[],salesMonthly:[]};
 function recvDraftFor(kind,refId){return (S.recvDrafts||[]).find(d=>d.kind===kind&&d.ref_id===refId)||null;}
 async function reloadRecvDrafts(){try{const{data}=await sb.from('receive_drafts').select('*');S.recvDrafts=data||[];}catch(e){console.error('reloadRecvDrafts',e);}}
 /* For DISPLAY, centres are shown by full name everywhere — .code returns the name too
@@ -582,7 +582,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
-    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd]=await Promise.all([
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
@@ -598,10 +598,11 @@ async function loadAll(){
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
       q(sb.from('store_areas').select('*')).catch(()=>[]),
       q(sb.from('receive_drafts').select('*')).catch(()=>[]),
+      q(sb.from('sales_monthly').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
-    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[];
+    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadBins();
@@ -618,7 +619,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -632,9 +633,10 @@ async function loadOps(){
       q(sb.from('consignments').select('*').order('created_at',{ascending:false})).catch(()=>[]),
       q(sb.from('store_areas').select('*')).catch(()=>[]),
       q(sb.from('receive_drafts').select('*')).catch(()=>[]),
+      q(sb.from('sales_monthly').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -696,6 +698,7 @@ const NAV=[
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
   {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview',need:'audit.view'},
   {id:'insights',label:'Centre Insights',icon:I.chart,group:'Overview'},
+  {id:'perf',label:'Sales & Performance',icon:I.cost,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Supplier Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()},
   {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length},
@@ -724,7 +727,7 @@ function renderNav(){
   NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['adjustments','freight','receipts','expiry','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  mt.innerHTML=MOBILE.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['insights','perf','adjustments','freight','receipts','expiry','invoices','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
 }
 function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
@@ -1173,13 +1176,13 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -2643,6 +2646,100 @@ function exportInsights(){
   downloadCSV(`top-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)'],d.topItems.map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,((d.soldV&&d.soldV[id])||0).toFixed(2)]));
   setTimeout(()=>downloadCSV(`most-received_${cn}_${stamp}.csv`,['Item','Product code','Times received','Units received'],d.topMovers.map(([id,m])=>[item(id).name,item(id).sku||'',m.count,m.units])),400);
   toast('Exported top items + most-received');
+}
+/* ---------- Sales & Performance (Square, per centre) ---------- */
+let perfCentre='all';
+function perfCentres(){return (scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+function perfSelIds(){const cs=perfCentres();return (!perfCentre||perfCentre==='all')?cs.map(c=>c.id):[perfCentre];}
+const fyOfYm=ym=>{const p=ym.split('-');const y=+p[0],m=+p[1];return m>=7?y+1:y;};
+const prevYm=ym=>{const p=ym.split('-');return ((+p[0])-1)+'-'+p[1];};
+const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE);
+function vPerf(v){
+  const cs=perfCentres();
+  if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
+  if(cs.length===1)perfCentre=cs[0].id; else if(perfCentre!=='all'&&!cs.find(c=>c.id===perfCentre))perfCentre='all';
+  const opts=`${cs.length>1?`<option value="all">${scoped()?'All my centres':'All centres'}</option>`:''}`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const rf=perfCanRefresh();
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Net sales, orders and basket size from <b>Square</b> — rolling last 24 months. ${scoped()?'Showing your centre(s) only.':'All centres, or pick one.'} Keep current with <b>Refresh sales</b>${rf?'':' (ask an admin)'}.</div></div>
+      <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
+    </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
+  const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerf();};}
+  document.getElementById('pf-csv').onclick=()=>perfExport('csv');
+  document.getElementById('pf-xls').onclick=()=>perfExport('xlsx');
+  const rb=document.getElementById('pf-refresh');if(rb)rb.onclick=runPerfSync;
+  renderPerf();
+}
+async function renderPerf(){
+  const el=document.getElementById('pf-body');if(!el)return;destroyCharts();
+  const ids=perfSelIds();
+  const rows=(S.salesMonthly||[]).filter(r=>ids.includes(r.location_id));
+  const byYm={};rows.forEach(r=>{const a=byYm[r.ym]=byYm[r.ym]||{orders:0,units:0,sales:0};a.orders+=+r.orders||0;a.units+=+r.units||0;a.sales+=+r.sales||0;});
+  const yms=Object.keys(byYm).sort();
+  if(!yms.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No sales data yet for this scope. ${perfCanRefresh()?'Click <b>Refresh sales</b> to pull the last 24 months from Square.':'Ask an admin to run <b>Refresh sales</b>.'}</div></div>`;return;}
+  const byFy={};yms.forEach(ym=>{const fy=fyOfYm(ym);const a=byFy[fy]=byFy[fy]||{orders:0,units:0,sales:0};a.orders+=byYm[ym].orders;a.units+=byYm[ym].units;a.sales+=byYm[ym].sales;});
+  const fys=Object.keys(byFy).map(Number).sort((a,b)=>a-b);
+  const curFy=fyOfYm(yms[yms.length-1]);
+  const curMonths=yms.filter(ym=>fyOfYm(ym)===curFy);
+  const sumFor=list=>list.reduce((o,ym)=>{const a=byYm[ym]||{orders:0,units:0,sales:0};o.orders+=a.orders;o.units+=a.units;o.sales+=a.sales;return o;},{orders:0,units:0,sales:0});
+  const cur=sumFor(curMonths),prior=sumFor(curMonths.map(prevYm));
+  const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
+  const chg=(a,b)=>{const p=pct(a,b);if(p==null)return '<span style="color:var(--faint)">—</span>';const up=p>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</span>`;};
+  const avg=(s,o)=>o>0?s/o:0;
+  let sales12=[];try{const{data}=await sb.from('item_sales_12m').select('item_id,qty,revenue').in('location_id',ids);sales12=data||[];}catch(e){console.error('perf sales12',e);}
+  const uById={},vById={},byCat={};sales12.forEach(r=>{const u=+r.qty||0,rv=+r.revenue||0;if(u<=0&&rv<=0)return;uById[r.item_id]=(uById[r.item_id]||0)+u;vById[r.item_id]=(vById[r.item_id]||0)+rv;const c=item(r.item_id).category||'Uncategorised';byCat[c]=(byCat[c]||0)+rv;});
+  const topItems=Object.entries(vById).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const topCats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  window._perfData={yms,byYm,byFy,fys};
+  const scope=(!perfCentre||perfCentre==='all')?(scoped()?'All my centres':'All centres'):loc(perfCentre).name;
+  const bar=(label,val,max)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${money0(val)}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:linear-gradient(90deg,var(--accent),var(--accent-ink));border-radius:6px"></div></div></div>`;
+  el.innerHTML=`
+    <div class="tiles" style="margin-bottom:14px">
+      <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Net sales · FY${curFy} to date</div><div class="val tnum">${money0(cur.sales)}</div><div class="meta">${chg(cur.sales,prior.sales)} vs same months FY${curFy-1}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.order,14)} Orders</div><div class="val tnum">${cur.orders.toLocaleString()}</div><div class="meta">${chg(cur.orders,prior.orders)} like-for-like</div></div>
+      <div class="tile"><div class="lbl">${svg(I.receipt,14)} Avg basket</div><div class="val tnum">${money(avg(cur.sales,cur.orders))}</div><div class="meta">was ${money(avg(prior.sales,prior.orders))} last yr</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Items sold</div><div class="val tnum">${Math.round(cur.units).toLocaleString()}</div><div class="meta">${chg(cur.units,prior.units)} like-for-like</div></div>
+    </div>
+    <div class="section-head"><h2>Net sales by month</h2><span class="tag">${esc(scope)}</span></div>
+    <div class="card pad"><div style="height:260px"><canvas id="pf-sales"></canvas></div></div>
+    <div class="grid2" style="align-items:start;margin-top:14px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Orders by month</h3><div style="height:220px"><canvas id="pf-orders"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Items sold by month</h3><div style="height:220px"><canvas id="pf-items"></canvas></div></div>
+    </div>
+    <div class="grid2" style="align-items:start;margin-top:14px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Net sales by financial year</h3><div style="height:220px"><canvas id="pf-fy"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Basket — value ($) &amp; items per order</h3><div style="height:220px"><canvas id="pf-basket"></canvas></div></div>
+    </div>
+    <div class="section-head" style="margin-top:16px"><h2>By financial year</h2><small>Australian FY, July–June</small></div>
+    <div class="tablewrap"><table><thead><tr><th>Financial year</th><th class="num">Net sales</th><th class="num">Orders</th><th class="num">Avg basket</th><th class="num">Units</th><th class="num">Items/order</th></tr></thead><tbody>${fys.slice().reverse().map(f=>{const a=byFy[f];return `<tr><td><b>FY${f}</b>${f===curFy?' <span class="tag">to date</span>':''}</td><td class="num tnum">${money0(a.sales)}</td><td class="num tnum">${a.orders.toLocaleString()}</td><td class="num tnum">${money(avg(a.sales,a.orders))}</td><td class="num tnum">${Math.round(a.units).toLocaleString()}</td><td class="num tnum">${avg(a.units,a.orders).toFixed(1)}</td></tr>`;}).join('')}</tbody></table></div>
+    <div class="grid2" style="align-items:start;margin-top:16px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Top items · last 12 months (by sales $)</h3>${topItems.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Units</th><th class="num">Sales</th></tr></thead><tbody>${topItems.map(([id,rv])=>`<tr><td>${esc(item(id).name)}</td><td class="num tnum">${Math.round(uById[id]||0).toLocaleString()}</td><td class="num tnum">${money0(rv)}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No item sales yet — run Refresh sales / Update sales data.</div>'}</div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Top categories · last 12 months (by sales $)</h3>${topCats.length?topCats.map(([c,rv])=>bar(c,rv,topCats[0][1])).join(''):'<div style="color:var(--faint);font-size:13px">No data.</div>'}</div>
+    </div>`;
+  const t=chartTheme();
+  mkChart('pf-sales',{type:'bar',data:{labels:yms.map(mLabel),datasets:[{label:'Net sales $',data:yms.map(y=>Math.round(byYm[y].sales)),backgroundColor:t.accent,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pf-orders',{type:'line',data:{labels:yms.map(mLabel),datasets:[{label:'Orders',data:yms.map(y=>byYm[y].orders),borderColor:t.transit,backgroundColor:'rgba(37,99,235,.10)',fill:true,tension:.3,pointRadius:2}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pf-items',{type:'bar',data:{labels:yms.map(mLabel),datasets:[{label:'Units sold',data:yms.map(y=>Math.round(byYm[y].units)),backgroundColor:t.transit,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pf-fy',{type:'bar',data:{labels:fys.map(f=>'FY'+f),datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].sales)),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pf-basket',{type:'line',data:{labels:yms.map(mLabel),datasets:[{label:'Avg basket $',data:yms.map(y=>Math.round(avg(byYm[y].sales,byYm[y].orders)*100)/100),borderColor:t.accent,tension:.3,pointRadius:2,yAxisID:'y'},{label:'Items / order',data:yms.map(y=>Math.round(avg(byYm[y].units,byYm[y].orders)*100)/100),borderColor:t.warn,tension:.3,pointRadius:2,yAxisID:'y1'}]},options:{scales:{x:axes().x,y:{position:'left',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid}},y1:{position:'right',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{display:false}}}}});
+}
+function perfExport(fmt){const d=window._perfData;if(!d||!d.yms||!d.yms.length)return toast('Nothing to export yet',true);
+  const header=['Month','Orders','Units','Net sales (AUD)','Avg basket (AUD)','Items per order'];
+  const data=d.yms.map(y=>{const a=d.byYm[y];const ab=a.orders>0?a.sales/a.orders:0;const sz=a.orders>0?a.units/a.orders:0;return [y,a.orders,Math.round(a.units*100)/100,a.sales.toFixed(2),ab.toFixed(2),sz.toFixed(2)];});
+  const cn=(!perfCentre||perfCentre==='all')?'all':loc(perfCentre).code;const stamp=today();
+  if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sales');XLSX.writeFile(wb,`sales-performance_${cn}_${stamp}.xlsx`);toast('Excel exported');}
+  else downloadCSV(`sales-performance_${cn}_${stamp}.csv`,header,data);}
+async function runPerfSync(){
+  const base=scoped()?S.locations.filter(l=>mine(l.id)):S.locations;
+  const locs=base.filter(l=>l.square_location_id).map(l=>l.id);
+  if(!locs.length)return toast('No Square-linked centre to refresh — link locations in Square Sync first',true);
+  const size=2;let done=0,rowsN=0;toast('Pulling 24 months of sales from Square…');
+  for(let i=0;i<locs.length;i+=size){const chunk=locs.slice(i,i+size);
+    const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:chunk,months:24}});
+    if(error){toast('Sales refresh failed: '+await fnErr(error),true);return;}
+    if(data&&data.error){toast(data.error,true);return;}
+    rowsN+=(data&&data.rows)||0;done+=chunk.length;toast('Refreshing sales… '+done+'/'+locs.length+' centres');}
+  await loadOps();renderView();toast('Sales & performance updated ('+rowsN+' month-rows)');
 }
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
