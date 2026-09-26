@@ -2733,13 +2733,27 @@ async function runPerfSync(){
   const base=scoped()?S.locations.filter(l=>mine(l.id)):S.locations;
   const locs=base.filter(l=>l.square_location_id).map(l=>l.id);
   if(!locs.length)return toast('No Square-linked centre to refresh — link locations in Square Sync first',true);
-  const size=2;let done=0,rowsN=0;toast('Pulling 24 months of sales from Square…');
-  for(let i=0;i<locs.length;i+=size){const chunk=locs.slice(i,i+size);
-    const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:chunk,months:24}});
-    if(error){toast('Sales refresh failed: '+await fnErr(error),true);return;}
-    if(data&&data.error){toast(data.error,true);return;}
-    rowsN+=(data&&data.rows)||0;done+=chunk.length;toast('Refreshing sales… '+done+'/'+locs.length+' centres');}
-  await loadOps();renderView();toast('Sales & performance updated ('+rowsN+' month-rows)');
+  // Build month-aligned windows (6 months each, 24 months total) so each Square pull is small
+  // — one centre + one window per call keeps every invocation under the Edge Function limit.
+  const now=new Date(),cy=now.getUTCFullYear(),cm=now.getUTCMonth();
+  const total=24,step=6,windows=[];
+  for(let startK=total-1;startK>=0;startK-=step){const endK=Math.max(0,startK-step+1);
+    windows.push({start_at:new Date(Date.UTC(cy,cm-startK,1)).toISOString(),end_at:new Date(Date.UTC(cy,cm-endK+1,1)).toISOString()});}
+  const totalCalls=locs.length*windows.length;let done=0,rowsN=0,failed=0;
+  toast('Pulling sales from Square… this runs in small batches');
+  for(const loc of locs){
+    for(const w of windows){
+      try{
+        const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[loc],start_at:w.start_at,end_at:w.end_at}});
+        if(error){failed++;console.error('square-perf',loc,w,await fnErr(error));}
+        else if(data&&data.error){failed++;console.error('square-perf',data.error);}
+        else rowsN+=(data&&data.rows)||0;
+      }catch(e){failed++;console.error('square-perf',e);}
+      done++;toast('Refreshing sales… '+done+'/'+totalCalls+(failed?(' · '+failed+' failed'):''));
+    }
+  }
+  await loadOps();renderView();
+  toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):('Sales & performance updated ('+rowsN+' month-rows)'),!!failed);
 }
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
