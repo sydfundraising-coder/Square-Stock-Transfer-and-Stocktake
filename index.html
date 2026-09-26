@@ -372,7 +372,7 @@ const canRecvOrder=o=>can('order.receive')&&(!scoped()||mine(o.location_id)); //
 function restrictLocSelect(id){ if(!scoped())return; const s=document.getElementById(id); if(!s)return; [...s.options].forEach(o=>{if(o.value&&!mine(o.value))o.remove();}); if(HOME&&mine(HOME))s.value=HOME; if([...s.options].filter(o=>o.value).length<=1)s.disabled=true; }
 
 /* state */
-let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[],recvDrafts:[],salesMonthly:[]};
+let S={locations:[],items:[],stock:{},transfers:[],receipts:[],suppliers:[],orders:[],stocktakes:[],profiles:[],audit:[],adjReq:[],invoices:[],consignments:[],storeAreas:[],recvDrafts:[],salesMonthly:[],salesPayment:[]};
 function recvDraftFor(kind,refId){return (S.recvDrafts||[]).find(d=>d.kind===kind&&d.ref_id===refId)||null;}
 async function reloadRecvDrafts(){try{const{data}=await sb.from('receive_drafts').select('*');S.recvDrafts=data||[];}catch(e){console.error('reloadRecvDrafts',e);}}
 /* For DISPLAY, centres are shown by full name everywhere — .code returns the name too
@@ -582,7 +582,7 @@ async function loadAll(){
   const pageAll=async(table,sel,orderCol,filter)=>{let rows=[],from=0;const size=1000;for(;;){let qy=sb.from(table).select(sel).range(from,from+size-1);if(orderCol)qy=qy.order(orderCol);if(filter)qy=filter(qy);const{data,error}=await qy;if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<size)break;from+=size;}return rows;};
   try{
     // Core tables load first (fast). Stock + velocity (huge) load in the background right after.
-    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth]=await Promise.all([
+    const[locations,items,transfers,receipts,suppliers,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth,spay]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       pageAll('items','*','name'),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
@@ -599,10 +599,11 @@ async function loadAll(){
       q(sb.from('store_areas').select('*')).catch(()=>[]),
       q(sb.from('receive_drafts').select('*')).catch(()=>[]),
       q(sb.from('sales_monthly').select('*')).catch(()=>[]),
+      q(sb.from('sales_payment').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
-    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[];
+    S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
     loadBins();
@@ -619,7 +620,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
 async function loadOps(){
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
-    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth]=await Promise.all([
+    const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth,spay]=await Promise.all([
       q(sb.from('locations').select('*').order('code')),
       q(sb.from('transfers').select('*, lines:transfer_lines(*)').order('created_at',{ascending:false})),
       q(sb.from('receipts').select('*, lines:receipt_lines(*)').order('received_on',{ascending:false})),
@@ -634,9 +635,10 @@ async function loadOps(){
       q(sb.from('store_areas').select('*')).catch(()=>[]),
       q(sb.from('receive_drafts').select('*')).catch(()=>[]),
       q(sb.from('sales_monthly').select('*')).catch(()=>[]),
+      q(sb.from('sales_payment').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[];
+    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -2655,6 +2657,7 @@ const fyOfYm=ym=>{const p=ym.split('-');const y=+p[0],m=+p[1];return m>=7?y+1:y;
 const prevYm=ym=>{const p=ym.split('-');return ((+p[0])-1)+'-'+p[1];};
 const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE);
 function vPerf(v){
+  if(ROLE==='super_admin')return vPerfNational(v);
   const cs=perfCentres();
   if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
   if(cs.length===1)perfCentre=cs[0].id; else if(perfCentre!=='all'&&!cs.find(c=>c.id===perfCentre))perfCentre='all';
@@ -2733,12 +2736,13 @@ async function runPerfSync(){
   const base=scoped()?S.locations.filter(l=>mine(l.id)):S.locations;
   const locs=base.filter(l=>l.square_location_id).map(l=>l.id);
   if(!locs.length)return toast('No Square-linked centre to refresh — link locations in Square Sync first',true);
-  // Build month-aligned windows (6 months each, 24 months total) so each Square pull is small
-  // — one centre + one window per call keeps every invocation under the Edge Function limit.
+  // Build month-aligned windows (6 months each) from 1 Jul 2024 to now, so each Square
+  // pull is small — one centre + one window per call keeps every invocation under the limit.
   const now=new Date(),cy=now.getUTCFullYear(),cm=now.getUTCMonth();
-  const total=24,step=6,windows=[];
-  for(let startK=total-1;startK>=0;startK-=step){const endK=Math.max(0,startK-step+1);
-    windows.push({start_at:new Date(Date.UTC(cy,cm-startK,1)).toISOString(),end_at:new Date(Date.UTC(cy,cm-endK+1,1)).toISOString()});}
+  const monthStarts=[];let wy=2024,wm=6;/*Jul 2024*/
+  while(wy<cy||(wy===cy&&wm<=cm)){monthStarts.push(new Date(Date.UTC(wy,wm,1)));wm++;if(wm>11){wm=0;wy++;}}
+  const step=6,windows=[];
+  for(let i=0;i<monthStarts.length;i+=step){const endIdx=Math.min(i+step,monthStarts.length);const endDate=endIdx<monthStarts.length?monthStarts[endIdx]:new Date(Date.UTC(cy,cm+1,1));windows.push({start_at:monthStarts[i].toISOString(),end_at:endDate.toISOString()});}
   const totalCalls=locs.length*windows.length;let done=0,rowsN=0,failed=0;
   toast('Pulling sales from Square… this runs in small batches');
   for(const loc of locs){
@@ -2754,6 +2758,115 @@ async function runPerfSync(){
   }
   await loadOps();renderView();
   toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):('Sales & performance updated ('+rowsN+' month-rows)'),!!failed);
+}
+/* ================= Super Admin: National Sales & Performance (mirrors the FY report) ================= */
+const PAY_LABEL={CARD:'Card',CASH:'Cash',SQUARE_GIFT_CARD:'Gift card',WALLET:'Wallet',BANK_ACCOUNT:'Bank',BUY_NOW_PAY_LATER:'BNPL',THIRD_PARTY_CARD:'3rd-party card',EXTERNAL:'External',OTHER:'Other',NO_SALE:'No sale'};
+function vPerfNational(v){
+  const cs=S.locations.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const opts=`<option value="all">All centres (national)</option>`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>National sales report from <b>Square</b>, Australian financial years (Jul–Jun) from <b>FY2025</b> (1 Jul 2024). Net sales, transactions, items, payment methods, customers and baskets. Keep current with <b>Refresh sales</b>.</div></div>
+      <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button><button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button></div>
+    </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
+  const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerfNational();};}
+  document.getElementById('pf-csv').onclick=()=>perfExport('csv');
+  document.getElementById('pf-xls').onclick=()=>perfExport('xlsx');
+  document.getElementById('pf-refresh').onclick=runPerfSync;
+  renderPerfNational();
+}
+async function renderPerfNational(){
+  const el=document.getElementById('pf-body');if(!el)return;destroyCharts();
+  const ids=(!perfCentre||perfCentre==='all')?S.locations.map(l=>l.id):[perfCentre];
+  const sm=(S.salesMonthly||[]).filter(r=>ids.includes(r.location_id));
+  if(!sm.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No sales data yet. Click <b>Refresh sales</b> to pull from Square (from 1 Jul 2024).</div></div>`;return;}
+  const byYm={},byFy={},byLocFy={},locSet={};
+  sm.forEach(r=>{const fy=fyOfYm(r.ym),o=+r.orders||0,u=+r.units||0,s=+r.sales||0;
+    const a=byYm[r.ym]=byYm[r.ym]||{o:0,u:0,s:0};a.o+=o;a.u+=u;a.s+=s;
+    const f=byFy[fy]=byFy[fy]||{o:0,u:0,s:0};f.o+=o;f.u+=u;f.s+=s;
+    const lk=r.location_id+'|'+fy;const lf=byLocFy[lk]=byLocFy[lk]||{s:0,o:0,u:0};lf.s+=s;lf.o+=o;lf.u+=u;
+    (locSet[fy]=locSet[fy]||new Set()).add(r.location_id);});
+  const yms=Object.keys(byYm).sort();const fys=Object.keys(byFy).map(Number).sort((a,b)=>a-b);const curFy=fys[fys.length-1];
+  const FYL=f=>'FY'+f+(f===curFy?' YTD':'');
+  // payments by FY
+  const sp=(S.salesPayment||[]).filter(r=>ids.includes(r.location_id));const payByFy={},methods=new Set();
+  sp.forEach(r=>{const fy=fyOfYm(r.ym);(payByFy[fy]=payByFy[fy]||{})[r.method]=(payByFy[fy]&&payByFy[fy][r.method])||{txns:0,amount:0};const x=payByFy[fy][r.method];x.txns+=+r.txns||0;x.amount+=+r.amount||0;methods.add(r.method);});
+  // customers by FY (RPC)
+  let custByFy={};try{const{data}=await sb.rpc('perf_customers',{p_locs:ids});(data||[]).forEach(r=>{custByFy[r.fy]={uniq:+r.uniq||0,neu:+r.new_cust||0};});}catch(e){console.error('perf_customers',e);}
+  // like-for-like current FY vs prior
+  const curMonths=yms.filter(y=>fyOfYm(y)===curFy);
+  const lfl=list=>list.reduce((o,y)=>{const a=byYm[y]||{o:0,u:0,s:0};o.s+=a.s;o.o+=a.o;o.u+=a.u;return o;},{s:0,o:0,u:0});
+  const cur=lfl(curMonths),prior=lfl(curMonths.map(prevYm));
+  const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
+  const chg=(a,b)=>{const p=pct(a,b);if(p==null)return '<span style="color:var(--faint)">—</span>';const up=p>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</span>`;};
+  const avg=(a,b)=>b>0?a/b:0;
+  const lifeSales=fys.reduce((s,f)=>s+byFy[f].s,0),lifeOrders=fys.reduce((s,f)=>s+byFy[f].o,0);
+  // CAGR (first→last full comparison)
+  const firstFy=fys[0];const yrs=curFy-firstFy;const cagr=(yrs>0&&byFy[firstFy].s>0)?(Math.pow(byFy[curFy].s/byFy[firstFy].s,1/yrs)-1)*100:null;
+  const t=chartTheme(),pal=palette();
+  const sh=(n,title,sub)=>`<div class="section-head" style="margin-top:20px"><h2><span style="display:inline-flex;width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-size:12px;margin-right:8px">${n}</span>${title}</h2>${sub?`<small>${sub}</small>`:''}</div>`;
+  {const nb={};yms.forEach(y=>{nb[y]={orders:byYm[y].o,units:byYm[y].u,sales:byYm[y].s};});window._perfData={yms,byYm:nb,byFy,fys};}
+  // ---- location ranking (top 5 by share) per FY, and outlets table ----
+  const rankPanel=f=>{const rows=ids.map(id=>({id,s:(byLocFy[id+'|'+f]||{s:0}).s})).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);const tot=byFy[f]?byFy[f].s:0;const top=rows.slice(0,5);
+    return `<div class="card pad"><h3 style="font-size:14px;margin-bottom:2px">${FYL(f)}</h3><div style="font-size:12px;color:var(--muted);margin-bottom:10px">${rows.length} trading centre(s) · ${money0(tot)}</div>${top.map(r=>{const p=tot>0?Math.round(r.s/tot*100):0;return `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(loc(r.id).name)}</span><span class="tnum" style="flex:none;color:var(--muted)">${money0(r.s)} · ${p}%</span></div><div style="height:7px;border-radius:5px;background:var(--surface-2);margin-top:3px"><div style="height:100%;width:${p}%;background:var(--accent);border-radius:5px"></div></div></div>`;}).join('')||'<div style="color:var(--faint);font-size:13px">No sales.</div>'}</div>`;};
+  const outletRows=ids.map(id=>({id,byf:fys.map(f=>(byLocFy[id+'|'+f]||{s:0}).s)})).filter(r=>r.byf.some(x=>x>0)).sort((a,b)=>b.byf[b.byf.length-1]-a.byf[a.byf.length-1]);
+  // ---- payment table ----
+  const methodList=[...methods].sort((a,b)=>{const A=fys.reduce((s,f)=>s+((payByFy[f]&&payByFy[f][a])?payByFy[f][a].amount:0),0);const B=fys.reduce((s,f)=>s+((payByFy[f]&&payByFy[f][b])?payByFy[f][b].amount:0),0);return B-A;});
+  const payLatest=payByFy[curFy]||{};
+  el.innerHTML=`
+    ${sh(1,'Overall sales trend','Net sales')}
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Net sales · ${FYL(curFy)}</div><div class="val tnum">${money0(byFy[curFy].s)}</div><div class="meta">${chg(cur.s,prior.s)} like-for-like vs FY${curFy-1}</div></div>
+      <div class="tile"><div class="lbl">Lifetime net sales</div><div class="val tnum">${money0(lifeSales)}</div><div class="meta">since Jul 2024</div></div>
+      <div class="tile"><div class="lbl">Total orders</div><div class="val tnum">${lifeOrders.toLocaleString()}</div><div class="meta">all centres in scope</div></div>
+      <div class="tile"><div class="lbl">Avg order value</div><div class="val tnum">${money(avg(lifeSales,lifeOrders))}</div><div class="meta">lifetime</div></div>
+    </div>
+    <div class="grid2" style="align-items:start"><div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Net sales by financial year</h3><div style="height:220px"><canvas id="pfn-fy"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Net sales by month</h3><div style="height:220px"><canvas id="pfn-month"></canvas></div></div></div>
+    <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Financial year</th><th class="num">Net sales</th><th class="num">YoY</th><th class="num">Orders</th><th class="num">YoY</th><th class="num">Avg order</th></tr></thead><tbody>${fys.slice().reverse().map(f=>{const i=fys.indexOf(f);const pv=i>0?byFy[fys[i-1]]:null;return `<tr><td><b>${FYL(f)}</b></td><td class="num tnum">${money0(byFy[f].s)}</td><td class="num tnum">${pv?chg(byFy[f].s,pv.s):'—'}</td><td class="num tnum">${byFy[f].o.toLocaleString()}</td><td class="num tnum">${pv?chg(byFy[f].o,pv.o):'—'}</td><td class="num tnum">${money(avg(byFy[f].s,byFy[f].o))}</td></tr>`;}).join('')}</tbody></table></div>
+
+    ${sh(2,'Top centres by share of sales',"% of each year's net sales")}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">${fys.slice().reverse().map(rankPanel).join('')}</div>
+    <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Centre</th>${fys.map(f=>`<th class="num">${FYL(f)}</th><th class="num">Share</th>`).join('')}</tr></thead><tbody>${outletRows.map(r=>`<tr><td>${esc(loc(r.id).name)}</td>${r.byf.map((s,ix)=>{const tot=byFy[fys[ix]].s;return `<td class="num tnum">${money0(s)}</td><td class="num tnum" style="color:var(--muted)">${tot>0?Math.round(s/tot*100)+'%':'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>
+
+    ${sh(3,'Centres trading','Centres with sales in each year')}
+    <div class="card pad"><div style="height:200px"><canvas id="pfn-outlets"></canvas></div></div>
+
+    ${sh(4,'Transactions','Orders and how they were paid')}
+    <div class="grid2" style="align-items:start"><div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Orders by financial year</h3><div style="height:200px"><canvas id="pfn-orders"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Payment method share · ${FYL(curFy)}</h3><div style="height:200px"><canvas id="pfn-pay"></canvas></div></div></div>
+    <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Payment method</th>${fys.map(f=>`<th class="num">${FYL(f)} txns</th><th class="num">Amount</th>`).join('')}</tr></thead><tbody>${methodList.length?methodList.map(m=>`<tr><td>${esc(PAY_LABEL[m]||m)}</td>${fys.map(f=>{const x=(payByFy[f]&&payByFy[f][m])||{txns:0,amount:0};return `<td class="num tnum">${x.txns.toLocaleString()}</td><td class="num tnum">${money0(x.amount)}</td>`;}).join('')}</tr>`).join(''):`<tr><td colspan="${1+fys.length*2}" style="color:var(--faint)">No payment data — run Refresh sales.</td></tr>`}</tbody></table><p class="fine" style="font-size:11.5px;color:var(--faint);margin-top:6px">Amounts collected include GST and tips, so they exceed net sales.</p></div>
+
+    ${sh(5,'Total items sold','Units')}
+    <div class="card pad"><div style="height:200px"><canvas id="pfn-items"></canvas></div></div>
+
+    ${sh(6,'Customers','Unique customers Square identified')}
+    <div class="grid2" style="align-items:start"><div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">New vs returning</h3><div style="height:200px"><canvas id="pfn-cust"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Customer detail</h3>${fys.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Measure</th>${fys.map(f=>`<th class="num">${FYL(f)}</th>`).join('')}</tr></thead><tbody><tr><td>Unique</td>${fys.map(f=>`<td class="num tnum">${((custByFy[f]||{}).uniq||0).toLocaleString()}</td>`).join('')}</tr><tr><td>New</td>${fys.map(f=>`<td class="num tnum">${((custByFy[f]||{}).neu||0).toLocaleString()}</td>`).join('')}</tr><tr><td>Returning</td>${fys.map(f=>{const c=custByFy[f]||{uniq:0,neu:0};return `<td class="num tnum">${Math.max(0,(c.uniq||0)-(c.neu||0)).toLocaleString()}</td>`;}).join('')}</tr></tbody></table></div>`:''}<p class="fine" style="font-size:11.5px;color:var(--faint);margin-top:6px">Customers are those Square could identify at checkout (mostly by card). "New" = first financial year seen in this data.</p></div></div>
+
+    ${sh(7,'Basket size','Per transaction')}
+    <div class="grid2" style="align-items:start"><div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Average basket value ($/order)</h3><div style="height:190px"><canvas id="pfn-bval"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Average basket size (items/order)</h3><div style="height:190px"><canvas id="pfn-bqty"></canvas></div></div></div>
+
+    ${sh(8,'Compound annual growth','Net sales by financial year')}
+    <div class="card pad"><div class="banner info" style="margin:0 0 10px">${svg(I.chart,16)}<div>${cagr==null?'Not enough full years yet to compute CAGR.':`Net sales moved from <b>${money0(byFy[firstFy].s)}</b> (${FYL(firstFy)}) to <b>${money0(byFy[curFy].s)}</b> (${FYL(curFy)}) — a compound annual growth of <b style="color:${cagr>=0?'var(--good)':'var(--crit)'}">${cagr>=0?'+':''}${cagr.toFixed(1)}%</b> over ${yrs} year(s). ${curFy===fys[fys.length-1]?'The latest year is year-to-date, so its rate is partial.':''}`}</div></div><div style="height:200px"><canvas id="pfn-cagr"></canvas></div></div>
+
+    ${sh('∑','Summary','Year-on-year change')}
+    <div class="tablewrap"><table><thead><tr><th>Measure</th>${fys.slice(1).map((f,ix)=>`<th class="num">${FYL(fys[ix])} → ${FYL(f)}</th>`).join('')}</tr></thead><tbody>
+      ${[['Net sales',f=>byFy[f].s],['Orders',f=>byFy[f].o],['Items sold',f=>byFy[f].u],['Avg order',f=>avg(byFy[f].s,byFy[f].o)],['Unique customers',f=>(custByFy[f]||{}).uniq||0]].map(([lbl,fn])=>`<tr><td>${lbl}</td>${fys.slice(1).map((f,ix)=>chgCell(fn(f),fn(fys[ix]))).join('')}</tr>`).join('')}
+    </tbody></table></div>`;
+  function chgCell(a,b){const p=b>0?Math.round((a-b)/b*1000)/10:null;if(p==null)return '<td class="num tnum" style="color:var(--faint)">—</td>';const up=p>=0;return `<td class="num tnum" style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</td>`;}
+  const fyLabels=fys.map(FYL);
+  mkChart('pfn-fy',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:t.accent,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-month',{type:'bar',data:{labels:yms.map(mLabel),datasets:[{label:'Net sales $',data:yms.map(y=>Math.round(byYm[y].s)),backgroundColor:t.transit,borderRadius:3}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-outlets',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Centres trading',data:fys.map(f=>(locSet[f]?locSet[f].size:0)),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-orders',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Orders',data:fys.map(f=>byFy[f].o),backgroundColor:t.accent,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-pay',{type:'doughnut',data:{labels:methodList.map(m=>PAY_LABEL[m]||m),datasets:[{data:methodList.map(m=>(payLatest[m]?Math.round(payLatest[m].amount):0)),backgroundColor:methodList.map((_,i)=>pal[i%pal.length])}]},options:{plugins:{legend:{position:'right'}}}});
+  mkChart('pfn-items',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Units',data:fys.map(f=>Math.round(byFy[f].u)),backgroundColor:t.transit,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-cust',{type:'bar',data:{labels:fyLabels,datasets:[{label:'New',data:fys.map(f=>(custByFy[f]||{}).neu||0),backgroundColor:t.accent,borderRadius:3},{label:'Returning',data:fys.map(f=>{const c=custByFy[f]||{uniq:0,neu:0};return Math.max(0,(c.uniq||0)-(c.neu||0));}),backgroundColor:t.transit,borderRadius:3}]},options:{scales:{x:Object.assign(axes().x,{stacked:true}),y:Object.assign(axes().y,{stacked:true})}}});
+  mkChart('pfn-bval',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Avg $/order',data:fys.map(f=>Math.round(avg(byFy[f].s,byFy[f].o)*100)/100),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  mkChart('pfn-bqty',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Items/order',data:fys.map(f=>Math.round(avg(byFy[f].u,byFy[f].o)*100)/100),backgroundColor:t.warn,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
+  const cagrLine=(cagr!=null)?fys.map((f,i)=>Math.round(byFy[firstFy].s*Math.pow(1+cagr/100,i))):[];
+  mkChart('pfn-cagr',{type:'bar',data:{labels:fyLabels,datasets:[{type:'bar',label:'Actual net sales',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:t.accent,borderRadius:4},...(cagrLine.length?[{type:'line',label:'Steady CAGR path',data:cagrLine,borderColor:t.warn,borderDash:[6,4],pointRadius:2,tension:0}]:[])]},options:{scales:axes()}});
 }
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
