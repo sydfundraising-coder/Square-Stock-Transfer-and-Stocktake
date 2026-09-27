@@ -296,6 +296,37 @@
   #pkList .recv-row{grid-template-columns:1fr 76px 112px!important;column-gap:12px}
   .form .recv-row.done{border-left-color:var(--good)}
   .form .recv-row input[data-pk]{height:38px;font-weight:700}
+  /* ---- shelf labels ---- */
+  .lbl-layout{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:16px;align-items:start}
+  .lbl-right{display:grid;gap:16px;min-width:0;grid-template-columns:minmax(0,1fr)}.lbl-layout>*,.lbl-right>*{min-width:0}
+  .lbl-h{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}.lbl-h h3{font-size:15px;font-weight:700}
+  .lbl-items{max-height:560px;overflow:auto;border:1px solid var(--border);border-radius:11px}
+  .lbl-it{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border)}.lbl-it:last-child{border-bottom:0}
+  .lbl-it:hover{background:var(--surface-2)}
+  .lbl-it-t{flex:1;min-width:0}.lbl-it-t .nm{font-weight:600;font-size:13.5px;line-height:1.25}.lbl-it-t .sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .lbl-qh,.lbl-qr{display:grid;grid-template-columns:minmax(170px,1fr) 96px 96px 76px 34px;gap:8px;align-items:center;min-width:520px}
+  .lbl-qh{font-size:12px;font-weight:600;color:var(--muted);padding:0 9px 7px}
+  .lbl-qr{background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:8px;margin-bottom:8px}
+  .lbl-qr:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .lbl-qr input{height:38px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);width:100%;min-width:0;font-weight:600}
+  .lbl-qr input[type=number]{text-align:center;font-variant-numeric:tabular-nums}
+  .lbl-qr .rm{width:34px;height:34px;padding:0;border:1px solid transparent;border-radius:8px;background:none;color:var(--faint);display:grid;place-items:center}
+  .lbl-qr .rm:hover{background:var(--crit-soft);color:var(--crit)}
+  .lbl-emptyq{text-align:center;color:var(--faint);padding:26px 10px;border:1.5px dashed var(--border-strong);border-radius:11px}.lbl-emptyq svg{opacity:.5;margin-bottom:6px}
+  .lbl-opts{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-top:12px}
+  .lbl-opt{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink)}
+  .lbl-opt input{padding:7px 9px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+  .lbl-chk{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+  .lbl-prevbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;font-weight:600}
+  .lbl-stage{background:var(--surface-2);border:1px solid var(--border);border-radius:11px;overflow:hidden;position:relative}
+  .lbl-paper{transform-origin:0 0;width:210mm;box-shadow:0 2px 10px rgba(15,26,42,.12)}
+  .lbl-paper .lb{outline:1px dashed #c9d2de;outline-offset:-1px}
+  .lbl-paper .lb-empty[data-lbstart],.lbl-paper .lb-skip{cursor:pointer}
+  .lbl-paper .lb-empty[data-lbstart]:hover{background:#e8f6f4}
+  .lbl-paper .lb-skip{background:repeating-linear-gradient(45deg,#eef1f5 0 6px,#e2e7ee 6px 12px)}
+  .lbl-adv{margin-top:12px;font-size:13px}.lbl-adv summary{cursor:pointer;font-weight:600;color:var(--accent-ink)}
+  .lbl-print{margin-top:14px;width:100%;justify-content:center;padding:12px 18px;font-size:14px}
+  @media (max-width:980px){.lbl-layout{grid-template-columns:1fr}.lbl-items{max-height:340px}}
   @media (max-width:700px){.form .panel-body{padding:14px}.sec{padding:14px}.pk-track{flex-basis:90px}}
 </style>
 </head>
@@ -766,6 +797,7 @@ const NAV=[
   {id:'expiry',label:'Near Expiry',icon:I.alert,group:'Operations',badge:()=>nearExpiryCount()},
   {id:'invoices',label:'Sales Invoices',icon:I.cost,group:'Operations',need:'*'},
   {id:'catalog',label:'Catalogue',icon:I.catalog,group:'Operations'},
+  {id:'labels',label:'Shelf Labels',icon:I.receipt,group:'Operations'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
   {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
@@ -1234,13 +1266,135 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Supplier Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales Invoices','Create and manage tax invoices'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+/* ---------- shelf labels (70 x 29.7 mm, 30 per A4) ---------- */
+const LBL={q:'',cat:'all',lines:[],src:'barcode',start:1,page:0,show:{price:true,weight:true,barcode:true},dx:0,dy:0};
+const LBL_COLS=3,LBL_ROWS=10,LBL_PER=30;
+function lblWStore(){try{return JSON.parse(localStorage.getItem('lbl.weights')||'{}');}catch(e){return {};}}
+function lblWSave(id,v){try{const m=lblWStore();if(v)m[id]=v;else delete m[id];localStorage.setItem('lbl.weights',JSON.stringify(m));}catch(e){}}
+function lblGuessWeight(name){const m=String(name||'').match(/(\d+(?:[.,]\d+)?)\s*(kg|kgs|g|gm|gms|gr|grams?|ml|l|lt|ltr|litres?)\b/i);if(!m)return '';let n=m[1].replace(',','.'),u=m[2].toLowerCase();if(/^(g|gm|gms|gr|gram|grams)$/.test(u))u='g';else if(/^kgs?$/.test(u))u='kg';else if(u==='ml')u='ml';else u='L';return n+u;}
+function lblDefaultWeight(it){const s=lblWStore()[it.id];return s!=null?s:lblGuessWeight(it.name);}
+function lblCode(it){const raw=(LBL.src==='sku'?it.sku:(it.barcode||it.sku))||'';return String(raw).replace(/[^\x20-\x7E]/g,'').trim();}
+/* Code 128 (sets B and C) as an SVG string */
+const C128=["11011001100","11001101100","11001100110","10010011000","10010001100","10001001100","10011001000","10011000100","10001100100","11001001000","11001000100","11000100100","10110011100","10011011100","10011001110","10111001100","10011101100","10011100110","11001110010","11001011100","11001001110","11011100100","11001110100","11101101110","11101001100","11100101100","11100100110","11101100100","11100110100","11100110010","11011011000","11011000110","11000110110","10100011000","10001011000","10001000110","10110001000","10001101000","10001100010","11010001000","11000101000","11000100010","10110111000","10110001110","10001101110","10111011000","10111000110","10001110110","11101110110","11010001110","11000101110","11011101000","11011100010","11011101110","11101011000","11101000110","11100010110","11101101000","11101100010","11100011010","11101111010","11001000010","11110001010","10100110000","10100001100","10010110000","10010000110","10000101100","10000100110","10110010000","10110000100","10011010000","10011000010","10000110100","10000110010","11000010010","11001010000","11110111010","11000010100","10001111010","10100111100","10010111100","10010011110","10111100100","10011110100","10011110010","11110100100","11110010100","11110010010","11011011110","11011110110","11110110110","10101111000","10100011110","10001011110","10111101000","10111100010","11110101000","11110100010","10111011110","10111101110","11101011110","11110101110","11010000100","11010010000","11010011100","1100011101011"];
+function code128Values(t){const v=[];const digits=/^\d+$/.test(t);
+  if(digits&&t.length>=4){v.push(105);const even=t.length-(t.length%2);for(let i=0;i<even;i+=2)v.push(+t.substr(i,2));if(t.length%2){v.push(100);v.push(t.charCodeAt(t.length-1)-32);}}
+  else{v.push(104);for(const ch of t){const c=ch.charCodeAt(0);if(c>=32&&c<=127)v.push(c-32);}}
+  let sum=v[0];for(let i=1;i<v.length;i++)sum+=v[i]*i;v.push(sum%103);v.push(106);return v;}
+function code128Svg(text){if(!text)return '';const vals=code128Values(text);let bits='';
+  vals.forEach(x=>{bits+=C128[x];});
+  const q=10,W=bits.length+q*2;let rects='';let i=0;
+  while(i<bits.length){if(bits[i]==='1'){let j=i;while(j<bits.length&&bits[j]==='1')j++;rects+=`<rect x="${i+q}" y="0" width="${j-i}" height="1"/>`;i=j;}else i++;}
+  return `<svg class="lb-svg" viewBox="0 0 ${W} 1" preserveAspectRatio="none" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="1" fill="#fff"/><g fill="#000">${rects}</g></svg>`;}
+const LBL_CSS=`.lblsheet{width:210mm;height:297mm;display:grid;grid-template-columns:repeat(3,70mm);grid-template-rows:repeat(10,29.7mm);background:#fff;overflow:hidden;box-sizing:border-box}
+.lblsheet .lb{box-sizing:border-box;width:70mm;height:29.7mm;padding:2.3mm 3.2mm 1.9mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;font-family:Inter,Arial,Helvetica,sans-serif;color:#000;background:#fff}
+.lblsheet .lb-name{font-weight:700;font-size:9.4pt;line-height:1.13;max-height:2.26em;overflow:hidden;word-break:break-word}
+.lblsheet .lb-row{display:flex;align-items:flex-end;gap:2.5mm;min-height:0}
+.lblsheet .lb-bc{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch}
+.lblsheet .lb-svg{display:block;width:100%;height:9.2mm}
+.lblsheet .lb-code{font-size:6.6pt;letter-spacing:.35px;text-align:center;margin-top:.5mm;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;overflow:hidden}
+.lblsheet .lb-pr{text-align:right;flex:0 0 auto;max-width:30mm}
+.lblsheet .lb-price{font-weight:800;font-size:17pt;line-height:1;letter-spacing:-.3px;white-space:nowrap}
+.lblsheet .lb-price sup{font-size:.55em;vertical-align:.75em;margin-right:.2mm}
+.lblsheet .lb-wt{font-size:8.4pt;font-weight:600;margin-top:.8mm;white-space:nowrap}
+.lblsheet .lb.nobc .lb-row{justify-content:space-between}`;
+function lblPriceHtml(p){const n=Number(p);if(!(n>0))return '';const s=n.toFixed(2);return `<sup>$</sup>${s}`;}
+function lblLabelHtml(ln){const it=item(ln.id);if(!it||!it.id)return '<div class="lb"></div>';const sh=LBL.show;const code=lblCode(it);
+  const bc=sh.barcode&&code?`<div class="lb-bc">${code128Svg(code)}<div class="lb-code">${esc(code)}</div></div>`:'<div class="lb-bc"></div>';
+  const pr=`<div class="lb-pr">${sh.price?`<div class="lb-price">${lblPriceHtml(ln.price)}</div>`:''}${sh.weight&&ln.weight?`<div class="lb-wt">${esc(ln.weight)}</div>`:''}</div>`;
+  return `<div class="lb${sh.barcode&&code?'':' nobc'}"><div class="lb-name">${esc(it.name)}</div><div class="lb-row">${bc}${pr}</div></div>`;}
+function lblCells(){const cells=[];for(let i=1;i<LBL.start;i++)cells.push(null);LBL.lines.forEach(ln=>{for(let k=0;k<Math.max(0,ln.copies|0);k++)cells.push(ln);});return cells;}
+function lblTotal(){return LBL.lines.reduce((a,l)=>a+Math.max(0,l.copies|0),0);}
+function lblSheets(){const c=lblCells();return Math.max(1,Math.ceil(c.length/LBL_PER));}
+function lblSheetHtml(cells,p,preview){let h='';for(let i=0;i<LBL_PER;i++){const idx=p*LBL_PER+i;const ln=cells[idx];
+  if(ln)h+=lblLabelHtml(ln);else if(preview&&p===0&&i<LBL.start-1)h+=`<div class="lb lb-skip" data-lbstart="${i+1}"></div>`;else h+=`<div class="lb lb-empty"${preview&&p===0?` data-lbstart="${i+1}"`:''}></div>`;}
+  return `<div class="lblsheet">${h}</div>`;}
+function lblAdd(id,copies){const it=item(id);if(!it||!it.id)return;const ex=LBL.lines.find(l=>l.id===id);if(ex){ex.copies=(ex.copies|0)+(copies||1);return;}LBL.lines.push({id,copies:copies||1,weight:lblDefaultWeight(it),price:it.price!=null?Number(it.price):''});}
+function vLabels(v){
+  const cats=['all',...new Set(S.items.map(i=>i.category).filter(Boolean))];
+  v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Print shelf labels with <b>barcode</b>, <b>item</b>, <b>weight</b> and <b>price</b>. Size <b>70 × 29.7 mm</b>, 30 per A4 sheet (3 across, 10 down). When printing choose <b>A4</b>, <b>Actual size / 100%</b> and <b>Margins: None</b>.</div></div>
+  <div class="lbl-layout">
+    <div class="card pad lbl-pick"><div class="lbl-h"><h3>1. Choose items</h3></div>
+      <div class="toolbar" style="margin-bottom:10px"><div class="search" style="max-width:none">${svg(I.search,16)}<input id="lbl-q" placeholder="Search name, SKU or barcode…" value="${esc(LBL.q)}"></div>
+        <select class="filter" id="lbl-cat">${cats.map(c=>`<option value="${esc(c)}"${c===LBL.cat?' selected':''}>${c==='all'?'All categories':esc(c)}</option>`).join('')}</select></div>
+      <div id="lbl-items" class="lbl-items"></div>
+      <button class="btn sm" id="lbl-addall" style="margin-top:10px">${svg(I.plus,14)} Add all shown</button></div>
+    <div class="lbl-right">
+      <div class="card pad"><div class="lbl-h"><h3>2. Check the labels</h3><span class="tray-count" id="lbl-count"></span><div class="spacer"></div><button class="btn sm" id="lbl-clear">${svg(I.x,14)} Clear all</button></div>
+        <div id="lbl-queue"></div>
+        <div class="lbl-opts">
+          <label class="lbl-opt">Barcode from <select id="lbl-src" class="filter"><option value="barcode">Barcode (SKU if blank)</option><option value="sku">Product code (SKU)</option></select></label>
+          <label class="lbl-chk"><input type="checkbox" data-lbshow="barcode"${LBL.show.barcode?' checked':''}> Barcode</label>
+          <label class="lbl-chk"><input type="checkbox" data-lbshow="weight"${LBL.show.weight?' checked':''}> Weight</label>
+          <label class="lbl-chk"><input type="checkbox" data-lbshow="price"${LBL.show.price?' checked':''}> Price</label>
+        </div></div>
+      <div class="card pad"><div class="lbl-h"><h3>3. Preview and print</h3><span class="sec-hint" id="lbl-sum"></span><div class="spacer"></div><button class="btn primary" id="lbl-print">${svg(I.receipt,16)} Print labels</button></div>
+        <div class="lbl-prevbar"><button class="btn sm" id="lbl-prev" aria-label="Previous sheet">‹</button><span id="lbl-pg"></span><button class="btn sm" id="lbl-next" aria-label="Next sheet">›</button><div class="spacer"></div>
+          <label class="lbl-opt">Start at label <input type="number" id="lbl-start" min="1" max="30" value="${LBL.start}" style="width:64px"></label></div>
+        <div class="hint" style="margin:0 0 8px">Using a part-used sheet? Tap the first empty label on sheet 1, or type its number. Labels are counted left to right, top to bottom.</div>
+        <div class="lbl-stage" id="lbl-stage"></div>
+        <details class="lbl-adv"><summary>Printer alignment</summary><div class="lbl-opts" style="margin-top:8px">
+          <label class="lbl-opt">Move right (mm) <input type="number" id="lbl-dx" step="0.5" value="${LBL.dx}" style="width:70px"></label>
+          <label class="lbl-opt">Move down (mm) <input type="number" id="lbl-dy" step="0.5" value="${LBL.dy}" style="width:70px"></label></div>
+          <div class="hint">If print lands slightly off the labels, print one test sheet on plain paper, hold it over a label sheet, and nudge here. Use negative numbers to move left or up.</div></details>
+        <button class="btn primary lbl-print" id="lbl-print2">${svg(I.receipt,16)} Print labels</button></div>
+    </div></div>`;
+  document.getElementById('lbl-src').value=LBL.src;
+  document.getElementById('lbl-q').oninput=e=>{LBL.q=e.target.value;lblItems();};
+  document.getElementById('lbl-cat').onchange=e=>{LBL.cat=e.target.value;lblItems();};
+  document.getElementById('lbl-src').onchange=e=>{LBL.src=e.target.value;lblQueue();lblPreview();};
+  v.querySelectorAll('[data-lbshow]').forEach(c=>c.onchange=()=>{LBL.show[c.dataset.lbshow]=c.checked;lblPreview();});
+  document.getElementById('lbl-addall').onclick=()=>{const list=lblFiltered();if(!list.length)return;if(list.length>60&&!confirm('Add '+list.length+' items (one label each)?'))return;list.forEach(it=>lblAdd(it.id,1));lblQueue();lblPreview();};
+  document.getElementById('lbl-clear').onclick=()=>{if(!LBL.lines.length)return;if(!confirm('Remove all items from this label run?'))return;LBL.lines=[];LBL.page=0;lblQueue();lblPreview();};
+  document.getElementById('lbl-start').oninput=e=>{let n=parseInt(e.target.value,10);if(!(n>=1))n=1;if(n>30)n=30;LBL.start=n;LBL.page=0;lblPreview();};
+  document.getElementById('lbl-prev').onclick=()=>{if(LBL.page>0){LBL.page--;lblPreview();}};
+  document.getElementById('lbl-next').onclick=()=>{if(LBL.page<lblSheets()-1){LBL.page++;lblPreview();}};
+  document.getElementById('lbl-dx').oninput=e=>{LBL.dx=parseFloat(e.target.value)||0;};
+  document.getElementById('lbl-dy').oninput=e=>{LBL.dy=parseFloat(e.target.value)||0;};
+  document.getElementById('lbl-print').onclick=lblPrint;document.getElementById('lbl-print2').onclick=lblPrint;
+  document.getElementById('lbl-stage').onclick=e=>{const c=e.target.closest('[data-lbstart]');if(!c)return;LBL.start=+c.dataset.lbstart;document.getElementById('lbl-start').value=LBL.start;lblPreview();};
+  lblItems();lblQueue();lblPreview();
+  if(!v._lblResize){v._lblResize=true;window.addEventListener('resize',()=>{if(route==='labels')lblScale();});}
+}
+function lblFiltered(){const q=LBL.q.trim().toLowerCase();return S.items.filter(i=>i.active!==false&&(LBL.cat==='all'||i.category===LBL.cat)&&(!q||(i.name||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||String(i.barcode||'').includes(q))).sort((a,b)=>(a.name||'').localeCompare(b.name||''));}
+function lblItems(){const el=document.getElementById('lbl-items');if(!el)return;const list=lblFiltered();
+  el.innerHTML=list.length?list.slice(0,300).map(it=>{const inQ=LBL.lines.some(l=>l.id===it.id);return `<div class="lbl-it"><div class="lbl-it-t"><div class="nm">${esc(it.name)}</div><div class="mono sub">${esc(it.sku||'')}${it.price?` · ${money(it.price)}`:''}</div></div><button class="btn sm${inQ?'':' primary'}" data-lbadd="${it.id}">${inQ?`${svg(I.plus,13)} 1 more`:`${svg(I.plus,13)} Add`}</button></div>`;}).join('')+(list.length>300?`<div class="hint" style="padding:8px">Showing 300 of ${list.length}. Narrow the search to see more.</div>`:''):`<div class="empty" style="padding:26px">${svg(I.search,26)}<div>No items match.</div></div>`;
+  el.querySelectorAll('[data-lbadd]').forEach(b=>b.onclick=()=>{lblAdd(b.dataset.lbadd,1);lblItems();lblQueue();lblPreview();});}
+function lblQueue(){const el=document.getElementById('lbl-queue');if(!el)return;const n=lblTotal();
+  const cnt=document.getElementById('lbl-count');if(cnt)cnt.textContent=n?(n+(n===1?' label':' labels')):'None yet';
+  if(!LBL.lines.length){el.innerHTML=`<div class="lbl-emptyq">${svg(I.receipt,26)}<div>Add items from the list to build your labels.</div></div>`;return;}
+  el.innerHTML=`<div class="lines-scroll"><div class="lbl-qh"><span>Item</span><span>Weight</span><span>Price ($)</span><span>Labels</span><span></span></div>${LBL.lines.map((l,ix)=>{const it=item(l.id);const code=lblCode(it);return `<div class="lbl-qr"><div class="lbl-it-t"><div class="nm">${esc(it.name||'')}</div><div class="mono sub">${code?esc(code):'<span style="color:var(--crit)">No code</span>'}</div></div>
+    <input data-lbw="${ix}" value="${esc(l.weight||'')}" placeholder="e.g. 250g"><input data-lbp="${ix}" type="number" min="0" step="0.01" value="${l.price===''?'':Number(l.price).toFixed(2)}" placeholder="0.00"><input data-lbc="${ix}" type="number" min="0" step="1" value="${l.copies}"><button class="rm" data-lbrm="${ix}" title="Remove">${svg(I.x,15)}</button></div>`;}).join('')}</div>`;
+  el.querySelectorAll('[data-lbw]').forEach(i=>i.oninput=()=>{const l=LBL.lines[+i.dataset.lbw];l.weight=i.value.trim();lblWSave(l.id,l.weight!==lblGuessWeight(item(l.id).name)?l.weight:'');lblPreview();});
+  el.querySelectorAll('[data-lbp]').forEach(i=>i.oninput=()=>{LBL.lines[+i.dataset.lbp].price=i.value===''?'':parseFloat(i.value);lblPreview();});
+  el.querySelectorAll('[data-lbc]').forEach(i=>i.oninput=()=>{LBL.lines[+i.dataset.lbc].copies=Math.max(0,parseInt(i.value,10)||0);const n=lblTotal();if(cnt)cnt.textContent=n?(n+(n===1?' label':' labels')):'None yet';lblPreview();});
+  el.querySelectorAll('[data-lbrm]').forEach(b=>b.onclick=()=>{LBL.lines.splice(+b.dataset.lbrm,1);lblItems();lblQueue();lblPreview();});}
+function lblPreview(){const st=document.getElementById('lbl-stage');if(!st)return;const cells=lblCells();const N=lblSheets();if(LBL.page>N-1)LBL.page=N-1;
+  st.innerHTML=`<div class="lbl-paper" id="lbl-paper">${lblSheetHtml(cells,LBL.page,true)}</div>`;
+  const n=lblTotal();document.getElementById('lbl-pg').textContent=`Sheet ${LBL.page+1} of ${N}`;
+  document.getElementById('lbl-sum').textContent=n?`${n} label${n===1?'':'s'} on ${N} sheet${N===1?'':'s'}`:'';
+  document.getElementById('lbl-prev').disabled=LBL.page===0;document.getElementById('lbl-next').disabled=LBL.page>=N-1;
+  ['lbl-print','lbl-print2'].forEach(x=>{const pb=document.getElementById(x);if(pb)pb.disabled=!n;});lblScale();}
+function lblScale(){const st=document.getElementById('lbl-stage'),p=document.getElementById('lbl-paper');if(!st||!p)return;const pxmm=96/25.4;const k=Math.min(1,(st.clientWidth-2)/(210*pxmm));p.style.transform=`scale(${k})`;st.style.height=(297*pxmm*k+2)+'px';}
+function lblPrint(){const cells=lblCells();const n=lblTotal();if(!n)return toast('Add at least one label',true);
+  const missing=LBL.lines.filter(l=>l.copies>0&&LBL.show.barcode&&!lblCode(item(l.id)));
+  if(missing.length&&!confirm(missing.length+' item(s) have no barcode or SKU and will print without a barcode. Continue?'))return;
+  const N=Math.ceil(cells.length/LBL_PER);let sheets='';for(let p=0;p<N;p++)sheets+=lblSheetHtml(cells,p,false);
+  const html=`<!doctype html><html><head><meta charset="utf-8"><title>Shelf labels</title><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;background:#fff}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}${LBL_CSS}.lblsheet{page-break-after:always;break-after:page;transform:translate(${LBL.dx}mm,${LBL.dy}mm)}.lblsheet:last-child{page-break-after:auto;break-after:auto}</style></head><body>${sheets}</body></html>`;
+  const f=document.createElement('iframe');f.setAttribute('aria-hidden','true');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';document.body.appendChild(f);
+  const d=f.contentDocument;d.open();d.write(html);d.close();
+  setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){toast('Could not open the print dialog',true);}setTimeout(()=>f.remove(),60000);},350);
+  try{if(typeof logAudit==='function')logAudit('labels.print',HOME||null,n+' shelf labels');}catch(e){}
+  toast(`Sending ${n} label${n===1?'':'s'} (${N} sheet${N===1?'':'s'}) to the printer`);}
+function openLabelsFor(ids){(ids||[]).forEach(id=>lblAdd(id,1));closeOverlay&&closeOverlay();go('labels');}
+
+(function(){try{const st=document.createElement('style');st.textContent=LBL_CSS;document.head.appendChild(st);}catch(e){}})();
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,invoices:vInvoices,catalog:vCatalog,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:vInsights,perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,invoices:vInvoices,catalog:vCatalog,labels:vLabels,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -2383,7 +2537,7 @@ function vCatalog(v){
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
       <div class="spacer"></div>
-      <button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
+      <button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
       ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
@@ -2498,6 +2652,7 @@ function openItem(id){
     <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>`;
   const foot=`<button class="btn" data-close>Close</button>`
     +`<button class="btn" id="it-loc">${svg(I.location,15)} Set location</button>`
+    +`<button class="btn" id="it-label">${svg(I.receipt,15)} Shelf label</button>`
     +(ROLE==='super_admin'?`<button class="btn" id="it-transfer">${svg(I.transfer,15)} Transfer</button><button class="btn" id="it-recount">${svg(I.stocktake,15)} Recount</button>`:'')
     +`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
   slideover(it.name,it.sku||'',body,foot);
@@ -2509,6 +2664,7 @@ function openItem(id){
   const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
   const bd=document.getElementById('it-dmg');if(bd)bd.onclick=()=>openDamageRequest(id);
   const bl2=document.getElementById('it-loc');if(bl2)bl2.onclick=()=>openSetLocation(id);
+  const blb=document.getElementById('it-label');if(blb)blb.onclick=()=>openLabelsFor([id]);
   overlayEl().querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
   overlayEl().querySelectorAll('[data-areq-rj]').forEach(b=>b.onclick=()=>decideAdjust('reject_adjustment',b.dataset.areqRj,false));
   overlayEl().querySelectorAll('[data-areq-cx]').forEach(b=>b.onclick=()=>{if(confirm('Cancel this request?'))cancelAdjust(b.dataset.areqCx);});
