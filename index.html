@@ -296,6 +296,9 @@
   #pkList .recv-row{grid-template-columns:1fr 76px 112px!important;column-gap:12px}
   .form .recv-row.done{border-left-color:var(--good)}
   .form .recv-row input[data-pk]{height:38px;font-weight:700}
+  .por-find{display:flex;gap:8px;margin:0 0 10px}
+  .por-card{transition:box-shadow .2s,border-color .2s}.por-card.por-hit{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);animation:porflash 1.2s ease}
+  @keyframes porflash{0%{background:var(--accent-soft)}100%{background:var(--surface)}}
   .por-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;font-size:13px;color:var(--muted);font-weight:600}
   /* ---- help panel (F1) ---- */
   .hp{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);z-index:10060;background:var(--surface);box-shadow:-10px 0 40px rgba(15,26,42,.22);display:flex;flex-direction:column;transform:translateX(105%);transition:transform .22s ease;border-left:1px solid var(--border)}
@@ -1255,7 +1258,9 @@ function ssItemsByStatus(locId,keys){
 function ssOpenTransferFor(store,rows){
   const hub=S.locations.find(l=>l.is_hub);
   go('transfers');
-  newTransfer({prefill:true,to:store,from:(hub&&hub.id!==store)?hub.id:undefined,lines:rows.map(r=>({item:r.id,qty:recPk(r.calc.orderQty,item(r.id))}))});
+  const ok=rows.filter(r=>{const it=item(r.id);return it.active!==false&&hasPpc(it);}),skip=rows.length-ok.length;
+  newTransfer({prefill:true,to:store,from:(hub&&hub.id!==store)?hub.id:undefined,lines:ok.map(r=>({item:r.id,qty:recPk(r.calc.orderQty,item(r.id))}))});
+  if(skip)setTimeout(()=>toast(skip+' item(s) left out: no pack size (packets per box) set. A National Admin can set it in Catalogue.',true),600);
 }
 function ssConvertToTransfer(){
   const rows=ssPoRows();if(!rows.length)return toast('Nothing to convert — no items need reordering.',true);
@@ -2304,7 +2309,31 @@ function newTransfer(presetItem){
   if(draft){from.value=draft.from_location;to.value=draft.to_location;document.getElementById('tf-notes').value=draft.notes||'';}
   if(pre){if(pre.to)to.value=pre.to;if(pre.from)from.value=pre.from;}
   edLines();from.onchange=()=>loadTfSrc(from.value);to.onchange=()=>{loadTfDest(to.value);edLines();sum();};
-  const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=e=>{const val=e.target.value;e.target.value='';if(!val)return;const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];const toV=document.getElementById('tf-to').value;const items=ssItemsByStatus(toV,keys);if(!items.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);dLines=items;tfUploaded=true;edLines();sum();toast('Added '+items.length+' item(s) from stock status');};
+  const bys=document.getElementById('tf-bystatus');if(bys)bys.onchange=async e=>{const val=e.target.value;e.target.value='';if(!val)return;
+    const keys=val==='out'?['out','out_inc']:val==='low'?['low','low_new']:['out','out_inc','low','low_new'];
+    const fromV=document.getElementById('tf-from').value,toV=document.getElementById('tf-to').value;
+    const found=ssItemsByStatus(toV,keys);
+    if(!found.length)return toast('No matching items at '+loc(toV).code+' (run Square Sync → Update sales data if this looks wrong).',true);
+    if(tfSrc.loc!==fromV){try{await loadTfSrc(fromV);}catch(err){}}
+    const avail=id=>(tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(fromV,id);
+    const noPack=[],noStock=[],capped=[],add=[];
+    found.forEach(x=>{const it=item(x.item);
+      if(it.active===false||!hasPpc(it)){noPack.push(it);return;}                        // can't be transferred without a pack size
+      const maxBx=Math.floor(Math.max(0,avail(x.item))/ppc(it));                          // whole boxes the sending site can spare
+      if(maxBx<1){noStock.push(it);return;}
+      let bx=pk2boxWhole(x.qty,it);if(bx<1)bx=1;
+      if(bx>maxBx){capped.push({it,want:bx,got:maxBx});bx=maxBx;}
+      add.push({item:x.item,qty:box2pk(bx,it)});});
+    // keep any lines the person already chose, then add the new ones (no duplicates)
+    const keep=dLines.filter(l=>l.item&&!add.some(a=>a.item===l.item));
+    if(add.length){dLines=keep.concat(add);tfUploaded=true;edLines();sum();}
+    const list=a=>a.slice(0,40).map(it=>`<li>${esc(it.name)} <span class="mono" style="color:var(--faint)">${esc(it.sku||'')}</span></li>`).join('')+(a.length>40?`<li>…and ${a.length-40} more</li>`:'');
+    let html=`<p><b>${add.length}</b> item${add.length===1?'':'s'} added from ${esc(loc(toV).name)}’s stock status.</p>`;
+    if(capped.length)html+=`<p style="margin-top:10px"><b>${capped.length}</b> reduced to what ${esc(loc(fromV).name)} has available:</p><ul style="margin:4px 0 0 18px">${capped.slice(0,20).map(c=>`<li>${esc(c.it.name)}: ${c.want} → ${c.got} bx</li>`).join('')}</ul>`;
+    if(noStock.length)html+=`<p style="margin-top:10px"><b>${noStock.length}</b> not added — none available at ${esc(loc(fromV).name)}:</p><ul style="margin:4px 0 0 18px">${list(noStock)}</ul>`;
+    if(noPack.length)html+=`<p style="margin-top:10px"><b>${noPack.length}</b> not added — no pack size (packets per box) set, so they can’t be transferred. A National Admin can set it in Catalogue:</p><ul style="margin:4px 0 0 18px">${list(noPack)}</ul>`;
+    if(noStock.length||noPack.length||capped.length)stackConfirm('Add by stock status',loc(toV).code+' ← '+loc(fromV).code,html,{okLabel:'OK',okOnly:true});
+    else toast('Added '+add.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
   document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity (boxes)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'']));
@@ -3909,6 +3938,63 @@ async function doApprove(id){await callRpc('approve_transfer',{p_id:id},'Approve
 async function doCancel(id){await callRpc('cancel_transfer',{p_id:id},'Cancelled');notifyTransfer(id,'cancelled');}
 async function doDispatch(id){const t=S.transfers.find(x=>x.id===id);await callRpc('dispatch_transfer',{p_id:id},'Dispatched to transit',t?{location_id:t.from_location,item_ids:txItems(t)}:null);notifyTransfer(id,'in_transit');}
 function doShipOrder(id){callRpc('ship_order',{p_id:id},'Marked shipped');}
+/* ---- find an item on the PO receipt: typing filters, a scan (scanner or camera) jumps to it ---- */
+let porLast={code:'',t:0};
+function porJump(o,code){
+  code=String(code||'').trim();if(!code)return false;const cl=code.toLowerCase();
+  const line=(o.lines||[]).find(l=>{const it=item(l.item_id);return String(it.barcode||'').toLowerCase()===cl||String(it.sku||'').toLowerCase()===cl;});
+  if(!line){toast('Not on '+o.code+': '+code,true);if(navigator.vibrate)navigator.vibrate([40,60,40]);return false;}
+  const inp=document.getElementById('por-scan');if(inp){inp.value='';porFilter('');}
+  const card=document.querySelector('[data-poritem="'+line.item_id+'"]');
+  if(card){card.scrollIntoView({block:'center'});card.classList.remove('por-hit');void card.offsetWidth;card.classList.add('por-hit');
+    const q=card.querySelector('input[type=number]:not([data-rcost])')||card.querySelector('input');if(q){setTimeout(()=>{q.focus();if(q.select)q.select();},250);}}
+  if(navigator.vibrate)navigator.vibrate(50);
+  return true;
+}
+function porFilter(q){q=String(q||'').trim().toLowerCase();let shown=0;
+  document.querySelectorAll('.por-card').forEach(c=>{const hit=!q||c.dataset.porq.includes(q);c.style.display=hit?'':'none';if(hit)shown++;});
+  let em=document.getElementById('por-none');
+  if(!shown&&q){if(!em){em=document.createElement('div');em.id='por-none';em.className='hp-empty';const f=document.querySelector('.por-card');if(f)f.parentNode.insertBefore(em,f);}em.textContent='No items on this order match “'+q+'”.';}
+  else if(em)em.remove();}
+function porWireFind(o){
+  const inp=document.getElementById('por-scan');if(!inp)return;
+  inp.oninput=()=>porFilter(inp.value);
+  inp.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();const v=inp.value.trim();if(!v)return;
+    const now=Date.now();if(v===porLast.code&&now-porLast.t<1200){inp.value='';porFilter('');return;}   // scanner double-fire
+    porLast={code:v,t:now};
+    const cl=v.toLowerCase();const exact=(o.lines||[]).some(l=>{const it=item(l.item_id);return String(it.barcode||'').toLowerCase()===cl||String(it.sku||'').toLowerCase()===cl;});
+    if(exact)porJump(o,v);
+    else{const vis=[...document.querySelectorAll('.por-card')].filter(c=>c.style.display!=='none');
+      if(vis.length===1){const id=vis[0].dataset.poritem;porJump(o,item(id).barcode||item(id).sku);}
+      else if(/^\d{6,}$/.test(v))porJump(o,v);}
+  };
+  const cam=document.getElementById('por-cam');if(cam)cam.onclick=()=>openCamFinder('Find an item on '+o.code,code=>porJump(o,code));
+  setTimeout(()=>inp.focus(),80);
+}
+/* Camera barcode finder that floats OVER the current window (does not close it).
+   onCode(code) → true closes the camera. One scan per barcode: after a scan the
+   barcode must leave the view before it is read again. */
+async function openCamFinder(title,onCode){
+  if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
+  const host=document.createElement('div');host.className='scan-entry-host';
+  host.innerHTML=`<div class="modal scan-entry" style="max-width:420px"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">Point the camera at the barcode</div></div><button class="x" id="cf-x" aria-label="Close camera">${svg(I.x,20)}</button></div>
+    <div class="panel-body" style="text-align:center"><video id="cf-vid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="cf-msg" class="scan-msg">Starting camera…</div></div>
+    <div class="panel-foot"><button class="btn" id="cf-close">Close</button></div></div>`;
+  document.body.appendChild(host);
+  const vid=host.querySelector('#cf-vid'),msg=host.querySelector('#cf-msg');let stream=null,running=true,state='ready',last='',clearSince=0;
+  const say=(t,k)=>{msg.textContent=t;msg.className='scan-msg'+(k?' '+k:'');};
+  const stop=()=>{running=false;if(stream)stream.getTracks().forEach(t=>t.stop());host.remove();};
+  host.querySelector('#cf-x').onclick=stop;host.querySelector('#cf-close').onclick=stop;
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();say('Point the camera at a barcode');}catch(err){say('Could not open camera: '+(err.message||err),'bad');}
+  const det=new window.BarcodeDetector();
+  const loop=async()=>{if(!running)return;
+    try{const codes=await det.detect(vid);const val=codes&&codes.length?String(codes[0].rawValue||'').trim():'';const now=Date.now();
+      if(state==='clear'){if(!val||val!==last){if(!clearSince)clearSince=now;if(now-clearSince>600||(val&&val!==last)){state='ready';clearSince=0;say('Ready — scan an item');}}else clearSince=0;}
+      if(state==='ready'&&val){state='clear';last=val;clearSince=0;if(onCode(val)){stop();return;}say('Not found: '+val+' — move it away and try another','bad');}
+    }catch(e){}
+    if(running)requestAnimationFrame(loop);};
+  requestAnimationFrame(loop);
+}
 /* ---- PO receipt by upload ---- */
 function poReceiveTemplate(o){
   const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);return [it.sku||'',it.name,pk2boxWhole(+l.qty||0,it),pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id)||'',aisleOf(o.location_id,l.item_id)||'','',(+l.unit_cost||0).toFixed(2)];});
@@ -3942,11 +4028,13 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
   PL={};PLMAX={};(o.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.item_id,pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
   const draft=plApplyDraft('order',id);
-  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="display:flex;gap:12px;align-items:flex-start"><div style="text-align:right"><div class="cap">Cost / packet ($)</div><input type="number" min="0" step="0.01" inputmode="decimal" data-rcost="${l.item_id}" value="${(+l.unit_cost||0).toFixed(2)}" title="Actual cost per packet on the supplier invoice" style="width:92px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right;font-weight:600"></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
+  const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card por-card" data-poritem="${l.item_id}" data-porq="${esc((it.name+' '+(it.sku||'')+' '+(it.barcode||'')).toLowerCase())}" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px">${esc(it.name)}</div><div class="mono" style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}</div></div><div style="display:flex;gap:12px;align-items:flex-start"><div style="text-align:right"><div class="cap">Cost / packet ($)</div><input type="number" min="0" step="0.01" inputmode="decimal" data-rcost="${l.item_id}" value="${(+l.unit_cost||0).toFixed(2)}" title="Actual cost per packet on the supplier invoice" style="width:92px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right;font-weight:600"></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
   modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item, with its <b>store area</b>, <b>aisle #</b> and <b>best-before</b> date (all required), and the <b>cost per packet</b> from the supplier invoice. Split a line across several areas or dates with <b>+ Add location / best-before</b>.</div></div>
-    <div class="por-tools"><span>Receiving a big order?</span><button type="button" class="btn sm" id="por-dl">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="por-up">${svg(I.box,14)} Upload filled</button><input type="file" id="por-file" accept=".csv,text/csv" hidden></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'form');
+    <div class="por-find"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="por-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${('BarcodeDetector' in window)?`<button type="button" class="btn" id="por-cam">${svg(I.box,16)} Camera</button>`:''}</div>
+    <div class="por-tools"><span>Receiving a big order?</span><button type="button" class="btn sm" id="por-dl">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="por-up">${svg(I.box,14)} Upload filled</button><input type="file" id="por-file" accept=".csv,text/csv" hidden></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
+  porWireFind(o);
   document.getElementById('por-dl').onclick=()=>poReceiveTemplate(o);
   document.getElementById('por-up').onclick=()=>document.getElementById('por-file').click();
   document.getElementById('por-file').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)poReceiveUpload(o,f,hub);};
