@@ -296,6 +296,13 @@
   #pkList .recv-row{grid-template-columns:1fr 76px 112px!important;column-gap:12px}
   .form .recv-row.done{border-left-color:var(--good)}
   .form .recv-row input[data-pk]{height:38px;font-weight:700}
+  /* ---- password sign-in ---- */
+  .sq-note{display:flex;gap:10px;align-items:flex-start;background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.45;margin:4px 0 12px}.sq-note svg{flex:0 0 auto;margin-top:1px}
+  .pw-wrap{position:relative}.pw-wrap input{padding-right:64px}
+  .pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--accent-ink);font-weight:700;font-size:12px;padding:6px 8px;cursor:pointer;border-radius:6px}
+  .pw-eye:hover{background:var(--accent-soft)}
+  .linkbtn{display:block;width:100%;margin-top:12px;border:0;background:none;color:var(--accent-ink);font-weight:600;font-size:13px;cursor:pointer;text-align:center;padding:6px}
+  .linkbtn:hover{text-decoration:underline}
   /* ---- shelf labels ---- */
   .lbl-layout{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:16px;align-items:start}
   .lbl-right{display:grid;gap:16px;min-width:0;grid-template-columns:minmax(0,1fr)}.lbl-layout>*,.lbl-right>*{min-width:0}
@@ -337,12 +344,25 @@
   <div class="box">
     <img id="loginLogo" class="applogo" data-i="0" data-hide="loginBrand" src="shayona-logo.png" alt="Shayona" style="max-height:64px;margin:0 0 16px;display:none" onload="logoOk(this)" onerror="nextLogo(this)">
     <div class="brand" id="loginBrand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Hub</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
+    <div id="signinPane">
     <h2>Sign in</h2>
-    <p id="loginMsg">Use the email you have in Square — sign in with Google, or get a one-time link by email. Access is limited to your Square team.</p>
-    <button class="btn" id="googleBtn" style="width:100%;justify-content:center;gap:9px;font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg> Continue with Google</button>
+    <div class="sq-note"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>Use only the email address you use to log in to Square.</b> Other email addresses will not work, including with Google.</div></div>
+    <p id="loginMsg">Sign in with your Square email and your password.</p>
+    <div class="field"><label for="email">Email (your Square login)</label><input id="email" type="email" placeholder="you@company.com" autocomplete="username"></div>
+    <div class="field"><label for="password">Password</label><div class="pw-wrap"><input id="password" type="password" autocomplete="current-password" placeholder="Your password"><button type="button" class="pw-eye" data-pweye="password" aria-label="Show password">Show</button></div></div>
+    <button class="btn primary" id="pwSignIn" style="width:100%;justify-content:center">Sign in</button>
+    <button type="button" class="linkbtn" id="pwReset">First time, or forgot your password? Email me a link to set it</button>
     <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--faint);font-size:12px"><div style="flex:1;height:1px;background:var(--border)"></div>or<div style="flex:1;height:1px;background:var(--border)"></div></div>
-    <div class="field"><label for="email">Login ID</label><input id="email" type="email" placeholder="you@company.com" autocomplete="email"><div class="hint">Use the same login as your Square login.</div></div>
-    <button class="btn primary" id="sendLink" style="width:100%;justify-content:center">Email me a sign-in link</button>
+    <button class="btn" id="googleBtn" style="width:100%;justify-content:center;gap:9px;font-weight:700"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg> Continue with Google</button>
+    <div class="hint" style="text-align:center;margin-top:8px">Choose the Google account that uses your Square email.</div>
+    </div>
+    <div id="setPwPane" hidden>
+    <h2>Set your password</h2>
+    <p id="setPwMsg">Choose a password for <b id="setPwEmail"></b>. Use at least 10 characters with letters and numbers.</p>
+    <div class="field"><label for="newPw">New password</label><div class="pw-wrap"><input id="newPw" type="password" autocomplete="new-password"><button type="button" class="pw-eye" data-pweye="newPw" aria-label="Show password">Show</button></div></div>
+    <div class="field"><label for="newPw2">Type it again</label><input id="newPw2" type="password" autocomplete="new-password"></div>
+    <button class="btn primary" id="setPwSave" style="width:100%;justify-content:center">Save password and continue</button>
+    </div>
   </div>
 </div>
 
@@ -367,6 +387,7 @@
           <div class="ud-email" id="udEmail"></div>
           <div class="ud-role" id="udRole"></div>
           <div class="ud-sep"></div>
+          <button class="ud-item" id="changePw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Change password</button>
           <button class="ud-item danger" id="signout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg> Sign out</button>
         </div>
       </div>
@@ -441,7 +462,7 @@ function readTemplate(file,needCost,cb){
 /* RBAC */
 const ROLES={
   user:{name:'User',scoped:true,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do']},
-  admin:{name:'Admin',scoped:true,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.approve','transfer.dispatch','transfer.cancel','audit.view','supplier.manage']},
+  admin:{name:'Admin',scoped:true,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.dispatch','transfer.cancel','audit.view','supplier.manage']},
   national_admin:{name:'National Admin',scoped:false,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.approve','transfer.dispatch','transfer.cancel','audit.view','supplier.manage','catalog.edit','location.manage','sync.run']},
   super_admin:{name:'Super Admin',scoped:false,can:['*']},
 };
@@ -452,7 +473,7 @@ const scoped=()=>roleDef().scoped;
 const mine=id=>MYLOCS.includes(id);
 const visLocs=()=>scoped()?MYLOCS.slice():S.locations.map(l=>l.id);
 const canSee=t=>!scoped()||mine(t.from_location)||mine(t.to_location);
-const canApproveT=t=>can('transfer.approve')&&(!scoped()||mine(t.from_location));
+const canApproveT=t=>ROLE==='national_admin'||ROLE==='super_admin';  /* only National or Super Admin authorise transfer requests */
 const canDispatchT=t=>can('transfer.dispatch')&&(!scoped()||mine(t.from_location));
 const canReceiveT=t=>can('transfer.receive')&&(!scoped()||mine(t.to_location));
 const canRecvOrder=o=>can('order.receive')&&(!scoped()||mine(o.location_id)); // only into your own centre
@@ -742,15 +763,19 @@ async function reloadStockFor(locs){
 async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); await loadBins(); await loadBatches(); await loadStockStatusData(); renderNav(); renderSq(); renderView(); }
 
 /* ---------- auth ---------- */
+const PW_RECOVERY=/(^|[#&?])type=recovery(&|$)/.test(location.hash+'&'+location.search);
+let pwRecovering=false;
 async function boot(){
   if(!initClient()){ showLogin('Configuration needed: open index.html and set your Supabase URL and anon key at the top, then redeploy.'); return; }
+  sb.auth.onAuthStateChange((ev)=>{ if(ev==='PASSWORD_RECOVERY'){ pwRecovering=true; showSetPassword(); } });
   const{data:{session}}=await sb.auth.getSession();
-  if(session) return startApp();
+  if(session&&PW_RECOVERY){ pwRecovering=true; showSetPassword(session.user&&session.user.email); return; }
+  if(session){ window.__appStarted=true; return startApp(); }
   // surface any sign-in error (e.g. an email that isn't in the Square team)
   const p=new URLSearchParams((location.hash.replace(/^#/,''))+'&'+(location.search.replace(/^\?/,'')));
   const err=p.get('error_description');
   showLogin(err?decodeURIComponent(err).replace(/\+/g,' '):undefined);
-  sb.auth.onAuthStateChange((_e,s)=>{ if(s) startApp(); });
+  sb.auth.onAuthStateChange((ev,s)=>{ if(s&&ev==='SIGNED_IN'&&!pwRecovering&&!window.__appStarted){ window.__appStarted=true; startApp(); } });
 }
 function showLogin(msg){
   document.getElementById('app').hidden=true;
@@ -1890,7 +1915,7 @@ async function openTransfer(id){
   const atSource=!scoped()||mine(t.from_location);
   const editDel=notDisp?`<button class="btn" data-tedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button>`:'';
   if(t.status==='draft')actions=`<button class="btn" data-tdraftedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button><button class="btn primary" data-tsubmit="${t.id}">${svg(I.check,16)} Submit request</button>`;
-  else if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.from_location).code} must approve</span>`);
+  else if(t.status==='requested')actions=editDel+(canApproveT(t)?`<button class="btn" data-cancel="${t.id}">Reject</button><button class="btn primary" data-approve="${t.id}">${svg(I.check,16)} Approve release</button>`:`<span class="lock">${svg(I.lock,14)} National Admin must approve</span>`);
   else if(t.status==='approved'){let a=editDel;if(atSource){a+=`<button class="btn" data-print="${t.id}">${svg(I.receipt,16)} Pick list</button><button class="btn ${canDispatchT(t)?'primary':''}" data-pick="${t.id}">${svg(I.box,16)} ${canDispatchT(t)?'Pick &amp; dispatch':'Pick items'}</button>`;}else a+=`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;actions=a;}
   else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
   if(ROLE==='super_admin'&&!t.reversed_at&&['in_transit','partially_received','received'].includes(t.status))actions+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-treverse="${t.id}">${svg(I.alert,15)} Reverse</button>`;
@@ -3702,15 +3727,60 @@ document.getElementById('googleBtn').onclick=async()=>{
   const{error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin+location.pathname}});
   if(error){const m=document.getElementById('loginMsg');m.textContent=error.message;m.style.color='var(--crit)';}
 };
-document.getElementById('sendLink').onclick=async()=>{
-  const email=document.getElementById('email').value.trim();if(!email)return;
-  const btn=document.getElementById('sendLink');btn.disabled=true;btn.textContent='Sending…';
-  const{error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-  const m=document.getElementById('loginMsg');
-  if(error){m.textContent=error.message;m.style.color='var(--crit)';btn.disabled=false;btn.textContent='Email me a sign-in link';}
-  else{m.textContent='Check your email for the sign-in link. You can close this tab.';m.style.color='var(--good)';btn.textContent='Link sent ✓';}
+function loginMsg(t,kind){const m=document.getElementById('loginMsg');m.textContent=t;m.style.color=kind==='err'?'var(--crit)':kind==='ok'?'var(--good)':'';}
+function pwProblem(p){if(!p||p.length<10)return 'Use at least 10 characters.';if(!/[A-Za-z]/.test(p)||!/\d/.test(p))return 'Use both letters and numbers.';return '';}
+document.querySelectorAll('[data-pweye]').forEach(b=>b.onclick=()=>{const i=document.getElementById(b.dataset.pweye);const show=i.type==='password';i.type=show?'text':'password';b.textContent=show?'Hide':'Show';b.setAttribute('aria-label',show?'Hide password':'Show password');});
+document.getElementById('pwSignIn').onclick=async()=>{
+  if(!sb){loginMsg('Set your Supabase URL and key in index.html first.','err');return;}
+  const email=document.getElementById('email').value.trim(),password=document.getElementById('password').value;
+  if(!email||!password){loginMsg('Enter your Square email and your password.','err');return;}
+  const btn=document.getElementById('pwSignIn');btn.disabled=true;btn.textContent='Signing in…';
+  const{error}=await sb.auth.signInWithPassword({email,password});
+  btn.disabled=false;btn.textContent='Sign in';
+  if(error){loginMsg(/invalid|credentials/i.test(error.message)?'Email or password is not right. First time here? Use the link below to set your password.':error.message,'err');document.getElementById('password').value='';}
 };
-document.getElementById('email').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('sendLink').click();});
+document.getElementById('pwReset').onclick=async()=>{
+  if(!sb){loginMsg('Set your Supabase URL and key in index.html first.','err');return;}
+  const email=document.getElementById('email').value.trim();
+  if(!email){loginMsg('Type your Square email above first, then tap the link again.','err');document.getElementById('email').focus();return;}
+  const btn=document.getElementById('pwReset');btn.disabled=true;
+  const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  btn.disabled=false;
+  if(error){loginMsg(error.message,'err');return;}
+  loginMsg('If this email is in the Square team, a link to set your password is on its way. Open it on this device.','ok');
+};
+['email','password'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('pwSignIn').click();}));
+function showSetPassword(email){
+  showLogin();document.getElementById('signinPane').hidden=true;document.getElementById('setPwPane').hidden=false;
+  const put=em=>{document.getElementById('setPwEmail').textContent=em||'your account';};
+  if(email)put(email);else sb.auth.getUser().then(({data})=>put(data&&data.user&&data.user.email));
+  setTimeout(()=>document.getElementById('newPw').focus(),50);
+}
+async function savePassword(p1,p2,onOk,msgEl){
+  const bad=pwProblem(p1)||(p1!==p2?'The two passwords do not match.':'');
+  const say=(t,err)=>{if(msgEl){msgEl.textContent=t;msgEl.style.color=err?'var(--crit)':'var(--good)';}else toast(t,err);};
+  if(bad){say(bad,true);return false;}
+  const{error}=await sb.auth.updateUser({password:p1});
+  if(error){say(error.message,true);return false;}
+  onOk&&onOk();return true;
+}
+document.getElementById('setPwSave').onclick=async()=>{
+  const btn=document.getElementById('setPwSave');btn.disabled=true;
+  await savePassword(document.getElementById('newPw').value,document.getElementById('newPw2').value,()=>{
+    pwRecovering=false;history.replaceState(null,'',location.pathname);
+    document.getElementById('setPwPane').hidden=true;document.getElementById('signinPane').hidden=false;
+    window.__appStarted=true;startApp();setTimeout(()=>toast('Password saved. Use it next time you sign in.'),600);
+  },document.getElementById('setPwMsg'));
+  btn.disabled=false;
+};
+document.getElementById('newPw2').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('setPwSave').click();});
+document.getElementById('changePw').onclick=()=>{
+  document.getElementById('userDrop').hidden=true;
+  modal('Change password','Used with your Square email to sign in',`<div class="field"><label>New password</label><input id="cpw1" type="password" autocomplete="new-password"></div><div class="field"><label>Type it again</label><input id="cpw2" type="password" autocomplete="new-password"></div><div class="hint" id="cpwMsg">At least 10 characters, with letters and numbers.</div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cpwGo">Save password</button>`);
+  document.getElementById('cpwGo').onclick=async()=>{const b=document.getElementById('cpwGo');b.disabled=true;
+    const ok=await savePassword(document.getElementById('cpw1').value,document.getElementById('cpw2').value,()=>{closeOverlay();toast('Password changed');},document.getElementById('cpwMsg'));
+    if(!ok)b.disabled=false;};
+};
 
 boot();
 </script>
