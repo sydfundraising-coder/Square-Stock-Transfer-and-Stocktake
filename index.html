@@ -69,10 +69,13 @@
   .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
   .nav-item svg{width:20px;height:20px;flex:none}
   /* Cash on Hand stands out in the menu */
-  .nav-item[data-route="cash"]{background:var(--warn-soft);color:var(--ink);border:1.5px solid var(--warn);margin:4px 0;font-weight:700}
+  .nav-item[data-route="cash"]{background:#fffaf1;color:var(--ink);border:1.5px solid #f3d49c;margin:4px 0;font-weight:700}
   .nav-item[data-route="cash"] svg{color:var(--warn)}
-  .nav-item[data-route="cash"]:hover{background:var(--warn-soft);filter:brightness(.97)}
-  .nav-item[data-route="cash"].active{background:var(--warn);color:#fff;border-color:var(--warn)}.nav-item[data-route="cash"].active svg{color:#fff}
+  .nav-item[data-route="cash"]:hover{background:#fff4e0}
+  .nav-item[data-route="cash"].active{background:#fdf0d8;color:var(--ink);border-color:var(--warn)}
+  [data-theme="dark"] .nav-item[data-route="cash"]{background:rgba(240,171,76,.08);border-color:rgba(240,171,76,.45)}
+  [data-theme="dark"] .nav-item[data-route="cash"]:hover{background:rgba(240,171,76,.14)}
+  [data-theme="dark"] .nav-item[data-route="cash"].active{background:rgba(240,171,76,.2);border-color:var(--warn)}
   .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
   .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
   .sq-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
