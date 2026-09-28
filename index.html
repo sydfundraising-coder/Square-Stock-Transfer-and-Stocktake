@@ -329,6 +329,27 @@
   .cash-result{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.cash-result>div{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
   .cash-result .lbl{font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}.cash-result .v{font-size:24px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
   .wh-mat td,.wh-mat th{white-space:nowrap}.wp-detail td{background:var(--surface-2)}.wp-cen{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;font-size:13px}
+  /* item picker */
+  .ip-wrap{position:relative;display:block;min-width:0}
+  .ip-hidden{position:absolute!important;opacity:0!important;pointer-events:none!important;width:1px!important;height:1px!important;left:0;top:0}
+  .ip-trig{width:100%;min-height:38px;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:left;cursor:pointer;font-size:14px}
+  .ip-trig:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .ip-trig .ip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .ip-ph{color:var(--muted);grid-column:1 / 4}.ip-caret{color:var(--muted);font-size:12px}
+  .ip-code{font-family:var(--mono,ui-monospace,monospace);font-weight:700;background:var(--surface-2);border:1px solid var(--border-strong);border-radius:5px;padding:1px 6px;font-size:12.5px;white-space:nowrap}
+  .ip-av{font-variant-numeric:tabular-nums;font-weight:800;text-align:right;white-space:nowrap;min-width:70px}.ip-av.pos{color:var(--good)}.ip-av.neg{color:var(--crit)}
+  .ip-panel{position:fixed;z-index:10070;background:var(--surface);border:1px solid var(--border-strong);border-radius:12px;box-shadow:0 18px 50px rgba(15,26,42,.28);overflow:hidden;display:flex;flex-direction:column;max-height:min(440px,70vh)}
+  .ip-search{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)}
+  .ip-search input{flex:1;border:0;outline:none;background:none;color:var(--ink);font-size:15px}
+  .ip-head,.ip-row{display:grid;grid-template-columns:120px minmax(0,1fr) 120px;gap:10px;align-items:center;padding:8px 14px}
+  .ip-head.noav,.ip-row.noav{grid-template-columns:120px minmax(0,1fr)}
+  .ip-head{background:var(--surface-2);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);border-bottom:1px solid var(--border)}
+  .ip-head .r{text-align:right}
+  .ip-list{overflow:auto}
+  .ip-row{cursor:pointer;border-bottom:1px solid var(--border);font-size:14px}.ip-row .ip-name{white-space:normal}
+  .ip-row.hi{background:var(--accent-soft)}.ip-row.sel{box-shadow:inset 3px 0 0 var(--accent)}
+  .ip-row .ip-code{justify-self:start}
+  .ip-none{padding:18px;text-align:center;color:var(--muted)}
   .icode{font-family:var(--mono,ui-monospace,monospace);font-weight:700;color:var(--ink);background:var(--surface-2);border:1px solid var(--border-strong);border-radius:5px;padding:0 5px;margin-right:7px;font-size:.9em;white-space:nowrap}
   .pf-num{display:inline-flex;width:22px;height:22px;border-radius:6px;background:var(--accent);color:#fff;align-items:center;justify-content:center;font-size:12px;margin-right:8px}
   .pc-sum th.grp{text-align:center;border-bottom:1px solid var(--border)}.pc-sum td,.pc-sum th{white-space:nowrap}.pc-sum .pc-future td{opacity:.6}.pc-sum tfoot td{font-weight:700;border-top:2px solid var(--border-strong)}
@@ -1986,6 +2007,64 @@ async function whPlan(el){
       const{error}=await sb.rpc('save_report_settings',{p});if(error)return toast(error.message,true);S.rptCfg=Object.assign({},S.rptCfg||{},p);closeOverlay();toast('Settings saved');vWarehouse(document.getElementById('view'));};};
 }
 
+/* ===== Item picker: a searchable drop-down with column headers (Stock code | Item name | Available qty).
+   It sits on top of the normal <select> (or item search box), so all existing screen logic keeps working. ===== */
+function ipOpts(el){
+  if(el.tagName==='SELECT')return [...el.options].filter(o=>o.value).map(o=>({v:o.value,c:o.dataset.c??'',n:o.dataset.n??o.textContent,a:o.dataset.a??'',ac:o.dataset.ac||''}));
+  const dl=document.getElementById(el.dataset.ipList);return dl?[...dl.options].map(o=>({v:o.value,c:o.dataset.c??'',n:o.dataset.n??o.value,a:o.dataset.a??'',ac:o.dataset.ac||''})):[];
+}
+function ipTrigHtml(o,ph,hasA){return o?`<span class="ip-code">${esc(o.c)}</span><span class="ip-name">${esc(o.n)}</span>${hasA?`<span class="ip-av ${o.ac}">${esc(o.a)}</span>`:''}<span class="ip-caret">▾</span>`:`<span class="ip-ph">${esc(ph)}</span><span class="ip-caret">▾</span>`;}
+function ipEnhance(el){
+  if(el.dataset.ip)return;el.dataset.ip='1';
+  const isSel=el.tagName==='SELECT';
+  if(!isSel){el.dataset.ipList=el.getAttribute('list');el.removeAttribute('list');}
+  const wrap=document.createElement('span');wrap.className='ip-wrap';
+  const trig=document.createElement('button');trig.type='button';trig.className='ip-trig';trig.setAttribute('aria-haspopup','listbox');
+  el.parentNode.insertBefore(wrap,el);wrap.appendChild(trig);wrap.appendChild(el);el.classList.add('ip-hidden');el.tabIndex=-1;
+  const refresh=()=>{const opts=ipOpts(el);const hasA=opts.some(o=>o.a!=='');let cur=null;
+    if(isSel)cur=opts.find(o=>o.v===el.value)||null;else{const t=el.value.trim();cur=opts.find(o=>o.v===t)||null;}
+    trig.innerHTML=ipTrigHtml(cur,isSel?'Select item…':(el.value||'Search code or name…'),hasA);};
+  refresh();el.addEventListener('change',refresh);
+  trig.onclick=()=>ipOpen(el,trig,refresh);
+  trig.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='Enter'||(e.key.length===1&&!e.ctrlKey&&!e.metaKey)){e.preventDefault();ipOpen(el,trig,refresh,e.key.length===1?e.key:'');}};
+}
+let ipCur=null;
+function ipClose(){if(ipCur){ipCur.panel.remove();document.removeEventListener('mousedown',ipCur.out,true);window.removeEventListener('resize',ipClose);ipCur.trig.focus();ipCur=null;}}
+function ipOpen(el,trig,refresh,first){
+  ipClose();const opts=ipOpts(el);const hasA=opts.some(o=>o.a!=='');
+  const panel=document.createElement('div');panel.className='ip-panel';panel.setAttribute('role','listbox');
+  panel.innerHTML=`<div class="ip-search">${svg(I.search,15)}<input placeholder="Type a code or name…" autocomplete="off"></div>
+    <div class="ip-head${hasA?'':' noav'}"><span>Stock code</span><span>Item name</span>${hasA?'<span class="r">Available qty</span>':''}</div><div class="ip-list"></div>`;
+  document.body.appendChild(panel);
+  const r=trig.getBoundingClientRect();const w=Math.max(r.width,Math.min(640,window.innerWidth-16));
+  const left=Math.min(r.left,window.innerWidth-w-8);panel.style.width=w+'px';panel.style.left=Math.max(8,left)+'px';
+  const below=window.innerHeight-r.bottom;if(below<320&&r.top>below){panel.style.bottom=(window.innerHeight-r.top+4)+'px';}else panel.style.top=(r.bottom+4)+'px';
+  const inp=panel.querySelector('input'),list=panel.querySelector('.ip-list');let shown=[],hi=0;
+  const curV=el.tagName==='SELECT'?el.value:el.value.trim();
+  const draw=()=>{const q=inp.value.trim().toLowerCase();
+    shown=opts.filter(o=>!q||o.c.toLowerCase().includes(q)||o.n.toLowerCase().includes(q)).sort((a,b)=>q?((b.c.toLowerCase().startsWith(q)?1:0)-(a.c.toLowerCase().startsWith(q)?1:0)):0).slice(0,400);
+    if(hi>=shown.length)hi=Math.max(0,shown.length-1);
+    list.innerHTML=shown.length?shown.map((o,i)=>`<div class="ip-row${hasA?'':' noav'}${i===hi?' hi':''}${o.v===curV?' sel':''}" data-i="${i}" role="option"><span class="ip-code">${esc(o.c)}</span><span class="ip-name">${esc(o.n)}</span>${hasA?`<span class="ip-av ${o.ac}">${esc(o.a)}</span>`:''}</div>`).join(''):`<div class="ip-none">No items match “${esc(inp.value)}”.</div>`;
+    const h=list.querySelector('.hi');if(h)h.scrollIntoView({block:'nearest'});};
+  const choose=i=>{const o=shown[i];if(!o)return;
+    if(el.tagName==='SELECT'){el.value=o.v;}else{el.value=o.v;el.dispatchEvent(new Event('input',{bubbles:true}));}
+    ipClose();el.dispatchEvent(new Event('change',{bubbles:true}));refresh();};
+  list.onmousedown=e=>{const row=e.target.closest('.ip-row');if(row){e.preventDefault();choose(+row.dataset.i);}};
+  list.onmousemove=e=>{const row=e.target.closest('.ip-row');if(row&&+row.dataset.i!==hi){hi=+row.dataset.i;list.querySelectorAll('.ip-row').forEach(x=>x.classList.toggle('hi',+x.dataset.i===hi));}};
+  inp.oninput=()=>{hi=0;draw();};
+  inp.onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();hi=Math.min(shown.length-1,hi+1);draw();}else if(e.key==='ArrowUp'){e.preventDefault();hi=Math.max(0,hi-1);draw();}
+    else if(e.key==='Enter'){e.preventDefault();choose(hi);}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();ipClose();}else if(e.key==='Tab'){ipClose();}};
+  const out=e=>{if(!panel.contains(e.target)&&e.target!==trig&&!trig.contains(e.target))ipClose();};
+  document.addEventListener('mousedown',out,true);window.addEventListener('resize',ipClose);
+  ipCur={panel,trig,out};
+  inp.value=first||'';hi=0;draw();
+  const selI=shown.findIndex(o=>o.v===curV);if(selI>=0&&!first){hi=selI;draw();}
+  setTimeout(()=>inp.focus(),0);
+}
+/* enhance item drop-downs automatically whenever a screen draws them */
+const IP_SEL='select[data-li],select[data-pi],select[data-ri],select[data-ili],input#ar-item';
+new MutationObserver(()=>{document.querySelectorAll(IP_SEL).forEach(el=>{if(!el.dataset.ip)ipEnhance(el);});}).observe(document.body,{childList:true,subtree:true});
+
 function renderView(){
   destroyCharts();
   document.getElementById('pageTitle').textContent=PAGE[route][0];
@@ -2736,7 +2815,7 @@ function edLines(){
   const to=(document.getElementById('tf-to')||{}).value;
   const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(av(i.id),i)} bx</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>{const a=av(i.id);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}" data-a="${boxDec(a,i)} bx" data-ac="${a>0?'pos':'neg'}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(a,i)} bx</option>`;}).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
   ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const availBx=(has&&from&&pc)?boxDec(av(l.item),it0):null;const qBox=(has&&pc)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${has&&from?' — '+av(l.item)+' packets':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?(availBx!=null?availBx+'<div style="font-size:9px;color:var(--faint);font-weight:400">bx</div>':av(l.item)):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}${has&&u!=null&&pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(u,it0)}</div>`:''}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" step="1" value="${qBox}" data-lq="${ix}" title="${has&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><div class="lbox" data-lqpk="${ix}" title="Packets that will move (auto from boxes × pack size)" style="color:var(--faint)">${has&&pc?l.qty+`<div style="font-size:9px;color:var(--faint);font-weight:400">pk</div>`:'—'}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
@@ -2905,7 +2984,7 @@ function newOrder(o){
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
 }
 function pEd(){
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
   const ed=document.getElementById('ped');
   ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" data-ppk="${ix}" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><div class="ltot" data-plt="${ix}">${l.item?money((+l.qty||0)*(+l.cost||0)):'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
@@ -3215,7 +3294,7 @@ function newReceipt(){
   document.getElementById('go').onclick=submitReceipt;
 }
 function rEd(){
-  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
   const ed=document.getElementById('red');
   ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow cols-rc"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><div style="display:flex;gap:4px;align-items:center;min-width:0">${(l.batches&&l.batches.length)?`<span style="font-size:11px;color:var(--muted);flex:1">${l.batches.length} dates</span>`:`<input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0;flex:1">`}<button type="button" class="btn sm" data-rxsp="${ix}" title="Multiple best-before dates" style="height:38px;padding:0 10px;font-size:13px">${(l.batches&&l.batches.length)?'✎':'+'}</button></div><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
   recLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-ri="${ix}"]`).value=l.item;});
@@ -3985,7 +4064,7 @@ function newAdjustRequest(){
   const locs=S.locations.filter(l=>(!scoped()||mine(l.id))&&l.active!==false);
   if(!locs.length)return toast('No centre available',true);
   modal('Report damage / expired','Reserve stock for approval',`
-    <div class="field"><label>Item</label><input id="ar-item" list="ar-items" placeholder="Search name or code…" autocomplete="off"><datalist id="ar-items">${S.items.filter(i=>i.active!==false).slice(0,4000).map(i=>`<option value="${esc(i.sku||'')} — ${esc(i.name)}" data-id="${i.id}"></option>`).join('')}</datalist></div>
+    <div class="field"><label>Item</label><input id="ar-item" list="ar-items" placeholder="Search name or code…" autocomplete="off"><datalist id="ar-items">${S.items.filter(i=>i.active!==false).slice(0,4000).map(i=>`<option value="${esc(i.sku||'')} — ${esc(i.name)}" data-id="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}"></option>`).join('')}</datalist></div>
     <div class="grid2"><div class="field"><label>Centre</label><select id="ar-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
     <div class="field"><label>Type</label><select id="ar-kind"><option value="damage">Damaged</option><option value="expire">Expired</option></select></div></div>
     <div class="field"><label>Quantity</label><input id="ar-qty" type="number" min="1" value="1"></div>
@@ -4137,7 +4216,7 @@ function newInvoice(inv){
   invRenderLines();invRecalc();
 }
 function invRenderLines(){
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
   const ed=document.getElementById('in-lines');
   ed.innerHTML=invLines.map((l,ix)=>`<div class="linerow cols-inv"><select data-ili="${ix}"><option value="">Custom / free text…</option>${io}</select><input type="number" min="0" step="1" value="${l.qty}" data-ilq="${ix}" title="Quantity in boxes"><input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="$ ex GST" title="Price per box (ex GST)" data-ilp="${ix}"><div class="ltot" data-ilt="${ix}">${money((l.qty||0)*(l.price||0))}</div><button class="rm" data-ilr="${ix}">${svg(I.x,15)}</button>${l.item?'':`<input placeholder="Description" data-ild="${ix}" value="${esc(l.desc||'')}" style="grid-column:1 / -1">`}</div>`).join('');
   invLines.forEach((l,ix)=>{if(l.item){const s=ed.querySelector(`[data-ili="${ix}"]`);if(s)s.value=l.item;}});
@@ -4607,7 +4686,7 @@ function overlayEl(){return document.getElementById('overlay');}
 function slideover(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim" id="scrim"><div class="panel full ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function modal(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim center" id="scrim"><div class="modal ${cls||''}" role="dialog"><div class="panel-head"><div><h2>${esc(t)}</h2><div class="sub">${esc(s)}</div></div><button class="x" data-close>${svg(I.x,20)}</button></div><div class="panel-body">${b}</div>${f?`<div class="panel-foot">${f}</div>`:''}</div></div>`;showScrim();}
 function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));/* Do NOT close on backdrop click — windows only close via a button (data-close) or after processing, so an accidental click can't wipe entered data. */}
-function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');s.removeAttribute('id');setTimeout(()=>{if(document.getElementById('scrim'))s.remove();else overlayEl().innerHTML='';},180);}
+function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}if(typeof ipClose==='function'&&ipCur)ipClose();const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');s.removeAttribute('id');setTimeout(()=>{if(document.getElementById('scrim'))s.remove();else overlayEl().innerHTML='';},180);}
 let toastT;
 function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
 function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('open',f);document.getElementById('sidebarScrim').classList.toggle('show',f);}
