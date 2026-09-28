@@ -65,6 +65,11 @@
   .nav-item:hover{background:var(--surface-2);color:var(--ink)}
   .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
   .nav-item svg{width:20px;height:20px;flex:none}
+  /* Cash on Hand stands out in the menu */
+  .nav-item[data-route="cash"]{background:var(--warn-soft);color:var(--ink);border:1.5px solid var(--warn);margin:4px 0;font-weight:700}
+  .nav-item[data-route="cash"] svg{color:var(--warn)}
+  .nav-item[data-route="cash"]:hover{background:var(--warn-soft);filter:brightness(.97)}
+  .nav-item[data-route="cash"].active{background:var(--warn);color:#fff;border-color:var(--warn)}.nav-item[data-route="cash"].active svg{color:#fff}
   .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
   .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
   .sq-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
@@ -1703,7 +1708,7 @@ async function cashCentreView(el){
   document.getElementById('cash-bank').onclick=()=>openCashMove(L,'banking');
   document.getElementById('cash-po').onclick=()=>openCashMove(L,'paid_out');
   document.getElementById('cash-in').onclick=()=>openCashMove(L,'cash_in');
-  document.getElementById('cash-refresh').onclick=async()=>{const pos=await cashPos(L);await cashSync(L,pos&&pos.base_at?pos.base_at:null);cashCentreView(el);};
+  document.getElementById('cash-refresh').onclick=async()=>{const pos=await cashPos(L);if(!pos||!pos.sales_from)return toast('Do the first cash count first — cash sales start the day after it.',true);await cashSync(L,new Date(Math.max(+new Date(pos.sales_from),+new Date(pos.base_at||0))));cashCentreView(el);};
   const [pos,sum,moves,days]=await Promise.all([
     cashPos(L),
     sb.rpc('cash_summary',{p_locs:[L],p_from:r.from.toISOString(),p_to:r.to.toISOString()}).then(x=>(x.data||[])[0]||null),
@@ -1717,10 +1722,10 @@ async function cashCentreView(el){
   const last=moves.find(m=>m.kind==='count'&&!m.voided_at);
   const canAdmin=['admin','national_admin','super_admin'].includes(ROLE);
   main.innerHTML=`
-    ${noBase?`<div class="banner warn">${svg(I.alert,17)}<div><b>No starting balance yet.</b> Count the cash in the drawer now: the first count becomes the starting balance, and every later count is checked against Square cash sales.${canAdmin?' Or set an <b>opening balance</b>.':''}</div>${canAdmin?`<button class="btn sm" id="cash-open" style="margin-left:auto">Set opening balance</button>`:''}</div>`:''}
+    ${noBase?`<div class="banner warn">${svg(I.alert,17)}<div><b>No starting balance yet.</b> Count the cash in the drawer now: the first count is the cash on hand at the end of that day. Square cash sales are counted <b>from the next day</b>, and every later count is checked against them.${canAdmin?' Or set an <b>opening balance</b>.':''}</div>${canAdmin?`<button class="btn sm" id="cash-open" style="margin-left:auto">Set opening balance</button>`:''}</div>`:''}
     <div class="tiles" style="margin:12px 0">
       <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Expected cash on hand now</div><div class="val tnum">${noBase?'—':cashMoney(pos.expected)}</div><div class="meta">${noBase?'count the drawer to start':'since '+(pos.base_kind==='opening'?'opening balance':'count')+' on '+fmtCDT(pos.base_at)}</div></div>
-      <div class="tile"><div class="lbl">${svg(I.chart,14)} Cash sales since then</div><div class="val tnum">${noBase?'—':cashMoney(pos.cash_sales)}</div><div class="meta">${noBase?'':'banked '+cashMoney(pos.banked)+' · paid out '+cashMoney(pos.paid_out)+(+pos.cash_in?' · in '+cashMoney(pos.cash_in):'')}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.chart,14)} Cash sales since then</div><div class="val tnum">${noBase?'—':cashMoney(pos.cash_sales)}</div><div class="meta">${noBase?'':(pos.sales_from&&new Date(pos.sales_from)>new Date()?'counted from '+new Date(pos.sales_from).toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' · ':'')+'banked '+cashMoney(pos.banked)+' · paid out '+cashMoney(pos.paid_out)+(+pos.cash_in?' · in '+cashMoney(pos.cash_in):'')}</div></div>
       <div class="tile"><div class="lbl">${svg(I.check,14)} Last count</div><div class="val tnum">${last?cashMoney(last.amount):'—'}</div><div class="meta">${last?fmtCDT(last.occurred_at)+' · '+cashVar(last.variance):'no count yet'}</div></div>
       <div class="tile"><div class="lbl">${svg(I.alert,14)} Short / over · ${esc(CASH_PERIODS.find(p=>p[0]===cashPeriod)[1].toLowerCase())}</div><div class="val tnum">${sum?cashVar(sum.net_variance):'—'}</div><div class="meta">${sum?`${sum.counts} count${sum.counts===1?'':'s'} · short ${money(-(+sum.short_total||0))} · over ${money(+sum.over_total||0)}`:''}</div></div>
     </div>
@@ -1775,12 +1780,12 @@ async function openCashCount(L){
     const{data,error}=await sb.rpc('cash_position',{p_loc:L,p_at:at.toISOString()});if(error){h.textContent=error.message;return;}
     const p=(data||[])[0]||{};first=!p.base_at;expected=first?null:+p.expected;
     document.getElementById('cc-exp').textContent=first?'—':money(expected);
-    h.innerHTML=first?'<b>First count:</b> it becomes the starting balance. Later counts are checked against Square cash sales.':`Since ${p.base_kind==='opening'?'opening balance':'the last count'} (${fmtCDT(p.base_at)}): ${money(+p.base_amount)} + cash sales ${money(+p.cash_sales)}${+p.cash_in?' + cash in '+money(+p.cash_in):''} − banked ${money(+p.banked)} − paid out ${money(+p.paid_out)}.${p.synced_to?' Square cash sales up to '+fmtCDT(p.synced_to)+'.':''}`;
+    h.innerHTML=first?(()=>{const d=new Date(at);d.setDate(d.getDate()+1);return `<b>First count:</b> this is the starting balance (cash on hand at the end of ${at.toLocaleDateString('en-AU',{day:'numeric',month:'short'})}). Square cash sales are counted from <b>${d.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}</b>, and later counts are checked against them.`;})():`Since ${p.base_kind==='opening'?'opening balance':'the last count'} (${fmtCDT(p.base_at)}): ${money(+p.base_amount)} + cash sales${p.sales_from&&new Date(p.sales_from)>new Date(p.base_at)?' from '+new Date(p.sales_from).toLocaleDateString('en-AU',{day:'numeric',month:'short'}):''} ${money(+p.cash_sales)}${+p.cash_in?' + cash in '+money(+p.cash_in):''} − banked ${money(+p.banked)} − paid out ${money(+p.paid_out)}.${p.synced_to?' Square cash sales up to '+fmtCDT(p.synced_to)+'.':''}`;
     document.getElementById('cc-go').disabled=false;upd();};
   document.getElementById('cc-mode').onchange=e=>{const tot=e.target.value==='total';document.getElementById('cc-densec').hidden=tot;document.getElementById('cc-totsec').hidden=!tot;upd();};
   document.querySelectorAll('#scrim input[data-den], #cc-total').forEach(i=>i.addEventListener('input',upd));
   document.getElementById('cc-at').onchange=loadExp;
-  const pos=await cashPos(L);await cashSync(L,pos&&pos.base_at?pos.base_at:null,true);loadExp();
+  const pos=await cashPos(L);if(pos&&pos.sales_from)await cashSync(L,new Date(Math.max(+new Date(pos.sales_from),+new Date(pos.base_at||0))),true);loadExp();
   document.getElementById('cc-go').onclick=()=>{
     const c=Math.round(counted()*100)/100,at=new Date(document.getElementById('cc-at').value),note=document.getElementById('cc-note').value.trim();
     if(isNaN(at))return toast('Choose the date and time of the count',true);
