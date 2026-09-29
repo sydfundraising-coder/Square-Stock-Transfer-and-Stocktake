@@ -3848,7 +3848,7 @@ async function renderPerfCentre(){
   const byYm={};(S.salesMonthly||[]).filter(r=>ids.includes(r.location_id)).forEach(r=>{const a=byYm[r.ym]=byYm[r.ym]||{s:0,o:0,u:0};a.s+=+r.sales||0;a.o+=+r.orders||0;a.u+=+r.units||0;});
   const yms=Object.keys(byYm).sort();
   if(!yms.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No sales data yet for this centre. ${perfCanRefresh()?'Click <b>Refresh sales</b> to pull sales from Square.':'Ask your Admin to run <b>Refresh sales</b>.'}</div></div>`;return;}
-  const cust={};try{const{data}=await sb.rpc('perf_customers_monthly',{p_locs:ids});(data||[]).forEach(r=>{cust[r.ym]={uniq:+r.uniq||0,neu:+r.new_cust||0};});}catch(e){console.error('perf_customers_monthly',e);}
+  const cust={};let custMsg='';try{const{data,error}=await sb.rpc('perf_customers_monthly',{p_locs:ids});if(error)throw error;(data||[]).forEach(r=>{cust[r.ym]={uniq:+r.uniq||0,neu:+r.new_cust||0};});if(!(data||[]).length)custMsg='nodata';}catch(e){console.error('perf_customers_monthly',e);custMsg=/perf_customers_monthly|function|schema cache/i.test(String(e&&e.message||''))?'nofn':'err';}
   const curFy=fyOfYm(yms[yms.length-1]),lastFy=curFy-1;
   const M=FY_MONTHS.map((lbl,i)=>{const yc=fyYm(curFy,i),yl=fyYm(lastFy,i);const c=byYm[yc],l=byYm[yl];
     return {lbl,yc,yl,has:!!c,c:c||{s:0,o:0,u:0},l:l||{s:0,o:0,u:0},hasL:!!l,cc:(cust[yc]||{}).uniq||0,cl:(cust[yl]||{}).uniq||0};});
@@ -3882,7 +3882,7 @@ async function renderPerfCentre(){
     <div class="tiles" style="margin-bottom:12px"><div class="tile"><div class="lbl">${svg(I.box,14)} Items sold · FY${curFy} to date</div><div class="val tnum">${n0(cur.u)}</div><div class="meta">${chg(cur.u,last.u)} vs ${n0(last.u)} same months last year</div></div><div class="tile"><div class="lbl">${svg(I.box,14)} Items sold · FY${lastFy} full year</div><div class="val tnum">${n0(fullLast.u)}</div><div class="meta">for comparison</div></div></div>
     ${chartCard('pc-items','Items sold by month — '+cF+' vs '+lF)}
     ${sh(4,'Customers','Unique customers Square identified, by month')}
-    ${chartCard('pc-cust','Customers by month — '+cF+' vs '+lF)}
+    ${chartCard('pc-cust','Customers by month — '+cF+' vs '+lF)}${custMsg?`<div class="banner warn" style="margin-top:8px">${svg(I.alert,17)}<div>${custMsg==='nofn'?'Customer figures are not set up yet: run migration <b>41</b> in Supabase, then refresh.':custMsg==='nodata'?'No customer data from Square yet for this centre. Customers are counted only when Square links a customer to a sale. After the <b>square-perf</b> update, tap <b>Refresh sales</b> (or ask an Admin) to rebuild the figures.':'Customer figures could not be loaded right now. Try again shortly.'}</div></div>`:''}
     <p style="font-size:11.5px;color:var(--faint);margin-top:6px">Customers are those Square could identify at checkout (mostly by card), so the count is lower than the number of transactions.</p>
     ${sh(5,'Basket size','Per transaction, by month')}
     <div class="grid2" style="align-items:start">${chartCard('pc-bval','Average basket value ($ per transaction)',220)}${chartCard('pc-bqty','Average items per transaction',220)}</div>
