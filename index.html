@@ -942,7 +942,7 @@ function renderRoleChip(prof){
 const NAV=[
   {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
-  {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview',need:'audit.view'},
+  {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview'},
   {id:'perf',label:'Sales & Performance',icon:I.cost,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Purchase Orders',icon:I.order,group:'Operations',badge:()=>incomingCount(),show:()=>canPO()},
@@ -2569,6 +2569,7 @@ async function openTransfer(id){
   // Approval view rows: requesting centre's stock, their 2-month usage, and extra/short vs that need.
   const approvalRows=(t.lines||[]).map(l=>{const it=item(l.item_id);const di=dinfo&&dinfo[l.item_id];const oh=di?di.oh:null;const use2=di?Math.round(di.avg*2):null;const need=use2==null?null:Math.max(0,use2-(oh||0));const delta=need==null?null:(l.qty_requested-need);let dcell='—',dcol='var(--faint)';if(delta!=null){if(delta>0){dcell='+'+delta+' extra';dcol='var(--warn)';}else if(delta<0){dcell=delta+' short';dcol='var(--muted)';}else{dcell='on target';dcol='var(--good)';}}const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum" style="font-weight:600">${l.qty_requested}${pc?`<div style="font-size:10px;color:var(--faint);font-weight:400">${bxTag(l.qty_requested,it)}</div>`:''}</td><td class="num tnum">${oh==null?'—':oh}${pc&&oh?`<div style="font-size:10px;color:var(--faint)">${bxTag(oh,it)}</div>`:''}</td><td class="num tnum">${use2==null?'—':use2}</td><td class="num tnum" style="color:${dcol};font-weight:600">${dcell}</td></tr>`;}).join('');
   let actions='';
+  if(t.status==='cancelled'&&ROLE==='super_admin')actions=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tpurge="${t.id}">${svg(I.x,15)} Delete permanently</button>`;
   const notDisp=t.status==='requested'||t.status==='approved';
   const atSource=!scoped()||mine(t.from_location);
   const editDel=notDisp?`<button class="btn" data-tedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button>`:'';
@@ -2953,6 +2954,7 @@ function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${it.sku}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   let act='';
+  if(o.status==='cancelled'&&ROLE==='super_admin')act=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-opurge="${o.id}">${svg(I.x,15)} Delete permanently</button>`;
   if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
   else if(o.status==='shipped'&&canRecvOrder(o))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
   else if((o.status==='placed'||o.status==='shipped')&&scoped()&&!mine(o.location_id))act=`<span class="lock">${svg(I.lock,14)} ${loc(o.location_id).code} receives</span>`;
@@ -4735,6 +4737,8 @@ document.addEventListener('click',e=>{
   const tsu=e.target.closest('[data-tsubmit]');if(tsu){doSubmitDraft(tsu.dataset.tsubmit);return;}
   const acn=e.target.closest('[data-addcn]');if(acn){newConsignment(null,acn.dataset.addcn);return;}
   const pp=e.target.closest('[data-print]');if(pp){const t=S.transfers.find(x=>x.id===pp.dataset.print);if(t)printPickList(t);return;}
+  const tpg=e.target.closest('[data-tpurge]');if(tpg){const id=tpg.dataset.tpurge;const t=S.transfers.find(x=>x.id===id);stackConfirm('Delete this cancelled transfer?',t?t.code:'','<p>It will be removed permanently, with its lines and history. Stock is not affected. This cannot be undone.</p>',{okLabel:'Delete permanently',danger:true,onOk:()=>callRpc('delete_cancelled_transfer',{p_id:id},'Cancelled transfer deleted')});return;}
+  const opg=e.target.closest('[data-opurge]');if(opg){const id=opg.dataset.opurge;const o=(S.orders||[]).find(x=>x.id===id);stackConfirm('Delete this cancelled purchase order?',o?o.code:'','<p>It will be removed permanently with its lines. Stock is not affected. This cannot be undone.</p>',{okLabel:'Delete permanently',danger:true,onOk:()=>callRpc('delete_cancelled_order',{p_id:id},'Cancelled purchase order deleted')});return;}
   const dsp=e.target.closest('[data-dispatch]');if(dsp){const id=dsp.dataset.dispatch;stackConfirm('Dispatch this transfer?','Confirm the freight company has collected it',`<p>The transfer moves to <b>In transit</b> and the receiving centre is told it is on its way.</p>`,{okLabel:'Dispatch',onOk:()=>doDispatch(id)});return;}
   const fb=e.target.closest('[data-freight]');if(fb){openFreightBooking(fb.dataset.freight);return;}
   const unp=e.target.closest('[data-unpick]');if(unp){const id=unp.dataset.unpick;const t=S.transfers.find(x=>x.id===id);stackConfirm('Cancel this picked transfer?',t?t.code:'',`<p>The picked stock goes <b>back into ${t?esc(loc(t.from_location).name):'the sending site'}'s stock</b>. Put the items back on the shelf and check their store area.</p>`,{okLabel:'Cancel transfer',danger:true,onOk:()=>callRpc('cancel_transfer',{p_id:id},'Cancelled — picked stock returned',t?{location_id:t.from_location,item_ids:txItems(t)}:null)});return;}
