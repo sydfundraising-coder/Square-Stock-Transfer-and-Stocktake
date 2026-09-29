@@ -578,14 +578,23 @@ function parseCSV(text){
 function itemBySku(){const m={};S.items.forEach(it=>{if(it.sku)m[String(it.sku).trim().toLowerCase()]=it.id;});return m;}
 function readTemplate(file,needCost,cb){
   if(!file)return;const r=new FileReader();
-  r.onload=()=>{const rows=parseCSV(r.result);if(rows.length<2){toast('That file looks empty',true);return;}
-    const h=rows[0].map(x=>String(x).trim().toLowerCase());
-    const ci=h.indexOf('product code'),qi=h.indexOf('quantity'),ki=h.indexOf('unit cost');
-    if(ci<0||qi<0){toast('Template needs Product Code and Quantity columns',true);return;}
-    const map=itemBySku();const out=[];let miss=0;
-    for(let n=1;n<rows.length;n++){const row=rows[n];if(!row||!row[ci])continue;const qty=parseInt(row[qi],10);if(!qty||qty<=0)continue;const id=map[String(row[ci]).trim().toLowerCase()];if(!id){miss++;continue;}const o={item:id,qty};if(needCost)o.cost=ki>=0&&row[ki]!==''?Math.max(0,parseFloat(row[ki])||0):item(id).unit_cost;out.push(o);}
-    if(!out.length){toast('No quantities found to import',true);return;}
-    cb(out);toast(`Loaded ${out.length} item(s)`+(miss?`, ${miss} code(s) not found`:''));};
+  r.onload=()=>{const rows=parseCSV(r.result).filter(x=>x&&x.some(c=>String(c||'').trim()));if(rows.length<2){toast('That file looks empty',true);return;}
+    // header names are matched loosely, ignoring case, spaces, units in brackets and the byte-order mark Excel adds
+    const norm=x=>String(x||'').replace(/^\ufeff/,'').toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z]/g,'');
+    const h=rows[0].map(norm);const col=(...names)=>h.findIndex(x=>names.includes(x));
+    const ci=col('productcode','code','sku','stockcode','itemcode'),qi=col('quantity','qty','boxes','quantityboxes','orderboxes'),ki=col('unitcost','cost','costperpacket','unitcostperpacket');
+    if(ci<0||qi<0){toast('The file needs a "Product Code" column and a "Quantity (boxes)" column. Download the template again and fill in the Quantity column.',true);return;}
+    const map=itemBySku();const out=[];const missing=[],noPack=[],inactive=[];
+    for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim();if(!code)continue;
+      const qty=Math.round(parseFloat(String(row[qi]||'').replace(/,/g,''))||0);if(!(qty>0))continue;
+      const id=map[code.toLowerCase()];if(!id){missing.push(code);continue;}
+      const it=item(id);if(it.active===false){inactive.push(code);continue;}if(!hasPpc(it)){noPack.push(code+' '+it.name);continue;}
+      const o={item:id,qty};if(needCost)o.cost=ki>=0&&String(row[ki]||'').trim()!==''?Math.max(0,parseFloat(String(row[ki]).replace(/[$,]/g,''))||0):it.unit_cost;out.push(o);}
+    const notes=[];if(missing.length)notes.push(missing.length+' code(s) not found ('+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+')');
+    if(noPack.length)notes.push(noPack.length+' item(s) skipped: no pack size set ('+noPack.slice(0,2).join(', ')+(noPack.length>2?'…':'')+')');
+    if(inactive.length)notes.push(inactive.length+' inactive item(s) skipped');
+    if(!out.length){toast('No quantities found to import'+(notes.length?' — '+notes.join('; '):'. Enter the number of boxes in the Quantity (boxes) column.'),true);return;}
+    cb(out);toast(`Loaded ${out.length} item(s)`+(notes.length?' — '+notes.join('; '):''),notes.length>0);};
   r.readAsText(file);
 }
 
@@ -2794,7 +2803,12 @@ function newTransfer(presetItem){
     else toast('Added '+add.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
-  document.getElementById('dlT').onclick=()=>downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Quantity (boxes)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'']));
+  document.getElementById('dlT').onclick=()=>{const fromV=(document.getElementById('tf-from')||{}).value;const fl=fromV?loc(fromV):null;
+    const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
+    const items=S.items.filter(i=>i.active!==false).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
+    downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
+      items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',hasPpc(i)?'':'No pack size set - cannot be transferred until a National Admin sets it'];}));
+    toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();});
   document.getElementById('go').onclick=submitTransfer;
@@ -2986,7 +3000,7 @@ function newOrder(o){
   restrictLocSelect('po-loc');
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
-  document.getElementById('dlO').onclick=()=>downloadCSV('supplier-order-template.csv',['Product Code','Item Name','Category','Quantity (boxes)','Unit Cost (per packet)'],S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>[i.sku,i.name,i.category,'',i.unit_cost]));
+  document.getElementById('dlO').onclick=()=>{const items=S.items.filter(i=>i.active!==false).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadCSV('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();});
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
