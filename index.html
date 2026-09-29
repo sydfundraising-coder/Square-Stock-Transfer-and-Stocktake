@@ -2604,7 +2604,7 @@ function doDeleteTransfer(id){const t=S.transfers.find(x=>x.id===id);if(!window.
 function openEditTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   dLines=(t.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested}));
-  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  const opts=tfFromLocs().map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Fixed once a request is submitted</span></div><div class="grid2"><div class="field"><label>From</label><select id="tf-from" disabled>${opts}</select></div><div class="field"><label>To</label><select id="tf-to" disabled>${opts}</select></div></div></section>
     <section class="sec tray field"><div class="sec-h"><h3>Items to transfer</h3><span class="tray-count" id="ed-count"></span><span class="sec-hint">Quantities in whole boxes</span></div>
       <div class="lines-scroll"><div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
@@ -2751,12 +2751,16 @@ async function loadTfDest(locId){
 }
 const destOH=(to,id)=>(tfDest.loc===to&&tfDest.onhand[id]!=null)?tfDest.onhand[id]:onHand(to,id);
 let tfDraftId=null;
+/* Where a transfer can come FROM: centre staff can only request from the Central Warehouse.
+   Central Warehouse staff, National Admins and the Super Admin can choose any site. */
+function tfFromLocs(){const act=S.locations.filter(l=>l.active!==false);if(!scoped())return act;
+  const hubs=act.filter(l=>l.is_hub);if(hubs.some(h=>mine(h.id)))return act;return hubs.length?hubs:act;}
 function newTransfer(presetItem){
   const draft=(presetItem&&typeof presetItem==='object'&&presetItem.id)?presetItem:null;
   const pre=(presetItem&&typeof presetItem==='object'&&presetItem.prefill)?presetItem:null;
   tfDraftId=draft?draft.id:null;tfUploaded=!!(draft||pre); // draft/auto-filled → check at submit, not per line
   dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
-  const opts=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  const opts=tfFromLocs().map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
   const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
   if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
