@@ -1566,6 +1566,7 @@ const HELP={"topics":[{"id":"h0","section":"Getting started","title":"Sign in","
 HELP.topics.push(
  {id:'hs1',section:'Sales',title:'Sales dashboard',intro:'Operations → <b>Sales</b> shows invoice sales at a glance (Super Admin only).',steps:['Tiles show invoiced this month and FY, received this month, outstanding, overdue and drafts — click a tile to jump to the detail.','The chart compares invoiced with received for the last 12 months; the doughnut splits what is owed by age.','Click a customer or invoice in any list to open it.'],tip:'The red number on the Sales menu is the count of overdue invoices.',warn:'',ctx:['route:sales'],roles:['national_admin']},
  {id:'hs2',section:'Sales',title:'Create an invoice and record payments',intro:'The <b>Create Invoice</b> tab lists every invoice with its due date and balance.',steps:['Click <b>Create invoice</b>, choose the customer (or type a new one — it is saved as a customer), add items in boxes at a price per box, then <b>Save &amp; issue</b>.','Open an issued invoice and click <b>Record payment</b>. Part payments are fine; it becomes Paid when the balance is zero.','A payment entered by mistake can be voided from the invoice (a reason is required).'],tip:'Filter by <b>Overdue</b> to chase late payers.',warn:'An invoice with payments cannot be voided until its payments are voided.',ctx:['route:sales'],roles:['national_admin']},
+ {id:'hs6',section:'Sales',title:'Credit notes (returns, expired, short supply)',intro:'Raise a credit note against an issued invoice from <b>Sales → Credit Notes</b>, or open the invoice and click <b>Credit note</b>.',steps:['Choose the invoice and the centre issuing the credit, then enter the boxes to credit on each line and pick a reason.','<b>Stock return</b> adds the boxes back into that centre’s stock (enter a best-before date if you know it). <b>Expired</b> or <b>damaged</b> returns are written off at that centre and are not added to sellable stock.','<b>Short supply</b> puts the boxes back at the invoice’s centre only if the invoice deducted stock. <b>Pricing / other</b> credits money only — lower the price per box for a pricing credit.','The credit reduces the invoice balance; if the invoice was already paid, the customer is left in credit. Download or email the credit note from its window.'],tip:'Every change is pushed to Square and shows in the item history.',warn:'Voiding a credit note reverses its stock changes. An invoice with credit notes cannot be voided until they are voided.',ctx:['route:sales'],roles:['national_admin']},
  {id:'hs3',section:'Sales',title:'Customers',intro:'The <b>Customers</b> tab lists saved customers with invoices, balance and overdue amounts.',steps:['Click <b>Add new customer</b> to add one before invoicing.','<b>Statement</b> makes a statement for that customer; <b>Transactions</b> shows their full history.','Edit or remove a customer — removed customers keep their invoices and history.'],tip:'',warn:'',ctx:['route:sales'],roles:['national_admin']},
  {id:'hs4',section:'Sales',title:'Customer statements',intro:'Monthly statements are generated automatically on the last working day (Mon–Fri) of each month for every customer with activity or a balance.',steps:['Click <b>Generate statement</b> to make a custom one: pick the customer and period (or a quick period).','Click any statement to view it, <b>Download PDF</b>, <b>Email</b> it or delete it.','<b>Generate monthly now</b> makes or refreshes a month’s statements; <b>Email unsent</b> sends every unsent statement in the list to the customer’s saved email.'],tip:'Public holidays are not skipped when working out the last working day.',warn:'',ctx:['route:sales'],roles:['national_admin']},
  {id:'hs5',section:'Sales',title:'Ageing and transactions',intro:'<b>Ageing</b> shows what each customer owes split into Current, 1–30, 31–60, 61–90 and 90+ days past the due date.',steps:['Change <b>Balances as at</b> to see ageing on an earlier date. Export to CSV or Excel.','Click a customer to open <b>Transactions</b>, which lists invoices and payments with a running balance.','In Transactions, search by invoice number, reference or amount and filter by date or type.'],tip:'',warn:'',ctx:['route:sales'],roles:['national_admin']}
@@ -4156,7 +4157,11 @@ const INVST={draft:{l:'Draft',c:'p-draft'},issued:{l:'Issued',c:'p-req'},paid:{l
 const invPill=s=>`<span class="pill ${(INVST[s]||{c:'p-draft'}).c}">${(INVST[s]||{l:s}).l}</span>`;
 /* ---------------- Sales area: dashboard · create invoice · customers · statements · ageing · transactions ---------------- */
 let salesTab='dash',invPayments=[],invStatements=[],slAllCust=[],slCust='',slTxQ='',slTxFrom='',slTxTo='',slTxType='all',slStCust='',slStKind='all',invSearch='',slCustQ='',slAgeAsOf='',slAgeRows=[];
-const SALES_TABS=[['dash','Dashboard',I.chart],['invoice','Create Invoice',I.cost],['customers','Customers',I.users],['statements','Customer Statements',I.receipt],['ageing','Ageing',I.alert],['tx','Transactions',I.search]];
+let invCredits=[],cnSearch='',cnFilter='all',cnDraft=null;
+const CN_REASONS=[['return','Stock return (resaleable)'],['expired','Expired stock returned'],['damaged','Damaged stock returned'],['short','Short supply (not delivered)'],['price','Pricing error / discount'],['other','Other']];
+const cnReasonLabel=r=>(CN_REASONS.find(x=>x[0]===r)||[r,r||'—'])[1];
+const CN_STOCK=['return','expired','damaged','short'];
+const SALES_TABS=[['dash','Dashboard',I.chart],['invoice','Create Invoice',I.cost],['credits','Credit Notes',I.sync],['customers','Customers',I.users],['statements','Customer Statements',I.receipt],['ageing','Ageing',I.alert],['tx','Transactions',I.search]];
 const PAY_METHODS=[['bank','Bank transfer'],['card','Card'],['cash','Cash'],['cheque','Cheque'],['other','Other']];
 const payMethodLabel=m=>(PAY_METHODS.find(p=>p[0]===m)||[m,m||'—'])[1];
 const d10=d=>String(d||'').slice(0,10);
@@ -4166,8 +4171,11 @@ const slToday=()=>slYmd(new Date());
 function fyStartOf(ds){const d=new Date(ds+'T00:00:00');const y=d.getMonth()>=6?d.getFullYear():d.getFullYear()-1;return y+'-07-01';}
 function slLastWorkingDay(y,m){const d=new Date(y,m+1,0);while(d.getDay()===0||d.getDay()===6)d.setDate(d.getDate()-1);return d;}
 function slNextStatementRun(){const n=new Date();let d=slLastWorkingDay(n.getFullYear(),n.getMonth());if(slYmd(d)<slYmd(n))d=slLastWorkingDay(n.getFullYear(),n.getMonth()+1);return slYmd(d);}
-function invPaid(inv){if(!inv)return 0;const ps=invPayments.filter(p=>p.invoice_id===inv.id&&!p.voided_at);if(!ps.length&&inv.status==='paid')return +inv.total||0;return r2(ps.reduce((s,p)=>s+(+p.amount||0),0));}
-function invBal(inv){if(!inv||!['issued','paid'].includes(inv.status))return 0;return Math.max(0,r2((+inv.total||0)-invPaid(inv)));}
+function invCredited(inv){if(!inv)return 0;return r2(invCredits.filter(c=>c.invoice_id===inv.id&&c.status==='issued').reduce((s,c)=>s+(+c.total||0),0));}
+function invPaid(inv){if(!inv)return 0;const ps=invPayments.filter(p=>p.invoice_id===inv.id&&!p.voided_at);if(!ps.length&&inv.status==='paid')return Math.max(0,r2((+inv.total||0)-invCredited(inv)));return r2(ps.reduce((s,p)=>s+(+p.amount||0),0));}
+/* raw balance can be negative (customer in credit after a credit note on a paid invoice) */
+function invRawBal(inv){if(!inv||!['issued','paid'].includes(inv.status))return 0;return r2((+inv.total||0)-invPaid(inv)-invCredited(inv));}
+function invBal(inv){return Math.max(0,invRawBal(inv));}
 function invDue(inv){return d10(inv.due_date||inv.issue_date);}
 function invOverdueDays(inv,asof){if(invBal(inv)<=0.004)return 0;const a=new Date((asof||slToday())+'T00:00:00'),d=new Date(invDue(inv)+'T00:00:00');return Math.max(0,Math.round((a-d)/864e5));}
 const custById=id=>id?(slAllCust.find(c=>c.id===id)||invCustomers.find(c=>c.id===id)):null;
@@ -4177,13 +4185,15 @@ function ageBuckets(invs,asof){const b={current:0,d30:0,d60:0,d90:0,d90p:0,total
 function salesOverdueCount(){const t=slToday();return (S.invoices||[]).filter(i=>i.status==='issued'&&invDue(i)<t).length;}
 const slOdTag=inv=>{const n=invOverdueDays(inv);return n>0?` <span style="font-size:11px;font-weight:700;color:var(--crit);white-space:nowrap">${n}d overdue</span>`:'';};
 async function loadSalesData(){
-  const[inv,cust,setg,pay,stm]=await Promise.all([
+  const[inv,cust,setg,pay,stm,crd]=await Promise.all([
     sb.from('invoices').select('*, lines:invoice_lines(*)').order('created_at',{ascending:false}),
     sb.from('customers').select('*').order('name'),
     sb.from('invoice_settings').select('*').eq('id',1).maybeSingle(),
     sb.from('invoice_payments').select('*').order('paid_on',{ascending:false}),
-    sb.from('customer_statements').select('id,code,customer_id,period_start,period_end,kind,opening,invoiced,received,closing,generated_at,emailed_at,emailed_to').order('period_end',{ascending:false}).order('generated_at',{ascending:false}).limit(2000)
+    sb.from('customer_statements').select('id,code,customer_id,period_start,period_end,kind,opening,invoiced,received,closing,generated_at,emailed_at,emailed_to').order('period_end',{ascending:false}).order('generated_at',{ascending:false}).limit(2000),
+    sb.from('credit_notes').select('*, lines:credit_note_lines(*)').order('created_at',{ascending:false})
   ]);
+  invCredits=crd.error?[]:(crd.data||[]);window._creditsSetupMissing=!!crd.error;
   invList=inv.data||[];slAllCust=cust.data||[];invCustomers=slAllCust.filter(c=>c.active!==false);invSettings=setg.data||{};
   invPayments=pay.error?[]:(pay.data||[]);invStatements=stm.error?[]:(stm.data||[]);
   window._salesSetupMissing=!!(pay.error||stm.error);window._slLoaded=true;
@@ -4203,8 +4213,9 @@ async function vSales(v){
 function slSetTab(t){salesTab=t;document.querySelectorAll('[data-sltab]').forEach(x=>x.classList.toggle('active',x.dataset.sltab===t));renderSalesTab();}
 function renderSalesTab(){
   const el=document.getElementById('sl-body');if(!el)return;destroyCharts();
-  const warn=window._salesSetupMissing?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div>Run <b>49_sales_ledger.sql</b> in Supabase to turn on payments, statements and ageing.</div></div>`:'';
-  ({dash:slDash,invoice:slInvoices,customers:slCustomers,statements:slStatements,ageing:slAgeing,tx:slTx}[salesTab]||slDash)(el,warn);
+  const warn=window._salesSetupMissing?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div>Run <b>49_sales_ledger.sql</b> and <b>50_credit_notes.sql</b> in Supabase to turn on payments, credit notes, statements and ageing.</div></div>`:
+    window._creditsSetupMissing?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div>Run <b>50_credit_notes.sql</b> in Supabase to turn on credit notes.</div></div>`:'';
+  ({dash:slDash,invoice:slInvoices,credits:slCredits,customers:slCustomers,statements:slStatements,ageing:slAgeing,tx:slTx}[salesTab]||slDash)(el,warn);
 }
 const slTile=(lbl,val,meta,go,cls)=>`<div class="tile ${cls||''}"${go?` data-slgo="${go}" style="cursor:pointer"`:''}><div class="lbl">${lbl}</div><div class="val tnum">${val}</div>${meta?`<div class="meta">${meta}</div>`:''}</div>`;
 function slBindGo(el){el.querySelectorAll('[data-slgo]').forEach(b=>b.onclick=()=>{const[t,f]=b.dataset.slgo.split(':');if(t==='invoice'&&f)invFilter=f;slSetTab(t);});}
@@ -4235,6 +4246,7 @@ function slDash(el,warn){
     ${slTile(svg(I.receipt,14)+' Outstanding',money0(outst),open.length+' open invoice'+(open.length===1?'':'s'),'ageing')}
     ${slTile(svg(I.alert,14)+' Overdue',money0(odAmt),od.length+' invoice'+(od.length===1?'':'s')+' past due','invoice:overdue',odAmt>0?'crit':'')}
     ${slTile(svg(I.order,14)+' Drafts',String(drafts.length),drafts.length?'not yet issued':'none waiting','invoice:draft')}
+    ${(()=>{const cm=invCredits.filter(c=>c.status==='issued'&&d10(c.issue_date).slice(0,7)===mk);return slTile(svg(I.sync,14)+' Credit notes this month',money0(sum(cm,c=>c.total)),cm.length+' credit note'+(cm.length===1?'':'s'),'credits');})()}
   </div>
   <div class="grid2" style="align-items:start">
     <div class="card pad chart-card"><h3>Invoiced vs received · last 12 months</h3><div class="chart-box"><canvas id="sl-ch-month"></canvas></div></div>
@@ -4262,10 +4274,199 @@ function slInvoices(el,warn){
   document.getElementById('in-set').onclick=invoiceSettingsForm;
   renderInvList();
 }
+/* ---- Credit notes ---- */
+const cnReasonsText=c=>[...new Set((c.lines||[]).map(l=>cnReasonLabel(l.reason)))].join(', ')||(c.reason||'—');
+function cnEffectText(l){const L=id=>id?(loc(id).name||loc(id).code||''):'';const bx=' ('+(+l.qty)+' box'+(+l.qty===1?'':'es')+')';
+  return l.stock_effect==='returned'?'Added back to stock at '+L(l.stock_location)+bx:l.stock_effect==='restored'?'Put back at '+L(l.stock_location)+' — short supply'+bx:l.stock_effect==='written_off'?'Written off as '+(l.reason==='expired'?'expired':'damaged')+' at '+L(l.stock_location)+bx+' — not added to stock':'No stock change';}
+function cnInvName(c){const i=invList.find(x=>x.id===c.invoice_id);return i?invCustName(i):'—';}
+function cnPrevOnLine(ilId){let amt=0,qty=0;invCredits.filter(c=>c.status==='issued').forEach(c=>(c.lines||[]).forEach(l=>{if(l.invoice_line_id===ilId){amt+=+l.line_total||0;if(CN_STOCK.includes(l.reason))qty+=+l.qty||0;}}));return{amt:r2(amt),qty};}
+function slCredits(el,warn){
+  el.innerHTML=`${warn}<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.sync,17)}<div>Credit notes against issued invoices. <b>Stock returns</b> go back into the issuing centre's stock; <b>expired or damaged</b> returns are written off; <b>short supply</b> puts stock back only if the invoice deducted it.</div></div>
+    <div class="rep-actions no-print"><input class="filter" id="cn-q" placeholder="Search credit note, invoice, customer" value="${esc(cnSearch)}" style="min-width:210px"><select class="filter" id="cn-f"><option value="all">All</option><option value="issued">Issued</option><option value="void">Void</option></select><button class="btn" id="cn-csv">Export CSV</button><button class="btn primary" id="cn-new">${svg(I.plus,15)} Create credit note</button></div></div>
+    <div id="cn-list"></div>`;
+  const f=document.getElementById('cn-f');f.value=cnFilter;f.onchange=e=>{cnFilter=e.target.value;slCnList();};
+  document.getElementById('cn-q').oninput=e=>{cnSearch=e.target.value;slCnList();};
+  document.getElementById('cn-new').onclick=()=>creditNoteForm(null);
+  document.getElementById('cn-csv').onclick=()=>downloadCSV('credit_notes_'+slToday()+'.csv',['Credit note','Date','Invoice','Customer','Centre','Reasons','Subtotal','GST','Total','Status'],slCnFiltered().map(c=>{const i=invList.find(x=>x.id===c.invoice_id)||{};return[c.code,d10(c.issue_date),i.code||'',cnInvName(c),loc(c.location_id).code||'',cnReasonsText(c),(+c.subtotal||0).toFixed(2),(+c.gst||0).toFixed(2),(+c.total||0).toFixed(2),c.status];}));
+  slCnList();
+}
+function slCnFiltered(){const q=cnSearch.trim().toLowerCase();return invCredits.filter(c=>(cnFilter==='all'||c.status===cnFilter)&&(!q||[c.code,(invList.find(x=>x.id===c.invoice_id)||{}).code,cnInvName(c),c.reason,c.notes,String(c.total)].some(x=>String(x||'').toLowerCase().includes(q))));}
+function slCnList(){
+  const el=document.getElementById('cn-list');if(!el)return;const rows=slCnFiltered();
+  const tot=r2(rows.filter(c=>c.status==='issued').reduce((s,c)=>s+(+c.total||0),0));
+  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} credit note${rows.length===1?'':'s'} · ${money(tot)} credited</div><div class="tablewrap"><table><thead><tr><th>Credit note</th><th>Date</th><th>Invoice</th><th>Customer</th><th>Centre</th><th>Reason</th><th>Status</th><th class="num">Total</th></tr></thead><tbody>${rows.map(c=>{const i=invList.find(x=>x.id===c.invoice_id)||{};return `<tr class="clickable" data-cn="${c.id}" style="${c.status==='void'?'opacity:.6':''}"><td class="mono">${esc(c.code)}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(c.issue_date)}</td><td class="mono">${esc(i.code||'—')}</td><td>${esc(cnInvName(c))}</td><td>${esc(loc(c.location_id).code||'')}</td><td style="font-size:12.5px">${esc(cnReasonsText(c))}</td><td>${c.status==='void'?'<span class="pill p-cancel">Void</span>':'<span class="pill p-done">Issued</span>'}</td><td class="num tnum" style="font-weight:700">${money(c.total)}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.sync,34)}<div>No credit notes${cnSearch||cnFilter!=='all'?' match':' yet'}. Click <b>Create credit note</b>, or open an invoice and choose <b>Credit note</b>.</div></div>`;
+  el.querySelectorAll('[data-cn]').forEach(r=>r.onclick=()=>openCreditNote(r.dataset.cn));
+}
+function creditNoteForm(invId){
+  if(window._creditsSetupMissing)return toast('Run 50_credit_notes.sql in Supabase first',true);
+  const left=i=>r2((+i.total||0)-invCredited(i));
+  const elig=invList.filter(i=>(i.status==='issued'||i.status==='paid')&&left(i)>0.004);
+  const inv=invId?invList.find(i=>i.id===invId):null;
+  if(invId&&!inv)return toast('Invoice not found',true);
+  if(inv&&left(inv)<=0.004)return toast(inv.code+' is already fully credited',true);
+  const locs=S.locations.filter(l=>l.invoice_enabled);
+  if(!locs.length)return toast('No invoice-enabled centre',true);
+  cnDraft={inv:null,lines:[]};
+  const invOpts=`<option value="">Choose an invoice…</option>`+elig.map(i=>`<option value="${i.id}">${esc(i.code)} · ${esc(invCustName(i))} · ${fmtDate(i.issue_date)} · ${money(i.total)}${i.status==='paid'?' (paid)':''}</option>`).join('');
+  const body=`<section class="sec"><div class="sec-h"><h3>Invoice</h3><span class="sec-hint">A credit note is always raised against an issued invoice</span></div>
+      <div class="field"><label>Original invoice *</label><select id="cn-inv">${invOpts}</select></div>
+      <div class="grid2"><div class="field"><label>Issue from (centre) *</label><select id="cn-loc">${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div><div class="field"><label>Credit note date *</label><input type="date" id="cn-date" value="${slToday()}" max="${slToday()}"></div></div>
+      <div class="grid2"><div class="field"><label>Reason (sets every line)</label><select id="cn-reason">${CN_REASONS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select></div><div class="field"><label>Notes</label><input id="cn-notes" placeholder="e.g. customer return ref, driver note"></div></div>
+      <div style="font-size:12.5px;color:var(--muted)">Returned stock is added back at the centre chosen above. Expired or damaged returns are recorded as a write-off there (at cost) and are not added to sellable stock. Short supply puts the boxes back at the invoice's centre, but only if the invoice deducted stock.</div></section>
+    <section class="sec tray field"><div class="sec-h"><h3>Lines to credit</h3><span class="sec-hint">Whole boxes for stock; lower the price per box for a pricing credit</span></div><div id="cn-lines"></div></section>
+    <div class="banner info" id="cn-tot"></div>`;
+  modal('Create credit note','Credit / adjustment note against an invoice',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cn-save">${svg(I.check,16)} Issue credit note</button>`,'full form');
+  const selI=document.getElementById('cn-inv');
+  selI.onchange=()=>cnSetInvoice(selI.value);
+  document.getElementById('cn-reason').onchange=e=>{cnDraft.lines.forEach(l=>l.reason=e.target.value);cnRenderLines();};
+  document.getElementById('cn-loc').onchange=()=>cnDraft.lines.forEach((l,ix)=>cnEffect(ix));
+  document.getElementById('cn-save').onclick=saveCreditNote;
+  if(inv)selI.value=inv.id;
+  cnSetInvoice(inv?inv.id:'');
+}
+function cnSetInvoice(id){
+  const inv=invList.find(i=>i.id===id)||null;cnDraft.inv=inv;
+  const r=document.getElementById('cn-reason').value;
+  cnDraft.lines=inv?(inv.lines||[]).map(il=>({il,qty:0,price:+il.unit_price||0,reason:r,expiry:''})):[];
+  if(inv){const ls=document.getElementById('cn-loc');if([...ls.options].some(o=>o.value===inv.location_id))ls.value=inv.location_id;}
+  cnRenderLines();
+}
+function cnRenderLines(){
+  const el=document.getElementById('cn-lines');if(!el)return;const inv=cnDraft.inv;
+  if(!inv){el.innerHTML=`<div style="color:var(--faint);font-size:13px;padding:6px 0">Choose an invoice first.</div>`;cnRecalc();return;}
+  el.innerHTML=`<div class="lines-scroll"><table style="min-width:820px"><thead><tr><th>Item</th><th class="num">Invoiced</th><th class="num">Left to credit</th><th class="num">Boxes</th><th class="num">Price / box</th><th>Reason</th><th>Best before</th><th class="num">Amount</th></tr></thead><tbody>${cnDraft.lines.map((l,ix)=>{const p=cnPrevOnLine(l.il.id);const leftQ=Math.max(0,(+l.il.qty||0)-p.qty),leftA=Math.max(0,r2((+l.il.line_total||0)-p.amt));const name=l.il.description||(l.il.item_id?item(l.il.item_id).name:'—');
+    return `<tr><td><b>${esc(name)}</b>${!l.il.item_id?'<div style="font-size:11px;color:var(--faint)">free-text line — no stock</div>':''}<div style="font-size:11.5px;font-weight:600" data-cneff="${ix}"></div></td><td class="num tnum" style="white-space:nowrap">${+l.il.qty} × ${money(l.il.unit_price)}</td><td class="num tnum" style="font-size:12px;white-space:nowrap">${leftQ} box${leftQ===1?'':'es'}<div style="color:var(--faint)">${money(leftA)}</div></td><td class="num"><input type="number" min="0" step="1" style="width:78px" data-cnq="${ix}" value="${l.qty||''}" placeholder="0"></td><td class="num"><input type="number" min="0" step="0.01" style="width:92px" data-cnp="${ix}" value="${l.price}"></td><td><select data-cnr="${ix}">${CN_REASONS.map(([v,t])=>`<option value="${v}"${v===l.reason?' selected':''}>${t}</option>`).join('')}</select></td><td>${l.reason==='return'&&l.il.item_id?`<input type="date" data-cne="${ix}" value="${l.expiry||''}" title="Best-before of the returned stock (optional)">`:'<span style="color:var(--faint)">—</span>'}</td><td class="num tnum" data-cnt="${ix}">${money((l.qty||0)*(l.price||0))}</td></tr>`;}).join('')}</tbody></table></div>`;
+  el.querySelectorAll('[data-cnq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.cnq;cnDraft.lines[ix].qty=Math.max(0,+e.target.value||0);cnLineTot(ix);cnEffect(ix);cnRecalc();});
+  el.querySelectorAll('[data-cnp]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.cnp;cnDraft.lines[ix].price=Math.max(0,+e.target.value||0);cnLineTot(ix);cnRecalc();});
+  el.querySelectorAll('[data-cnr]').forEach(s=>s.onchange=e=>{cnDraft.lines[+e.target.dataset.cnr].reason=e.target.value;cnRenderLines();});
+  el.querySelectorAll('[data-cne]').forEach(s=>s.onchange=e=>{cnDraft.lines[+e.target.dataset.cne].expiry=e.target.value;});
+  cnDraft.lines.forEach((l,ix)=>cnEffect(ix));cnRecalc();
+}
+function cnLineTot(ix){const el=document.querySelector(`[data-cnt="${ix}"]`);const l=cnDraft.lines[ix];if(el)el.textContent=money((l.qty||0)*(l.price||0));}
+function cnEffectPreview(l){
+  const inv=cnDraft.inv,q=+l.qty||0;if(!q)return['',''];const bx=q+' box'+(q===1?'':'es');
+  const at=(document.getElementById('cn-loc')||{}).value;const atName=at?loc(at).name:'';
+  if(!l.il.item_id||!CN_STOCK.includes(l.reason))return['→ money only, no stock change','var(--muted)'];
+  if(l.reason==='return')return['→ '+bx+' added back to '+atName+' stock','var(--ok,#2E8C85)'];
+  if(l.reason==='short')return inv.stock_reduced?['→ '+bx+' put back at '+loc(inv.location_id).name+' (the invoice deducted stock)','var(--ok,#2E8C85)']:['→ no stock change (the invoice did not deduct stock)','var(--muted)'];
+  return['→ '+bx+' written off as '+(l.reason==='expired'?'expired':'damaged')+' at '+atName+' — not added to stock','var(--crit)'];
+}
+function cnEffect(ix){const el=document.querySelector(`[data-cneff="${ix}"]`);if(!el)return;const[t,c]=cnEffectPreview(cnDraft.lines[ix]);el.textContent=t;el.style.color=c;}
+function cnTotals(){const inv=cnDraft.inv||{};const sub=r2(cnDraft.lines.reduce((s,l)=>s+r2((+l.qty||0)*(+l.price||0)),0));const rate=+inv.gst_rate||10;const gst=r2(sub*rate/100);return{sub,gst,rate,total:r2(sub+gst)};}
+function cnRecalc(){
+  const el=document.getElementById('cn-tot');if(!el)return;const inv=cnDraft.inv;
+  if(!inv){el.innerHTML=`${svg(I.info,17)}<div>Choose the invoice to credit.</div>`;return;}
+  const t=cnTotals(),after=r2(invRawBal(inv)-t.total);
+  el.innerHTML=`${svg(I.cost,17)}<div style="display:grid;gap:2px;width:100%"><div style="display:flex;justify-content:space-between"><span>Subtotal (ex GST)</span><span class="tnum">${money(t.sub)}</span></div><div style="display:flex;justify-content:space-between"><span>GST (${t.rate}%)</span><span class="tnum">${money(t.gst)}</span></div><div style="display:flex;justify-content:space-between;font-weight:800;border-top:1px solid var(--border);padding-top:4px;margin-top:2px"><span>Total credit</span><span class="tnum">${money(t.total)}</span></div><div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)"><span>${esc(inv.code)} balance now ${money(invRawBal(inv))} → after this credit</span><span class="tnum">${after<-0.004?money(-after)+' in credit':money(after)}</span></div></div>`;
+}
+function saveCreditNote(e){
+  const btn=e.currentTarget;const inv=cnDraft&&cnDraft.inv;if(!inv)return toast('Choose the invoice to credit',true);
+  const lines=cnDraft.lines.filter(l=>(+l.qty||0)>0);
+  if(!lines.length)return toast('Enter the boxes to credit on at least one line',true);
+  for(const l of lines){const p=cnPrevOnLine(l.il.id);const nm=l.il.description||(l.il.item_id?item(l.il.item_id).name:'line');
+    if(CN_STOCK.includes(l.reason)&&l.qty!==Math.floor(l.qty))return toast(nm+': whole boxes only',true);
+    if(CN_STOCK.includes(l.reason)&&l.qty>(+l.il.qty||0)-p.qty+1e-6)return toast(nm+': only '+Math.max(0,(+l.il.qty||0)-p.qty)+' box(es) left to credit',true);
+    if(l.price>(+l.il.unit_price||0)+1e-6)return toast(nm+': the credit price can’t be more than the invoiced '+money(l.il.unit_price)+' per box',true);
+    if(r2(l.qty*l.price)>r2((+l.il.line_total||0)-p.amt)+0.004)return toast(nm+': only '+money(Math.max(0,(+l.il.line_total||0)-p.amt))+' left to credit',true);}
+  const t=cnTotals();if(t.total<=0)return toast('The credit total is zero',true);
+  if(t.total>r2((+inv.total||0)-invCredited(inv))+0.01)return toast('That credits more than is left on '+inv.code+' ('+money((+inv.total||0)-invCredited(inv))+')',true);
+  const locId=document.getElementById('cn-loc').value,date=document.getElementById('cn-date').value||slToday(),notes=document.getElementById('cn-notes').value.trim();
+  const eff=lines.map(l=>{const nm=l.il.description||(l.il.item_id?item(l.il.item_id).name:'line');return `<li><b>${esc(nm)}</b> — ${esc(cnReasonLabel(l.reason))}: ${esc(cnEffectPreview(l)[0].replace(/^→ /,''))}</li>`;}).join('');
+  stackConfirm('Issue credit note',inv.code+' · '+invCustName(inv),`<div>Issue a credit note for <b>${money(t.total)}</b> (inc GST) against <b>${esc(inv.code)}</b>?</div><ul style="margin:10px 0 0 18px;font-size:13px;display:grid;gap:4px">${eff}</ul><div style="margin-top:10px;font-size:12.5px;color:var(--muted)">Stock changes happen straight away and are pushed to Square.</div>`,{okLabel:'Issue credit note',cancelLabel:'Go back',onOk:async()=>{
+    btn.disabled=true;
+    const{data:id,error}=await sb.rpc('create_credit_note',{p_invoice:inv.id,p_loc:locId,p_date:date,p_reason:[...new Set(lines.map(l=>cnReasonLabel(l.reason)))].join(', '),p_notes:notes,p_lines:lines.map(l=>({line:l.il.id,qty:l.qty,price:l.price,reason:l.reason,expiry:l.reason==='return'&&l.expiry?l.expiry:null}))});
+    if(error){btn.disabled=false;return toast(error.message||'Could not issue the credit note',true);}
+    const push={};lines.forEach(l=>{if(!l.il.item_id)return;const at=l.reason==='return'?locId:(l.reason==='short'&&inv.stock_reduced?inv.location_id:null);if(at)(push[at]=push[at]||[]).push(l.il.item_id);});
+    closeOverlay();toast('Credit note issued');
+    cnAfterStock(push);
+    await loadSalesData();if(route==='sales')renderSalesTab();try{renderNav();}catch(e){}
+    openCreditNote(id);
+  }});
+}
+function cnAfterStock(push){
+  const locs=Object.keys(push||{});if(!locs.length)return;
+  locs.forEach(l=>sb.functions.invoke('square-push',{body:{location_id:l,item_ids:[...new Set(push[l])]}}).then(()=>{},()=>{}));
+  if(typeof reloadStockFor==='function')Promise.resolve(reloadStockFor(locs)).then(()=>typeof loadBatches==='function'&&loadBatches()).catch(()=>{});
+}
+async function openCreditNote(id){
+  let cn=invCredits.find(c=>c.id===id);
+  if(!cn){const{data}=await sb.from('credit_notes').select('*, lines:credit_note_lines(*)').eq('id',id).maybeSingle();cn=data;}
+  if(!cn)return toast('Credit note not found',true);
+  const inv=invList.find(i=>i.id===cn.invoice_id)||{};
+  const rows=(cn.lines||[]).map(l=>`<tr><td>${esc(l.description||(l.item_id?item(l.item_id).name:'—'))}<div style="font-size:11.5px;color:${l.stock_effect==='written_off'?'var(--crit)':l.stock_effect==='none'?'var(--muted)':'var(--ok,#2E8C85)'}">${esc(cnEffectText(l))}${l.expiry_date?' · best before '+fmtDate(l.expiry_date):''}</div></td><td style="font-size:12.5px">${esc(cnReasonLabel(l.reason))}</td><td class="num tnum">${+l.qty}</td><td class="num tnum">${money(l.unit_price)}</td><td class="num tnum">${money(l.line_total)}</td></tr>`).join('');
+  let act=`<button class="btn" data-close>Close</button>${inv.id?'<button class="btn" id="co-inv">Open invoice</button>':''}<button class="btn" id="co-pdf">${svg(I.receipt,16)} Download PDF</button>`;
+  if(cn.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="co-void">Void</button><button class="btn primary" id="co-email">${svg(I.order,16)} Email</button>`;
+  const body=`${cn.status==='void'?`<div class="banner crit">${svg(I.alert,17)}<div>This credit note is <b>void</b>${cn.void_reason?' — '+esc(cn.void_reason):''}. Its stock changes were reversed.</div></div>`:''}
+    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Credit note</dt><dd class="mono">${esc(cn.code)}</dd><dt>Status</dt><dd>${cn.status==='void'?'<span class="pill p-cancel">Void</span>':'<span class="pill p-done">Issued</span>'}</dd><dt>Invoice</dt><dd class="mono">${esc(inv.code||'—')}</dd><dt>Customer</dt><dd>${esc(cnInvName(cn))}</dd><dt>Issued from</dt><dd>${esc(loc(cn.location_id).name||'—')}</dd><dt>Date</dt><dd>${fmtDate(cn.issue_date)}</dd>${cn.notes?`<dt>Notes</dt><dd>${esc(cn.notes)}</dd>`:''}${cn.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(cn.emailed_at)}${cn.emailed_to?' · '+esc(cn.emailed_to):''}</dd>`:''}${inv.id?`<dt>Invoice balance</dt><dd class="tnum" style="font-weight:700">${invRawBal(inv)<-0.004?money(-invRawBal(inv))+' in credit':money(invBal(inv))}</dd>`:''}</dl></div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Description</th><th>Reason</th><th class="num">Boxes</th><th class="num">Unit (ex GST)</th><th class="num">Amount</th></tr></thead><tbody>${rows}<tr><td colspan="4" class="num" style="font-weight:600">Subtotal</td><td class="num tnum">${money(cn.subtotal)}</td></tr><tr><td colspan="4" class="num">GST (${+cn.gst_rate||10}%)</td><td class="num tnum">${money(cn.gst)}</td></tr><tr><td colspan="4" class="num" style="font-weight:800">Total credit</td><td class="num tnum" style="font-weight:800">${money(cn.total)}</td></tr></tbody></table></div>`;
+  slideover(cn.code,'Credit note · '+cnInvName(cn),body,act);
+  const bi=document.getElementById('co-inv');if(bi)bi.onclick=()=>openInvoice(inv.id);
+  document.getElementById('co-pdf').onclick=()=>{toast('Preparing PDF…');docPdf(creditNoteDocHtml(cn),cn.code+'.pdf','save').catch(e=>toast('PDF failed: '+(e.message||e),true));};
+  const be=document.getElementById('co-email');if(be)be.onclick=async()=>{const to=window.prompt('Email credit note '+cn.code+' to:',cn.emailed_to||inv.bill_email||'');if(to===null)return;if(!to.trim())return toast('Enter a recipient email',true);if(await sendCreditNote(cn,to.trim())){await loadSalesData();if(route==='sales')renderSalesTab();openCreditNote(cn.id);}};
+  const bv=document.getElementById('co-void');if(bv)bv.onclick=()=>{
+    const stockTxt=(cn.lines||[]).filter(l=>l.stock_effect!=='none').map(l=>`<li>${esc(l.description||item(l.item_id).name)}: ${l.stock_effect==='written_off'?'write-off cancelled':(+l.qty)+' box(es) removed again from '+esc(loc(l.stock_location).name||'')}</li>`).join('');
+    let whyTxt='';
+    stackConfirm('Void credit note',cn.code,`<div>Void <b>${esc(cn.code)}</b> for ${money(cn.total)}? The credit comes off ${esc(inv.code||'the invoice')} again.${stockTxt?`<ul style="margin:8px 0 0 18px;font-size:13px">${stockTxt}</ul>`:''}</div><div class="field" style="margin-top:12px"><label>Reason *</label><input id="cv-why" placeholder="why is it being voided?"></div>`,{okLabel:'Void credit note',cancelLabel:'Cancel',danger:true,onOk:async()=>{
+      const why=whyTxt.trim();
+      if(!why)return toast('Enter a reason to void — nothing was changed',true);
+      const{error}=await sb.rpc('void_credit_note',{p_id:cn.id,p_reason:why});if(error)return toast(error.message,true);
+      const push={};(cn.lines||[]).forEach(l=>{if(l.item_id&&(l.stock_effect==='returned'||l.stock_effect==='restored')&&l.stock_location)(push[l.stock_location]=push[l.stock_location]||[]).push(l.item_id);});
+      toast('Credit note voided');cnAfterStock(push);
+      await loadSalesData();if(route==='sales')renderSalesTab();try{renderNav();}catch(e){}openCreditNote(cn.id);
+    }});
+    const wi=document.getElementById('cv-why');if(wi){wi.oninput=e=>{whyTxt=e.target.value;};wi.focus();}
+  };
+}
+async function sendCreditNote(cn,to){
+  toast('Preparing the credit note PDF…');
+  try{const blob=await docPdf(creditNoteDocHtml(cn),cn.code+'.pdf','blob');const{error}=await sb.storage.from('invoice-pdfs').upload('credit-notes/'+cn.id+'.pdf',blob,{contentType:'application/pdf',upsert:true});if(error)throw error;}catch(e){console.warn('Credit note PDF not attached',e);}
+  toast('Sending credit note…');
+  const{data,error}=await sb.functions.invoke('invoice-mail',{body:{mode:'credit_note',credit_note_id:cn.id,to,app_url:location.origin+location.pathname.replace(/[^/]*$/,'')}});
+  if(error){toast('Email failed: '+await fnErr(error),true);return false;}
+  if(data&&data.error){toast(data.error,true);return false;}
+  toast('Credit note emailed to '+to);return true;
+}
+function creditNoteDocHtml(cn){
+  const s=invSettings||{},inv=invList.find(i=>i.id===cn.invoice_id)||{};const rate=(+cn.gst_rate||10)+'%';
+  const rows=(cn.lines||[]).map(l=>`<tr><td>${esc(l.description||(l.item_id?item(l.item_id).name:'—'))}</td><td style="font-size:11.5px">${esc(cnReasonLabel(l.reason))}</td><td style="text-align:right">${+l.qty}</td><td style="text-align:right">${money(l.unit_price)}</td><td style="text-align:right">${money(l.line_total)}</td></tr>`).join('');
+  const rb=invRawBal(inv);
+  return `<div class="inv-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;padding-bottom:12px;border-bottom:2px solid #1f2d7b">
+      <img src="${INV_LOGO_SHAYONA}" alt="Shayona Vegetarian" style="height:58px;width:auto;display:block">
+      <img src="${INV_LOGO_NATIV}" alt="Nativ Farms" style="height:70px;width:auto;display:block">
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-top:14px">
+      <div><div style="font-weight:800;font-size:15px">${esc(s.seller_name||'Shayona')}</div><div style="margin-top:4px;font-size:12px;white-space:pre-line;color:#333">${esc(s.address||'')}${s.abn?'\nABN '+esc(s.abn):''}${s.email?'\n'+esc(s.email):''}${s.phone?'\n'+esc(s.phone):''}</div></div>
+      <div style="text-align:right"><div style="font-weight:800;font-size:26px">CREDIT NOTE</div><div style="font-size:12px;color:#666">Tax adjustment note</div>
+        <div style="display:grid;grid-template-columns:auto auto;gap:2px 14px;justify-content:end;margin-top:6px;font-size:12.5px">
+          <span style="color:#666">Credit note no.</span><span style="text-align:right;font-weight:700">${esc(cn.code)}</span>
+          <span style="color:#666">Date</span><span style="text-align:right">${fmtDate(cn.issue_date)}</span>
+          <span style="color:#666">Original invoice</span><span style="text-align:right;font-weight:700">${esc(inv.code||'')}</span>
+          <span style="color:#666">Invoice date</span><span style="text-align:right">${fmtDate(inv.issue_date)}</span>
+        </div></div>
+    </div>
+    ${cn.status==='void'?`<div style="margin-top:12px;padding:8px 10px;border:2px solid #b0303a;color:#b0303a;font-weight:800;text-align:center">VOID${cn.void_reason?' — '+esc(cn.void_reason):''}</div>`:''}
+    <div style="margin-top:16px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">Credit to</div><div style="font-weight:700;margin-top:3px">${esc(inv.bill_name||cnInvName(cn))}</div><div style="font-size:12px;white-space:pre-line;color:#333">${esc(inv.bill_address||'')}${inv.bill_abn?'\nABN '+esc(inv.bill_abn):''}${inv.bill_email?'\n'+esc(inv.bill_email):''}</div></div>
+    <table class="inv-tbl" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
+      <colgroup><col><col style="width:150px"><col style="width:70px"><col style="width:105px"><col style="width:105px"></colgroup>
+      <thead><tr><th style="text-align:left">Description</th><th style="text-align:left">Reason</th><th style="text-align:right">Boxes</th><th style="text-align:right">Unit (ex GST)</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rows}
+        <tr class="inv-tot inv-first"><td></td><td colspan="3" style="text-align:right">Subtotal (ex GST)</td><td style="text-align:right">${money(cn.subtotal)}</td></tr>
+        <tr class="inv-tot"><td></td><td colspan="3" style="text-align:right">GST (${rate})</td><td style="text-align:right">${money(cn.gst)}</td></tr>
+        <tr class="inv-tot inv-grand"><td></td><td colspan="3" style="text-align:right">Total credit (inc GST)</td><td style="text-align:right">${money(cn.total)}</td></tr>
+      </tbody>
+    </table>
+    <div class="inv-avoid" style="margin-top:18px;font-size:12.5px;color:#222;border-top:1px solid #ddd;padding-top:10px">
+      This credit has been applied to invoice <b>${esc(inv.code||'')}</b> (total ${money(inv.total)}).${cn.status==='issued'&&inv.id?` ${rb<-0.004?`Your account is <b>${money(-rb)} in credit</b> on this invoice.`:`Balance still owing on the invoice: <b>${money(Math.max(0,rb))}</b>.`}`:''}
+    </div>
+    ${cn.notes?`<div style="margin-top:12px;font-size:12px;color:#333;white-space:pre-line"><b>Notes:</b> ${esc(cn.notes)}</div>`:''}
+    ${s.footer_note?`<div style="margin-top:18px;text-align:center;font-size:11px;color:#888">${esc(s.footer_note)}</div>`:''}
+  </div>`;
+}
 /* ---- Customers ---- */
 function slCustStats(){
   const st={};const t=slToday();
-  invList.filter(i=>i.status==='issued'||i.status==='paid').forEach(i=>{if(!i.customer_id)return;const s=st[i.customer_id]=st[i.customer_id]||{n:0,inv:0,bal:0,od:0,last:''};s.n++;s.inv+=+i.total||0;const b=invBal(i);s.bal+=b;if(b>0.004&&invDue(i)<t)s.od+=b;if(d10(i.issue_date)>s.last)s.last=d10(i.issue_date);});
+  invList.filter(i=>i.status==='issued'||i.status==='paid').forEach(i=>{if(!i.customer_id)return;const s=st[i.customer_id]=st[i.customer_id]||{n:0,inv:0,bal:0,od:0,last:''};s.n++;s.inv+=+i.total||0;s.bal+=invRawBal(i);const b=invBal(i);if(b>0.004&&invDue(i)<t)s.od+=b;if(d10(i.issue_date)>s.last)s.last=d10(i.issue_date);});
   return st;
 }
 function slCustomers(el,warn){
@@ -4281,7 +4482,7 @@ function slCustFiltered(){const q=slCustQ.trim().toLowerCase();let rows=slAllCus
 function slCustList(){
   const el=document.getElementById('sc-list');if(!el)return;
   const st=slCustStats(),rows=slCustFiltered();
-  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} customer${rows.length===1?'':'s'}</div><div class="tablewrap"><table><thead><tr><th>Customer</th><th>Contact</th><th class="num">Invoices</th><th class="num">Invoiced</th><th class="num">Balance</th><th class="num">Overdue</th><th>Last invoice</th><th class="no-print"></th></tr></thead><tbody>${rows.map(c=>{const s=st[c.id]||{n:0,inv:0,bal:0,od:0,last:''};return `<tr><td><b>${esc(c.name)}</b>${c.abn?`<div style="font-size:11px;color:var(--faint)">ABN ${esc(c.abn)}</div>`:''}</td><td style="font-size:12.5px;color:var(--muted)">${esc(c.email||'—')}${c.phone?`<div>${esc(c.phone)}</div>`:''}</td><td class="num tnum">${s.n}</td><td class="num tnum">${money(s.inv)}</td><td class="num tnum" style="font-weight:700">${s.bal>0.004?money(s.bal):'—'}</td><td class="num tnum" style="${s.od>0.004?'color:var(--crit);font-weight:700':''}">${s.od>0.004?money(s.od):'—'}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${s.last?fmtDate(s.last):'—'}</td><td class="no-print" style="white-space:nowrap;text-align:right"><button class="btn sm" data-cst="${c.id}">Statement</button> <button class="btn sm" data-ctx="${c.id}">Transactions</button> <button class="btn sm" data-ced="${c.id}">Edit</button> <button class="btn sm" data-cdel="${c.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button></td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users,34)}<div>${slCustQ?'No customers match your search.':'No saved customers yet — click <b>Add new customer</b>.'}</div></div>`;
+  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} customer${rows.length===1?'':'s'}</div><div class="tablewrap"><table><thead><tr><th>Customer</th><th>Contact</th><th class="num">Invoices</th><th class="num">Invoiced</th><th class="num">Balance</th><th class="num">Overdue</th><th>Last invoice</th><th class="no-print"></th></tr></thead><tbody>${rows.map(c=>{const s=st[c.id]||{n:0,inv:0,bal:0,od:0,last:''};return `<tr><td><b>${esc(c.name)}</b>${c.abn?`<div style="font-size:11px;color:var(--faint)">ABN ${esc(c.abn)}</div>`:''}</td><td style="font-size:12.5px;color:var(--muted)">${esc(c.email||'—')}${c.phone?`<div>${esc(c.phone)}</div>`:''}</td><td class="num tnum">${s.n}</td><td class="num tnum">${money(s.inv)}</td><td class="num tnum" style="font-weight:700">${s.bal>0.004?money(s.bal):s.bal<-0.004?`<span style="color:var(--ok,#2E8C85)">${money(-s.bal)} CR</span>`:'—'}</td><td class="num tnum" style="${s.od>0.004?'color:var(--crit);font-weight:700':''}">${s.od>0.004?money(s.od):'—'}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${s.last?fmtDate(s.last):'—'}</td><td class="no-print" style="white-space:nowrap;text-align:right"><button class="btn sm" data-cst="${c.id}">Statement</button> <button class="btn sm" data-ctx="${c.id}">Transactions</button> <button class="btn sm" data-ced="${c.id}">Edit</button> <button class="btn sm" data-cdel="${c.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button></td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users,34)}<div>${slCustQ?'No customers match your search.':'No saved customers yet — click <b>Add new customer</b>.'}</div></div>`;
   el.querySelectorAll('[data-cst]').forEach(b=>b.onclick=()=>slStatementForm(b.dataset.cst));
   el.querySelectorAll('[data-ctx]').forEach(b=>b.onclick=()=>{slCust=b.dataset.ctx;slSetTab('tx');});
   el.querySelectorAll('[data-ced]').forEach(b=>b.onclick=()=>customerEdit(slAllCust.find(x=>x.id===b.dataset.ced)));
@@ -4380,7 +4581,7 @@ function statementDocHtml(st){
   const s=invSettings||{},d=st.data||{},c=d.customer||{},lines=d.lines||[],ag=d.ageing||{},oi=d.open_invoices||[];
   const R='text-align:right',cell='padding:5px 6px;border-bottom:1px solid #eee';
   const box=(l,v,strong)=>`<div style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px 10px;${strong?'background:#1f2d7b;color:#fff;border-color:#1f2d7b':''}"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;${strong?'color:#dfe4ff':'color:#777'}">${l}</div><div style="font-weight:800;font-size:15px;margin-top:2px">${money(v)}</div></div>`;
-  const rows=`<tr><td style="${cell};white-space:nowrap">${fmtDate(st.period_start)}</td><td style="${cell}" colspan="3"><b>Opening balance</b></td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};${R};font-weight:700">${money(d.opening)}</td></tr>`+lines.map(l=>`<tr><td style="${cell};white-space:nowrap">${fmtDate(l.date)}</td><td style="${cell}">${l.kind==='invoice'?'Invoice':'Payment'+(l.method?' · '+esc(payMethodLabel(l.method)):'')}</td><td style="${cell}">${esc(l.ref||'')}</td><td style="${cell}">${esc(l.cref||'')}</td><td style="${cell};${R}">${+l.debit?money(l.debit):''}</td><td style="${cell};${R}">${+l.credit?money(l.credit):''}</td><td style="${cell};${R}">${money(l.balance)}</td></tr>`).join('')+`<tr><td style="${cell};white-space:nowrap;border-top:2px solid #222">${fmtDate(st.period_end)}</td><td style="${cell};border-top:2px solid #222" colspan="3"><b>Closing balance</b></td><td style="${cell};${R};border-top:2px solid #222">${money(d.invoiced)}</td><td style="${cell};${R};border-top:2px solid #222">${money(d.received)}</td><td style="${cell};${R};font-weight:800;border-top:2px solid #222">${money(d.closing)}</td></tr>`;
+  const rows=`<tr><td style="${cell};white-space:nowrap">${fmtDate(st.period_start)}</td><td style="${cell}" colspan="3"><b>Opening balance</b></td><td style="${cell}"></td><td style="${cell}"></td><td style="${cell};${R};font-weight:700">${money(d.opening)}</td></tr>`+lines.map(l=>`<tr><td style="${cell};white-space:nowrap">${fmtDate(l.date)}</td><td style="${cell}">${l.kind==='invoice'?'Invoice':l.kind==='credit'?'Credit note':'Payment'+(l.method?' · '+esc(payMethodLabel(l.method)):'')}</td><td style="${cell}">${esc(l.ref||'')}</td><td style="${cell}">${esc(l.cref||'')}</td><td style="${cell};${R}">${+l.debit?money(l.debit):''}</td><td style="${cell};${R}">${+l.credit?money(l.credit):''}</td><td style="${cell};${R}">${money(l.balance)}</td></tr>`).join('')+`<tr><td style="${cell};white-space:nowrap;border-top:2px solid #222">${fmtDate(st.period_end)}</td><td style="${cell};border-top:2px solid #222" colspan="3"><b>Closing balance</b></td><td style="${cell};${R};border-top:2px solid #222">${money(d.invoiced)}</td><td style="${cell};${R};border-top:2px solid #222">${money((+d.received||0)+(+d.credited||0))}</td><td style="${cell};${R};font-weight:800;border-top:2px solid #222">${money(d.closing)}</td></tr>`;
   const agCell=(l,v,crit)=>`<td style="${cell};${R};${crit&&+v>0?'color:#b0303a;font-weight:700':''}"><div style="font-size:10.5px;color:#777;text-transform:uppercase">${l}</div>${money(v)}</td>`;
   return `<div class="inv-sheet">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:20px;padding-bottom:12px;border-bottom:2px solid #1f2d7b">
@@ -4397,9 +4598,9 @@ function statementDocHtml(st){
         </div></div>
     </div>
     <div style="margin-top:16px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#777">Customer</div><div style="font-weight:700;margin-top:3px">${esc(c.name||'')}</div><div style="font-size:12px;white-space:pre-line;color:#333">${esc(c.address||'')}${c.abn?'\nABN '+esc(c.abn):''}${c.email?'\n'+esc(c.email):''}${c.phone?'\n'+esc(c.phone):''}</div></div>
-    <div class="inv-avoid" style="display:flex;gap:8px;margin-top:16px">${box('Opening balance',d.opening)}${box('Invoiced',d.invoiced)}${box('Received',d.received)}${box('Balance due',d.closing,true)}</div>
+    <div class="inv-avoid" style="display:flex;gap:8px;margin-top:16px">${box('Opening balance',d.opening)}${box('Invoiced',d.invoiced)}${box('Received',d.received)}${+d.credited?box('Credit notes',d.credited):''}${box(+d.closing<0?'In credit':'Balance due',d.closing,true)}</div>
     <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:12.5px">
-      <thead><tr><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Date</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Type</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Invoice</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Reference</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Invoiced</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Paid</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Balance</th></tr></thead>
+      <thead><tr><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Date</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Type</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Invoice</th><th style="text-align:left;border-bottom:2px solid #222;padding:5px 6px">Reference</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Invoiced</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Paid / credited</th><th style="${R};border-bottom:2px solid #222;padding:5px 6px">Balance</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="inv-avoid" style="margin-top:16px"><div style="font-weight:700;font-size:12.5px;margin-bottom:4px">Ageing at ${fmtDate(st.period_end)}</div>
@@ -4453,7 +4654,7 @@ function slTx(el,warn){
       <select class="filter" id="tx-c">${slCustOpts(slCust)}</select>
       <input class="filter" id="tx-q" placeholder="Search invoice no, reference, amount" value="${esc(slTxQ)}" style="min-width:210px">
       <input type="date" class="filter" id="tx-from" value="${slTxFrom}" title="From"><span style="color:var(--muted);font-size:13px">to</span><input type="date" class="filter" id="tx-to" value="${slTxTo}" title="To">
-      <select class="filter" id="tx-t"><option value="all">Invoices &amp; payments</option><option value="invoice">Invoices only</option><option value="payment">Payments only</option></select></div>
+      <select class="filter" id="tx-t"><option value="all">All transactions</option><option value="invoice">Invoices only</option><option value="payment">Payments only</option><option value="credit">Credit notes only</option></select></div>
     <div class="rep-actions no-print"><button class="btn" id="tx-clear">Clear</button><button class="btn" id="tx-stm">${svg(I.receipt,15)} Statement</button><button class="btn" id="tx-csv">Export CSV</button></div></div>
     <div id="tx-list"></div>`;
   const tt=document.getElementById('tx-t');tt.value=slTxType;tt.onchange=e=>{slTxType=e.target.value;slTxList();};
@@ -4463,13 +4664,14 @@ function slTx(el,warn){
   document.getElementById('tx-to').onchange=e=>{slTxTo=e.target.value;slTxList();};
   document.getElementById('tx-clear').onclick=()=>{slCust='';slTxQ='';slTxFrom='';slTxTo='';slTxType='all';renderSalesTab();};
   document.getElementById('tx-stm').onclick=()=>slStatementForm(slCust);
-  document.getElementById('tx-csv').onclick=()=>{const rows=slTxRows();downloadCSV('transactions_'+(slCust?((custById(slCust)||{}).name||'customer').replace(/[^\w]+/g,'_')+'_':'')+slToday()+'.csv',['Date','Type','Customer','Invoice','Reference','Method','Status','Invoiced','Paid'].concat(slCust?['Balance']:[]),rows.map(r=>[r.date,r.kind==='invoice'?'Invoice':'Payment',r.name,r.ref,r.cref,r.method?payMethodLabel(r.method):'',r.void?'Void':(r.kind==='invoice'?r.inv.status:'OK'),r.debit?r.debit.toFixed(2):'',r.credit?r.credit.toFixed(2):''].concat(slCust?[r.bal!=null?r.bal.toFixed(2):'']:[])));};
+  document.getElementById('tx-csv').onclick=()=>{const rows=slTxRows();downloadCSV('transactions_'+(slCust?((custById(slCust)||{}).name||'customer').replace(/[^\w]+/g,'_')+'_':'')+slToday()+'.csv',['Date','Type','Customer','Invoice','Reference','Method','Status','Invoiced','Paid'].concat(slCust?['Balance']:[]),rows.map(r=>[r.date,r.kind==='invoice'?'Invoice':r.kind==='credit'?'Credit note':'Payment',r.name,r.ref,r.cref,r.method?payMethodLabel(r.method):'',r.void?'Void':(r.kind==='invoice'?r.inv.status:'OK'),r.debit?r.debit.toFixed(2):'',r.credit?r.credit.toFixed(2):''].concat(slCust?[r.bal!=null?r.bal.toFixed(2):'']:[])));};
   slTxList();
 }
 function slTxRows(){
   let all=[];
   invList.filter(i=>i.status!=='draft').forEach(i=>all.push({date:d10(i.issue_date),kind:'invoice',inv:i,ref:i.code,cref:i.reference||i.customer_no||'',cust:i.customer_id,name:invCustName(i),debit:i.status==='void'?0:(+i.total||0),credit:0,void:i.status==='void'}));
   invPayments.forEach(p=>{const i=invList.find(x=>x.id===p.invoice_id);if(!i)return;all.push({date:d10(p.paid_on),kind:'payment',inv:i,pay:p,ref:i.code,cref:p.reference||'',method:p.method,cust:i.customer_id,name:invCustName(i),debit:0,credit:p.voided_at?0:(+p.amount||0),void:!!p.voided_at});});
+  invCredits.forEach(c=>{const i=invList.find(x=>x.id===c.invoice_id);if(!i)return;all.push({date:d10(c.issue_date),kind:'credit',inv:i,cn:c,ref:i.code,cref:c.code,method:'',cust:i.customer_id,name:invCustName(i),debit:0,credit:c.status==='void'?0:(+c.total||0),void:c.status==='void'});});
   // invoices already marked paid before payment tracking (no payment rows) — show the settlement so balances add up
   if(!invPayments.length)invList.filter(i=>i.status==='paid').forEach(i=>all.push({date:d10(i.paid_at||i.issue_date),kind:'payment',inv:i,ref:i.code,cref:'',method:'other',cust:i.customer_id,name:invCustName(i),debit:0,credit:+i.total||0,void:false}));
   all.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.kind===b.kind?String(a.ref).localeCompare(String(b.ref)):(a.kind==='invoice'?-1:1)));
@@ -4482,11 +4684,12 @@ function slTxList(){
   let rows=slTxRows();
   const inv=r2(rows.reduce((s,r)=>s+r.debit,0)),rec=r2(rows.reduce((s,r)=>s+r.credit,0));
   const cu=slCust?custById(slCust):null;
-  const owing=slCust?r2(invList.filter(i=>i.customer_id===slCust).reduce((s,i)=>s+invBal(i),0)):null;
+  const owing=slCust?r2(invList.filter(i=>i.customer_id===slCust).reduce((s,i)=>s+invRawBal(i),0)):null;
   if(!slCust)rows=rows.slice().reverse();
   const summary=`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin:0 0 12px">${slTile('Transactions',String(rows.length),slTxFrom||slTxTo?(slTxFrom?fmtDate(slTxFrom):'start')+' – '+(slTxTo?fmtDate(slTxTo):'today'):'all dates')}${slTile('Invoiced',money(inv))}${slTile('Received',money(rec))}${cu?slTile('Balance owing now',money(owing),esc(cu.name),'',owing>0.004?'accent':''):''}</div>`;
-  el.innerHTML=summary+(rows.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th>${slCust?'':'<th>Customer</th>'}<th>Invoice</th><th>Reference</th><th class="num">Invoiced</th><th class="num">Paid</th>${slCust?'<th class="num">Balance</th>':''}</tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-inv="${r.inv.id}" style="${r.void?'opacity:.55':''}"><td style="white-space:nowrap;font-size:12.5px">${fmtDate(r.date)}</td><td>${r.kind==='invoice'?`Invoice ${invPill(r.inv.status)}`:`<span style="color:var(--ok,#2E8C85);font-weight:600">Payment</span> <span style="font-size:11.5px;color:var(--muted)">${esc(payMethodLabel(r.method))}</span>${r.void?' <span class="pill p-cancel">Void</span>':''}`}</td>${slCust?'':`<td>${esc(r.name)}</td>`}<td class="mono">${esc(r.ref)}</td><td style="font-size:12.5px;color:var(--muted)">${esc(r.cref||'')}</td><td class="num tnum">${r.kind==='invoice'?money(r.void?r.inv.total:r.debit):''}</td><td class="num tnum">${r.kind==='payment'?money(r.void?(r.pay||{}).amount:r.credit):''}</td>${slCust?`<td class="num tnum" style="font-weight:700">${money(r.bal)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.search,34)}<div>No transactions match. ${slCust?'':'Choose a customer to see their full history with a running balance.'}</div></div>`);
+  el.innerHTML=summary+(rows.length?`<div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th>${slCust?'':'<th>Customer</th>'}<th>Invoice</th><th>Reference</th><th class="num">Invoiced</th><th class="num">Paid</th>${slCust?'<th class="num">Balance</th>':''}</tr></thead><tbody>${rows.map(r=>`<tr class="clickable" ${r.kind==='credit'?`data-cn="${r.cn.id}"`:`data-inv="${r.inv.id}"`} style="${r.void?'opacity:.55':''}"><td style="white-space:nowrap;font-size:12.5px">${fmtDate(r.date)}</td><td>${r.kind==='invoice'?`Invoice ${invPill(r.inv.status)}`:r.kind==='credit'?`<span style="color:#8a4b00;font-weight:600">Credit note</span> <span style="font-size:11.5px;color:var(--muted)">${esc(r.cn.code)}</span>${r.void?' <span class="pill p-cancel">Void</span>':''}`:`<span style="color:var(--ok,#2E8C85);font-weight:600">Payment</span> <span style="font-size:11.5px;color:var(--muted)">${esc(payMethodLabel(r.method))}</span>${r.void?' <span class="pill p-cancel">Void</span>':''}`}</td>${slCust?'':`<td>${esc(r.name)}</td>`}<td class="mono">${esc(r.ref)}</td><td style="font-size:12.5px;color:var(--muted)">${esc(r.cref||'')}</td><td class="num tnum">${r.kind==='invoice'?money(r.void?r.inv.total:r.debit):''}</td><td class="num tnum">${r.kind==='payment'?money(r.void?(r.pay||{}).amount:r.credit):r.kind==='credit'?money(r.void?r.cn.total:r.credit):''}</td>${slCust?`<td class="num tnum" style="font-weight:700">${money(r.bal)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.search,34)}<div>No transactions match. ${slCust?'':'Choose a customer to see their full history with a running balance.'}</div></div>`);
   el.querySelectorAll('[data-inv]').forEach(r=>r.onclick=()=>openInvoice(r.dataset.inv));
+  el.querySelectorAll('[data-cn]').forEach(r=>r.onclick=()=>openCreditNote(r.dataset.cn));
 }
 // ---- Saved customers manager ----
 async function reloadCustomers(){const{data}=await sb.from('customers').select('*').order('name');slAllCust=data||[];invCustomers=slAllCust.filter(c=>c.active!==false);}
@@ -4521,7 +4724,7 @@ function customerEdit(c){
 }
 function customerDelete(c){
   if(!c)return;
-  const owing=r2(invList.filter(i=>i.customer_id===c.id).reduce((s,i)=>s+invBal(i),0));
+  const owing=r2(invList.filter(i=>i.customer_id===c.id).reduce((s,i)=>s+invRawBal(i),0));
   stackConfirm('Remove customer',c.name,`<div>Remove <b>${esc(c.name)}</b> from your saved customers? Existing invoices, payments and statements are kept.${owing>0.004?`<div class="banner warn" style="margin-top:10px">${svg(I.alert,17)}<div>This customer still owes <b>${money(owing)}</b>. They will still show in Ageing until paid.</div></div>`:''}</div>`,{okLabel:'Remove',cancelLabel:'Cancel',danger:true,onOk:async()=>{
     const{error}=await sb.from('customers').update({active:false}).eq('id',c.id);
     if(error)return toast(error.message||'Remove failed',true);
@@ -4617,10 +4820,11 @@ function openInvoice(id){
   let act=`<button class="btn" data-close>Close</button><button class="btn" id="iv-print">${svg(I.receipt,16)} Download PDF</button>`;
   if(inv.status!=='void')act+=`<button class="btn" id="iv-email">${svg(I.order,16)} Email</button>`;
   if(inv.status==='draft')act+=`<button class="btn" id="iv-edit">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-del">Delete</button><button class="btn primary" id="iv-issue">${svg(I.check,16)} Issue</button>`;
-  else if(inv.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-void">Void</button><button class="btn primary" id="iv-paid">${svg(I.check,16)} Record payment</button>`;
+  else if(inv.status==='issued')act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="iv-void">Void</button><button class="btn" id="iv-cn">${svg(I.sync,16)} Credit note</button><button class="btn primary" id="iv-paid">${svg(I.check,16)} Record payment</button>`;
+  else if(inv.status==='paid')act+=`<button class="btn" id="iv-cn">${svg(I.sync,16)} Credit note</button>`;
   const body=`${inv.status==='void'?`<div class="banner crit">${svg(I.alert,17)}<div>This invoice is <b>void</b>.</div></div>`:''}
-    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}${odd>0?` <b style="color:var(--crit)">· ${odd} days overdue</b>`:''}</dd>${inv.status==='issued'||inv.status==='paid'?`<dt>Paid</dt><dd class="tnum">${money(paid)}</dd><dt>Balance</dt><dd class="tnum" style="font-weight:800">${money(bal)}</dd>`:''}${inv.customer_no?`<dt>Customer no</dt><dd>${esc(inv.customer_no)}</dd>`:''}${inv.reference?`<dt>Customer order no</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}${inv.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(inv.emailed_at)}</dd>`:''}${inv.last_reminded_at?`<dt>Reminder</dt><dd>${fmtDate(inv.last_reminded_at)}${inv.reminder_count?' · '+inv.reminder_count+' sent':''}</dd>`:''}</dl></div>
-    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit (ex GST)</th><th class="num">Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3" class="num" style="font-weight:600">Subtotal</td><td class="num tnum">${money(inv.subtotal)}</td></tr><tr><td colspan="3" class="num">GST (${rateTxt})</td><td class="num tnum">${money(inv.gst)}</td></tr><tr><td colspan="3" class="num" style="font-weight:800">Total</td><td class="num tnum" style="font-weight:800">${money(inv.total)}</td></tr></tbody></table></div>${payHtml}`;
+    <div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Invoice</dt><dd class="mono">${esc(inv.code)}</dd><dt>Status</dt><dd>${invPill(inv.status)}</dd><dt>From</dt><dd>${esc(loc(inv.location_id).name)}</dd><dt>Bill to</dt><dd>${esc(inv.bill_name||'—')}${inv.bill_abn?' · ABN '+esc(inv.bill_abn):''}</dd><dt>Issued</dt><dd>${fmtDate(inv.issue_date)}</dd><dt>Due</dt><dd>${fmtDate(inv.due_date)}${odd>0?` <b style="color:var(--crit)">· ${odd} days overdue</b>`:''}</dd>${inv.status==='issued'||inv.status==='paid'?`<dt>Paid</dt><dd class="tnum">${money(paid)}</dd>${invCredited(inv)>0.004?`<dt>Credited</dt><dd class="tnum">${money(invCredited(inv))}</dd>`:''}<dt>Balance</dt><dd class="tnum" style="font-weight:800">${invRawBal(inv)<-0.004?`<span style="color:var(--ok,#2E8C85)">${money(-invRawBal(inv))} in credit</span>`:money(bal)}</dd>`:''}${inv.customer_no?`<dt>Customer no</dt><dd>${esc(inv.customer_no)}</dd>`:''}${inv.reference?`<dt>Customer order no</dt><dd>${esc(inv.reference)}</dd>`:''}${inv.reduce_stock?`<dt>Stock</dt><dd>${inv.stock_reduced?'Deducted from '+loc(inv.location_id).code:'Will deduct on issue'}</dd>`:''}${inv.emailed_at?`<dt>Emailed</dt><dd>${fmtDate(inv.emailed_at)}</dd>`:''}${inv.last_reminded_at?`<dt>Reminder</dt><dd>${fmtDate(inv.last_reminded_at)}${inv.reminder_count?' · '+inv.reminder_count+' sent':''}</dd>`:''}</dl></div>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit (ex GST)</th><th class="num">Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3" class="num" style="font-weight:600">Subtotal</td><td class="num tnum">${money(inv.subtotal)}</td></tr><tr><td colspan="3" class="num">GST (${rateTxt})</td><td class="num tnum">${money(inv.gst)}</td></tr><tr><td colspan="3" class="num" style="font-weight:800">Total</td><td class="num tnum" style="font-weight:800">${money(inv.total)}</td></tr></tbody></table></div>${payHtml}${(()=>{const cns=invCredits.filter(c=>c.invoice_id===inv.id);return cns.length?`<div class="sec-h" style="margin-top:16px"><h3>Credit notes</h3></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Credit note</th><th>Date</th><th>Reason</th><th class="num">Amount</th></tr></thead><tbody>${cns.map(c=>`<tr class="clickable" data-ivcn="${c.id}" style="${c.status==='void'?'opacity:.6':''}"><td class="mono">${esc(c.code)}${c.status==='void'?' <span class="pill p-cancel">Void</span>':''}</td><td style="white-space:nowrap">${fmtDate(c.issue_date)}</td><td style="font-size:12.5px">${esc(cnReasonsText(c))}</td><td class="num tnum" style="${c.status==='void'?'text-decoration:line-through':''}">${money(c.total)}</td></tr>`).join('')}</tbody></table></div>`:'';})()}`;
   slideover(inv.code,'Sales invoice · '+invCustName(inv),body,act);
   document.querySelectorAll('[data-pvoid]').forEach(b=>b.onclick=async()=>{const p=pays.find(x=>x.id===b.dataset.pvoid);if(!p)return;const why=window.prompt('Void the '+money(p.amount)+' payment on '+inv.code+'? Enter a reason:','');if(why===null)return;if(!why.trim())return toast('Enter a reason',true);const{error}=await sb.rpc('void_invoice_payment',{p_id:p.id,p_reason:why.trim()});if(error)return toast(error.message,true);toast('Payment voided');slAfterChange(inv.id);});
   document.getElementById('iv-print').onclick=()=>printInvoice(inv);
@@ -4629,7 +4833,9 @@ function openInvoice(id){
   const bd=document.getElementById('iv-del');if(bd)bd.onclick=async()=>{if(!confirm('Delete draft '+inv.code+'?'))return;const{error}=await sb.rpc('delete_invoice',{p_id:inv.id});if(error)return toast(error.message,true);closeOverlay();toast('Draft deleted');salesRefresh();};
   const bi=document.getElementById('iv-issue');if(bi)bi.onclick=async()=>{const{error}=await sb.rpc('issue_invoice',{p_id:inv.id});if(error)return toast(error.message,true);storeInvoicePdfById(inv.id);if(inv.reduce_stock)sb.functions.invoke('square-push',{body:{location_id:inv.location_id,item_ids:(inv.lines||[]).filter(l=>l.item_id).map(l=>l.item_id)}}).then(()=>{},()=>{});closeOverlay();toast('Invoice issued');salesRefresh();};
   const bp=document.getElementById('iv-paid');if(bp)bp.onclick=()=>recordPaymentForm(inv);
-  const bv=document.getElementById('iv-void');if(bv)bv.onclick=async()=>{if(pays.some(p=>!p.voided_at))return toast('This invoice has payments recorded — void the payments first',true);if(!confirm('Void '+inv.code+'? Any stock it deducted will be restored.'))return;const{error}=await sb.rpc('set_invoice_status',{p_id:inv.id,p_status:'void'});if(error)return toast(error.message,true);if(inv.stock_reduced)sb.functions.invoke('square-push',{body:{location_id:inv.location_id,item_ids:(inv.lines||[]).filter(l=>l.item_id).map(l=>l.item_id)}}).then(()=>{},()=>{});closeOverlay();toast('Invoice voided');salesRefresh();};
+  const bcn=document.getElementById('iv-cn');if(bcn)bcn.onclick=()=>creditNoteForm(inv.id);
+  document.querySelectorAll('[data-ivcn]').forEach(r=>r.onclick=()=>openCreditNote(r.dataset.ivcn));
+  const bv=document.getElementById('iv-void');if(bv)bv.onclick=async()=>{if(pays.some(p=>!p.voided_at))return toast('This invoice has payments recorded — void the payments first',true);if(invCredited(inv)>0)return toast('This invoice has credit notes — void the credit notes first',true);if(!confirm('Void '+inv.code+'? Any stock it deducted will be restored.'))return;const{error}=await sb.rpc('set_invoice_status',{p_id:inv.id,p_status:'void'});if(error)return toast(error.message,true);if(inv.stock_reduced)sb.functions.invoke('square-push',{body:{location_id:inv.location_id,item_ids:(inv.lines||[]).filter(l=>l.item_id).map(l=>l.item_id)}}).then(()=>{},()=>{});closeOverlay();toast('Invoice voided');salesRefresh();};
 }
 function recordPaymentForm(inv){
   const bal=invBal(inv);
@@ -4696,6 +4902,7 @@ function invoiceDocHtml(inv){
         <tr class="inv-tot"><td></td><td colspan="2" style="text-align:right">GST (${rate})</td><td style="text-align:right">${money(inv.gst)}</td></tr>
         <tr class="inv-tot inv-grand"><td></td><td colspan="2" style="text-align:right">Total (inc GST)</td><td style="text-align:right">${money(inv.total)}</td></tr>
         ${inv.status==='issued'&&invPaid(inv)>0.004?`<tr class="inv-tot"><td></td><td colspan="2" style="text-align:right">Less paid to date</td><td style="text-align:right">−${money(invPaid(inv))}</td></tr>`:''}
+        ${inv.status==='issued'&&invCredited(inv)>0.004?`<tr class="inv-tot"><td></td><td colspan="2" style="text-align:right">Less credit notes (${invCredits.filter(c=>c.invoice_id===inv.id&&c.status==='issued').map(c=>esc(c.code)).join(', ')})</td><td style="text-align:right">−${money(invCredited(inv))}</td></tr>`:''}
         <tr class="inv-tot inv-due"><td></td><td colspan="2" style="text-align:right">Amount due${inv.due_date?' by '+fmtDate(inv.due_date):''}</td><td style="text-align:right">${money(inv.status==='paid'?0:inv.status==='issued'?invBal(inv):inv.total)}</td></tr>
       </tbody>
     </table>
