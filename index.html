@@ -3402,6 +3402,7 @@ const CC_TABS=[['dead','Never sold · no stock','Not sold in the last 12 months 
   ['slowstock','No sales · has stock','Not sold in 12 months but stock is still sitting somewhere — sell, return or write it off first'],
   ['slow','Slow (no sale in 6 months)','Sold in the last year but nothing in the last 6 months — review the range'],
   ['unlisted','Not for sale anywhere','Not available for sale at any centre in Square'],
+  ['nocode','No code / barcode','Missing a product code or barcode — add them in Square, or hide/disable the ones that don’t sell (see Centre range per centre)'],
   ['hidden','Hidden','Items already hidden from the app — restore if needed']];
 async function openCatalogueCleanup(){
   modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn" id="cc-del" disabled style="color:var(--crit);border-color:var(--crit)">Delete from Square…</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
@@ -3410,6 +3411,8 @@ async function openCatalogueCleanup(){
   if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Couldn’t load the clean-up list: ${esc(error.message||'')}. Run <b>51_team_removal_and_catalogue_range.sql</b> in Supabase.</div></div>`;return;}
   ccRows=data||[];ccSel=new Set();renderCleanup();
 }
+let ccItemMap=null,ccItemSrc=null;
+function ccItem(r){const src=S.allItems||S.items;if(ccItemSrc!==src){ccItemMap=new Map(src.map(i=>[i.id,i]));ccItemSrc=src;}return ccItemMap.get(r.item_id)||{sku:r.sku,barcode:null};}
 function ccIsNew(r){return r.sq_created_at&&(Date.now()-new Date(r.sq_created_at).getTime())<90*864e5;}
 function ccList(tab){
   const live=ccRows.filter(r=>r.active!==false&&!r.hidden);
@@ -3418,6 +3421,7 @@ function ccList(tab){
     :tab==='dead'?live.filter(r=>+r.sold_365<=0&&+r.on_hand<=0&&!+r.open_refs&&!ccIsNew(r))
     :tab==='slowstock'?live.filter(r=>+r.sold_365<=0&&+r.on_hand>0&&!ccIsNew(r))
     :tab==='slow'?live.filter(r=>+r.sold_365>0&&+r.sold_180<=0)
+    :tab==='nocode'?live.filter(r=>noCode(ccItem(r)))
     :live.filter(r=>+r.centres_listed===0);
   if(q)L=L.filter(r=>[r.name,r.sku,r.category].some(x=>String(x||'').toLowerCase().includes(q)));
   return L;
@@ -3435,13 +3439,13 @@ function renderCleanup(){
     ${ccTabBar(counts)}
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="cc-q" placeholder="Search name, SKU, category…" value="${esc(ccQ)}"></div><span style="font-size:12.5px;color:var(--muted)">${esc(tab[2])}${val>0?' · stock value '+money0(val):''}</span><div class="spacer"></div>
       <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="cc-all"> Select all ${L.length}</label></div>
-    ${L.length?`<div class="tablewrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">Centres selling</th><th class="num">On hand</th><th class="num">Stock value</th><th class="num">Sold 12 mo</th><th>Last sale</th><th class="num">Open orders</th>${restore?'<th>Hidden because</th>':''}</tr></thead><tbody>${L.slice(0,2000).map(r=>`<tr><td><input type="checkbox" data-ccs="${r.item_id}" ${ccSel.has(r.item_id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(r.sku||'')}</span>${esc(r.name)}</div></td><td><span class="tag">${esc(r.category||'—')}</span></td><td class="num tnum">${r.centres_listed}</td><td class="num tnum" style="${+r.on_hand>0?'font-weight:700':''}">${(+r.on_hand).toLocaleString()}</td><td class="num tnum">${+r.stock_value>0?money0(r.stock_value):'—'}</td><td class="num tnum">${Math.round(+r.sold_365).toLocaleString()}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${r.last_sale?fmtDate(r.last_sale):'—'}</td><td class="num tnum" style="${+r.open_refs?'color:var(--crit);font-weight:700':''}">${+r.open_refs||'—'}</td>${restore?`<td style="font-size:12px;color:var(--muted)">${esc(r.hidden_reason||'')}</td>`:''}</tr>`).join('')}</tbody></table></div>${L.length>2000?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 2,000 — search to narrow.</div>`:''}`:`<div class="card empty">${svg(I.check,34)}<div>Nothing in this list.</div></div>`}`;
+    ${L.length?`<div class="tablewrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">Centres selling</th><th class="num">On hand</th><th class="num">Stock value</th><th class="num">Sold 12 mo</th><th>Last sale</th><th class="num">Open orders</th>${restore?'<th>Hidden because</th>':''}</tr></thead><tbody>${L.slice(0,2000).map(r=>`<tr><td><input type="checkbox" data-ccs="${r.item_id}" ${ccSel.has(r.item_id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(r.sku||'')}</span>${esc(r.name)}</div>${noCode(ccItem(r))?`<div style="font-size:11px;color:var(--crit)">No ${esc(missLbl(ccItem(r)).toLowerCase())}</div>`:''}</td><td><span class="tag">${esc(r.category||'—')}</span></td><td class="num tnum">${r.centres_listed}</td><td class="num tnum" style="${+r.on_hand>0?'font-weight:700':''}">${(+r.on_hand).toLocaleString()}</td><td class="num tnum">${+r.stock_value>0?money0(r.stock_value):'—'}</td><td class="num tnum">${Math.round(+r.sold_365).toLocaleString()}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${r.last_sale?fmtDate(r.last_sale):'—'}</td><td class="num tnum" style="${+r.open_refs?'color:var(--crit);font-weight:700':''}">${+r.open_refs||'—'}</td>${restore?`<td style="font-size:12px;color:var(--muted)">${esc(r.hidden_reason||'')}</td>`:''}</tr>`).join('')}</tbody></table></div>${L.length>2000?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 2,000 — search to narrow.</div>`:''}`:`<div class="card empty">${svg(I.check,34)}<div>Nothing in this list.</div></div>`}`;
   body.querySelectorAll('[data-cct]').forEach(b=>b.onclick=()=>{ccTab=b.dataset.cct;ccSel=new Set();renderCleanup();});
   const qi=document.getElementById('cc-q');qi.oninput=e=>{ccQ=e.target.value;const pos=e.target.selectionStart;renderCleanup();const n=document.getElementById('cc-q');n.focus();n.setSelectionRange(pos,pos);};
   const all=document.getElementById('cc-all');all.checked=L.length>0&&L.every(r=>ccSel.has(r.item_id));
   all.onchange=e=>{L.forEach(r=>e.target.checked?ccSel.add(r.item_id):ccSel.delete(r.item_id));renderCleanup();};
   body.querySelectorAll('[data-ccs]').forEach(c=>c.onchange=e=>{e.target.checked?ccSel.add(c.dataset.ccs):ccSel.delete(c.dataset.ccs);ccBtn();});
-  const csv=document.getElementById('cc-csv');if(csv)csv.onclick=()=>downloadCSV(`catalogue-cleanup_${ccTab}_${today()}.csv`,['Product code','Item','Category','Centres selling','On hand (packets)','Stock value','Sold 12 months','Sold 6 months','Last sale','Open transfers/orders','Hidden'],L.map(r=>[r.sku||'',r.name,r.category||'',r.centres_listed,r.on_hand,(+r.stock_value||0).toFixed(2),r.sold_365,r.sold_180,r.last_sale||'',r.open_refs,r.hidden?'yes':'']));
+  const csv=document.getElementById('cc-csv');if(csv)csv.onclick=()=>downloadCSV(`catalogue-cleanup_${ccTab}_${today()}.csv`,['Product code','Barcode','Missing','Item','Category','Centres selling','On hand (packets)','Stock value','Sold 12 months','Sold 6 months','Last sale','Open transfers/orders','Hidden'],L.map(r=>[r.sku||'',ccItem(r).barcode||'',missLbl(ccItem(r)),r.name,r.category||'',r.centres_listed,r.on_hand,(+r.stock_value||0).toFixed(2),r.sold_365,r.sold_180,r.last_sale||'',r.open_refs,r.hidden?'yes':'']));
   ccBtn();
 }
 const ccCanDelete=r=>+r.on_hand<=0&&!+r.open_refs&&+r.sold_365<=0&&r.in_square!==false&&!r.square_deleted_at;
@@ -3526,21 +3530,23 @@ function rgList(){
     if(rgShow==='off')return rgOnCount(i)<n;
     if(rgShow==='need_on')return ids.some(l=>rgNeedsOn(i,l));
     if(rgShow==='can_off')return ids.some(l=>rgCanOff(i,l));
+    if(rgShow==='nocode')return noCode(i)&&ids.some(l=>sellsAt(i,l));
+    if(rgShow==='nocode_off')return ids.some(l=>rgNoCodeOff(i,l));
     return true;}).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
 /* one-click per centre: enable everything it sells/stocks, or disable everything it doesn't */
 function rgFixCentre(l,mode){
-  const items=rgPool().filter(i=>mode==='on'?rgNeedsOn(i,l):rgCanOff(i,l)).map(i=>i.id);
+  const items=rgPool().filter(i=>mode==='on'?rgNeedsOn(i,l):mode==='nocode_off'?rgNoCodeOff(i,l):rgCanOff(i,l)).map(i=>i.id);
   if(!items.length)return toast('Nothing to change at '+loc(l).name);
   const prev=rgLoc;rgLoc=l;rgConfirm(items,mode==='on');rgLoc=prev;
 }
 function rgSummary(cs){
   if(!rgWin)return `<div class="card pad" style="margin-bottom:12px;color:var(--muted);font-size:13px">${svg(I.chart,15)} Checking each centre’s sales and stock…</div>`;
   const pool=rgPool();
-  const rows=cs.map(l=>{let on=0,need=0,off=0;pool.forEach(i=>{if(sellsAt(i,l.id))on++;if(rgNeedsOn(i,l.id))need++;if(rgCanOff(i,l.id))off++;});return{l,on,need,off};});
+  const rows=cs.map(l=>{let on=0,need=0,off=0,nc=0,ncOff=0;pool.forEach(i=>{const s=sellsAt(i,l.id);if(s)on++;if(rgNeedsOn(i,l.id))need++;if(rgCanOff(i,l.id)){off++;if(noCode(i))ncOff++;}if(s&&noCode(i))nc++;});return{l,on,need,off,nc,ncOff};});
   const tn=rows.reduce((s,r)=>s+r.need,0);
   return `<div class="section-head" style="margin-top:0"><h2 style="font-size:15px">Review by centre</h2><small>Enable what each centre sells or stocks · disable what it hasn’t sold or stocked in 12 months</small></div>
-    <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:0"><thead><tr><th>Centre</th><th class="num">Enabled now</th><th class="num">Sold/stocked but not enabled</th><th class="num">Enabled but no stock/sales</th><th class="no-print"></th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.l.name)}</b></td><td class="num tnum">${r.on.toLocaleString()}</td><td class="num tnum" style="${r.need?'color:var(--crit);font-weight:700':''}">${r.need.toLocaleString()}</td><td class="num tnum" style="${r.off?'font-weight:700':''}">${r.off.toLocaleString()}</td><td class="no-print" style="white-space:nowrap;text-align:right"><button class="btn sm" data-rgrev="${r.l.id}:need_on" ${r.need?'':'disabled'}>Review</button> <button class="btn sm primary" data-rgfix="${r.l.id}:on" ${r.need?'':'disabled'}>Enable ${r.need||''}</button> <button class="btn sm" data-rgrev="${r.l.id}:can_off" ${r.off?'':'disabled'}>Review</button> <button class="btn sm" data-rgfix="${r.l.id}:off" ${r.off?'':'disabled'} style="color:var(--crit);border-color:var(--crit)">Disable ${r.off||''}</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:0"><thead><tr><th>Centre</th><th class="num">Enabled now</th><th class="num">Sold/stocked but not enabled</th><th class="num">Enabled but no stock/sales</th><th class="num">No code / barcode</th><th class="num">No code / barcode &amp; not sold/stocked</th><th class="no-print"></th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.l.name)}</b></td><td class="num tnum">${r.on.toLocaleString()}</td><td class="num tnum" style="${r.need?'color:var(--crit);font-weight:700':''}">${r.need.toLocaleString()}</td><td class="num tnum" style="${r.off?'font-weight:700':''}">${r.off.toLocaleString()}</td><td class="num tnum">${r.nc?`<a href="#" data-rgrev="${r.l.id}:nocode" style="color:var(--warn,#b45309);font-weight:700">${r.nc.toLocaleString()}</a>`:'0'}</td><td class="num tnum" style="white-space:nowrap">${r.ncOff?`<a href="#" data-rgrev="${r.l.id}:nocode_off" style="font-weight:700">${r.ncOff.toLocaleString()}</a> <button class="btn sm" data-rgfix="${r.l.id}:nocode_off" style="color:var(--crit);border-color:var(--crit)">Disable</button>`:'0'}</td><td class="no-print" style="white-space:nowrap;text-align:right"><button class="btn sm" data-rgrev="${r.l.id}:need_on" ${r.need?'':'disabled'}>Review</button> <button class="btn sm primary" data-rgfix="${r.l.id}:on" ${r.need?'':'disabled'}>Enable ${r.need||''}</button> <button class="btn sm" data-rgrev="${r.l.id}:can_off" ${r.off?'':'disabled'}>Review</button> <button class="btn sm" data-rgfix="${r.l.id}:off" ${r.off?'':'disabled'} style="color:var(--crit);border-color:var(--crit)">Disable ${r.off||''}</button></td></tr>`).join('')}</tbody></table></div>
     ${tn?`<div style="font-size:12px;color:var(--muted);margin:-8px 0 12px">${svg(I.info,13)} “Sold/stocked” uses each centre’s stock on hand now and its Square sales in the last 12 months. Items created in Square in the last 90 days are never suggested for disabling.</div>`:''}`;
 }
 function renderRange(body){
@@ -3559,18 +3565,19 @@ function renderRange(body){
     ${!cs.length?`<div class="banner warn">${svg(I.alert,17)}<div>No Square-linked centres found. Link your centres in Square Sync first.</div></div>`:`
     <div class="toolbar" style="flex-wrap:wrap">
       <select class="filter" id="rg-loc">${cs.map(l=>`<option value="${l.id}"${l.id===rgLoc?' selected':''}>${esc(l.name)}</option>`).join('')}<option value="*"${rgLoc==='*'?' selected':''}>All centres (${cs.length})</option></select>
-      <select class="filter" id="rg-show"><option value="all">All items</option><option value="need_on">Sold or stocked here — but not enabled</option><option value="can_off">Enabled — but no stock or sales here (12 mo)</option><option value="on">For sale ${rgLoc==='*'?'everywhere':'here'}</option><option value="off">Not for sale ${rgLoc==='*'?'somewhere':'here'}</option></select>
+      <select class="filter" id="rg-show"><option value="all">All items</option><option value="need_on">Sold or stocked here — but not enabled</option><option value="can_off">Enabled — but no stock or sales here (12 mo)</option><option value="nocode">Enabled here — missing product code or barcode</option><option value="nocode_off">Missing code / barcode — and no stock or sales here (can disable)</option><option value="on">For sale ${rgLoc==='*'?'everywhere':'here'}</option><option value="off">Not for sale ${rgLoc==='*'?'somewhere':'here'}</option></select>
       <select class="filter" id="rg-cat"><option value="all">All categories</option>${cats.map(c=>`<option value="${esc(c)}"${c===rgCat?' selected':''}>${esc(c)}</option>`).join('')}</select>
       <div class="search">${svg(I.search,16)}<input id="rg-q" placeholder="Search name or SKU…" value="${esc(rgQ)}"></div>
       <div class="spacer"></div>
+      <button class="btn" id="rg-csv">${svg(I.receipt,15)} Export list</button>
       <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="rg-all"> Select all ${L.length}</label>
       <button class="btn" id="rg-off" ${selN?'':'disabled'} style="color:var(--crit);border-color:var(--crit)">Disable ${selN||''} at ${esc(cName)}</button>
       <button class="btn primary" id="rg-on" ${selN?'':'disabled'}>Enable ${selN||''} at ${esc(cName)}</button>
     </div>
-    ${L.length?`<div class="tablewrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">${single?'On hand here':'Centres selling'}</th><th class="num">${single?'Sold here 12 mo':'Sold 12 mo (all)'}</th><th>${single?'For sale here':'Status'}</th><th class="no-print"></th></tr></thead><tbody>${L.slice(0,1500).map(i=>{const on=rgOnCount(i);const full=on===n;return `<tr><td><input type="checkbox" data-rgs="${i.id}" ${rgSel.has(i.id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${single?onHand(single,i.id).toLocaleString():on+' / '+n}</td><td class="num tnum">${Math.round(single?rgSoldAt(single,i.id):(soldBy[i.id]||0)).toLocaleString()}</td><td>${full?'<span class="pill p-done">For sale</span>':on?'<span class="pill p-partial">Some centres</span>':'<span class="pill p-cancel">Off</span>'}</td><td class="no-print" style="text-align:right"><button class="btn sm" data-rgt="${i.id}" data-on="${full?'0':'1'}">${full?'Disable':'Enable'}</button></td></tr>`;}).join('')}</tbody></table></div>${L.length>1500?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 1,500 — search or filter to narrow.</div>`:''}`:`<div class="card empty">${svg(I.box,34)}<div>No items match.</div></div>`}`}`;
+    ${L.length?`<div class="tablewrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">${single?'On hand here':'Centres selling'}</th><th class="num">${single?'Sold here 12 mo':'Sold 12 mo (all)'}</th><th>${single?'For sale here':'Status'}</th><th class="no-print"></th></tr></thead><tbody>${L.slice(0,1500).map(i=>{const on=rgOnCount(i);const full=on===n;return `<tr><td><input type="checkbox" data-rgs="${i.id}" ${rgSel.has(i.id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div>${noCode(i)?`<div style="font-size:11px;color:var(--crit)">No ${esc(missLbl(i).toLowerCase())}</div>`:''}</td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${single?onHand(single,i.id).toLocaleString():on+' / '+n}</td><td class="num tnum">${Math.round(single?rgSoldAt(single,i.id):(soldBy[i.id]||0)).toLocaleString()}</td><td>${full?'<span class="pill p-done">For sale</span>':on?'<span class="pill p-partial">Some centres</span>':'<span class="pill p-cancel">Off</span>'}</td><td class="no-print" style="text-align:right"><button class="btn sm" data-rgt="${i.id}" data-on="${full?'0':'1'}">${full?'Disable':'Enable'}</button></td></tr>`;}).join('')}</tbody></table></div>${L.length>1500?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 1,500 — search or filter to narrow.</div>`:''}`:`<div class="card empty">${svg(I.box,34)}<div>No items match.</div></div>`}`}`;
   body.querySelectorAll('[data-cct]').forEach(b=>b.onclick=()=>{ccTab=b.dataset.cct;ccSel=new Set();renderCleanup();});
   if(!cs.length)return;
-  body.querySelectorAll('[data-rgrev]').forEach(b=>b.onclick=()=>{const[l,s]=b.dataset.rgrev.split(':');rgLoc=l;rgShow=s;rgSel=new Set();renderRange(body);const t=document.getElementById('rg-loc');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});});
+  body.querySelectorAll('[data-rgrev]').forEach(b=>b.onclick=e=>{e.preventDefault();const[l,s]=b.dataset.rgrev.split(':');rgLoc=l;rgShow=s;rgSel=new Set();renderRange(body);const t=document.getElementById('rg-loc');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});});
   body.querySelectorAll('[data-rgfix]').forEach(b=>b.onclick=()=>{const[l,m]=b.dataset.rgfix.split(':');rgFixCentre(l,m);});
   const ls=document.getElementById('rg-loc');ls.onchange=e=>{rgLoc=e.target.value;renderRange(body);};
   const sh=document.getElementById('rg-show');sh.value=rgShow;sh.onchange=e=>{rgShow=e.target.value;renderRange(body);};
@@ -3580,6 +3587,9 @@ function renderRange(body){
   all.onchange=e=>{L.forEach(i=>e.target.checked?rgSel.add(i.id):rgSel.delete(i.id));renderRange(body);};
   body.querySelectorAll('[data-rgs]').forEach(c=>c.onchange=e=>{e.target.checked?rgSel.add(c.dataset.rgs):rgSel.delete(c.dataset.rgs);renderRange(body);});
   body.querySelectorAll('[data-rgt]').forEach(b=>b.onclick=()=>rgConfirm([b.dataset.rgt],b.dataset.on==='1'));
+  document.getElementById('rg-csv').onclick=()=>{const nm=rgLoc==='*'?'all-centres':(loc(rgLoc).code||'centre');
+    downloadCSV(`centre-range_${nm}_${rgShow}_${today()}.csv`,['Product code','Barcode','Item','Category','Missing',single?'On hand here':'Centres selling',single?'Sold here 12 mo':'Sold 12 mo (all)',single?'For sale here':'Centres for sale'],
+      L.map(i=>[i.sku||'',i.barcode||'',i.name,i.category||'',missLbl(i),single?onHand(single,i.id):rgOnCount(i)+'/'+n,Math.round(single?rgSoldAt(single,i.id):(soldBy[i.id]||0)),single?(sellsAt(i,single)?'yes':'no'):rgOnCount(i)]));};
   document.getElementById('rg-on').onclick=()=>rgConfirm([...rgSel],true);
   document.getElementById('rg-off').onclick=()=>rgConfirm([...rgSel],false);
 }
@@ -5733,4 +5743,13 @@ document.getElementById('setPwSave').onclick=async()=>{
 document.getElementById('newPw2').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('setPwSave').click();});
 document.getElementById('changePw').onclick=()=>{
   document.getElementById('userDrop').hidden=true;
-  modal('Change password','Used with your Square email to sign in',`<div class="field"><label>New password</label><input id="cpw1" type="password" autocomplete="new-password"></div><div class="field"><label>Type it again</label><input id="cpw2" type="password" autocomplete="new-password"></div><div class="hint" id="cpwMsg">At least 10 characters, with letters and numbers.</div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cpwGo">Save pas
+  modal('Change password','Used with your Square email to sign in',`<div class="field"><label>New password</label><input id="cpw1" type="password" autocomplete="new-password"></div><div class="field"><label>Type it again</label><input id="cpw2" type="password" autocomplete="new-password"></div><div class="hint" id="cpwMsg">At least 10 characters, with letters and numbers.</div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cpwGo">Save password</button>`);
+  document.getElementById('cpwGo').onclick=async()=>{const b=document.getElementById('cpwGo');b.disabled=true;
+    const ok=await savePassword(document.getElementById('cpw1').value,document.getElementById('cpw2').value,()=>{closeOverlay();toast('Password changed');},document.getElementById('cpwMsg'));
+    if(!ok)b.disabled=false;};
+};
+
+boot();
+</script>
+</body>
+</html>
