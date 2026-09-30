@@ -3956,6 +3956,67 @@ async function runPerfSync(){
   await loadOps();renderView();
   toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):('Sales & performance updated ('+rowsN+' month-rows)'),!!failed);
 }
+/* ---- Super Admin: month-by-month comparison of a chosen FY with a chosen earlier FY ---- */
+let pfnCmpA=null,pfnCmpB=null;
+function renderPfnCompare(){
+  const box=document.getElementById('pfn-cmp');const d=window._pfnData;if(!box||!d)return;
+  (window._pfnCmpCharts||[]).forEach(c=>{try{c.destroy();}catch(e){}const i=CHARTS.indexOf(c);if(i>=0)CHARTS.splice(i,1);});window._pfnCmpCharts=[];
+  const{byYm,fys,curFy}=d;
+  const aOpts=fys.slice().reverse();
+  if(!aOpts.includes(pfnCmpA))pfnCmpA=curFy;
+  const A=pfnCmpA;const bOpts=aOpts.filter(f=>f<A);
+  if(!bOpts.includes(pfnCmpB))pfnCmpB=bOpts.length?bOpts[0]:null;
+  const B=pfnCmpB;
+  const Z={s:0,o:0,u:0};
+  const M=FY_MONTHS.map((lbl,i)=>{const a=byYm[fyYm(A,i)],b=B?byYm[fyYm(B,i)]:null;return{lbl,has:!!a,hasB:!!b,a:a||Z,b:b||Z};});
+  const done=M.filter(m=>m.has);const partial=done.length<12;
+  const sumOf=(list,f)=>list.reduce((s,m)=>s+f(m),0);
+  const avg=(a,b)=>b>0?a/b:0;
+  const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
+  const chg=(a,b)=>{const p=pct(a,b);if(p==null)return '<span style="color:var(--faint)">—</span>';const up=p>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</span>`;};
+  const n0=x=>Math.round(x).toLocaleString();
+  const ca={s:sumOf(done,m=>m.a.s),o:sumOf(done,m=>m.a.o),u:sumOf(done,m=>m.a.u)},cb={s:sumOf(done,m=>m.b.s),o:sumOf(done,m=>m.b.o),u:sumOf(done,m=>m.b.u)};
+  const fullB={s:sumOf(M,m=>m.b.s),o:sumOf(M,m=>m.b.o)};
+  const aL='FY'+A+(A===curFy?' (this year)':''),bL=B?'FY'+B:'—';
+  const cell=(a,b,fmt,has)=>has?`<td class="num tnum">${fmt(a)}</td><td class="num tnum" style="color:var(--muted)">${B?fmt(b):'—'}</td><td class="num tnum" style="white-space:nowrap">${B?chg(a,b):'—'}</td>`:`<td class="num" style="color:var(--faint)">—</td><td class="num tnum" style="color:var(--muted)">${B?fmt(b):'—'}</td><td></td>`;
+  const period=partial?(done.length?`${done[0].lbl}–${done[done.length-1].lbl}`:'no months yet'):'full year';
+  box.innerHTML=`<div class="rep-actions no-print" style="margin:0 0 12px;align-items:center;flex-wrap:wrap;gap:8px">
+      <label style="font-size:13px;font-weight:700">Financial year</label><select class="filter" id="pfn-a">${aOpts.map(f=>`<option value="${f}"${f===A?' selected':''}>FY${f}${f===curFy?' (this year)':''}</option>`).join('')}</select>
+      <label style="font-size:13px;font-weight:700">compared with</label><select class="filter" id="pfn-b">${bOpts.length?bOpts.map(f=>`<option value="${f}"${f===B?' selected':''}>FY${f}${f===A-1?' (previous FY)':''}</option>`).join(''):'<option value="">No earlier FY in the data</option>'}</select>
+      <button class="btn" id="pfn-cmp-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pfn-cmp-xls">${svg(I.receipt,15)} Excel</button>
+      <span class="tag">${esc(d.scope)}</span></div>
+    ${!B?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div>There is no earlier financial year in the Square data to compare FY${A} with (sales are held from 1 Jul 2024).</div></div>`:''}
+    <div class="tiles" style="margin-bottom:12px">
+      <div class="tile accent"><div class="lbl">${svg(I.cost,14)} Net sales · FY${A} ${partial?'to date':''}</div><div class="val tnum">${money0(ca.s)}</div><div class="meta">${B?chg(ca.s,cb.s)+' vs '+money0(cb.s)+' in FY'+B+' ('+period+')':period}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.order,14)} Transactions · FY${A}</div><div class="val tnum">${n0(ca.o)}</div><div class="meta">${B?chg(ca.o,cb.o)+' vs '+n0(cb.o)+' same months':period}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Items sold · FY${A}</div><div class="val tnum">${n0(ca.u)}</div><div class="meta">${B?chg(ca.u,cb.u)+' vs '+n0(cb.u)+' same months':period}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.receipt,14)} Avg basket · FY${A}</div><div class="val tnum">${money(avg(ca.s,ca.o))}</div><div class="meta">${B?'was '+money(avg(cb.s,cb.o))+' in FY'+B:''}</div></div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Net sales by month — ${esc(aL)} vs ${esc(bL)}</h3><div style="height:250px"><canvas id="pfn-cmp-sales"></canvas></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Transactions by month — ${esc(aL)} vs ${esc(bL)}</h3><div style="height:250px"><canvas id="pfn-cmp-orders"></canvas></div></div>
+    </div>
+    ${B&&partial?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${svg(I.info,13)} FY${A} has ${done.length} month${done.length===1?'':'s'} so far; the totals compare those months only. FY${B} full year: ${money0(fullB.s)} net sales, ${n0(fullB.o)} transactions.</div>`:''}
+    <div class="tablewrap" style="margin-top:12px"><table class="pc-sum"><thead>
+      <tr><th rowspan="2">Month</th><th colspan="3" class="grp">Net sales</th><th colspan="3" class="grp">Transactions</th><th colspan="3" class="grp">Items sold</th><th colspan="3" class="grp">Avg basket</th></tr>
+      <tr>${[0,1,2,3].map(()=>`<th class="num">FY${A}</th><th class="num">${B?'FY'+B:'—'}</th><th class="num">Change</th>`).join('')}</tr></thead>
+      <tbody>${M.map(m=>`<tr${m.has?'':' class="pc-future"'}><td><b>${m.lbl}</b></td>${cell(m.a.s,m.b.s,money0,m.has)}${cell(m.a.o,m.b.o,n0,m.has)}${cell(m.a.u,m.b.u,n0,m.has)}${cell(avg(m.a.s,m.a.o),avg(m.b.s,m.b.o),money,m.has)}</tr>`).join('')}</tbody>
+      <tfoot><tr><td><b>${partial?'Year to date':'Full year'}</b></td>${cell(ca.s,cb.s,money0,true)}${cell(ca.o,cb.o,n0,true)}${cell(ca.u,cb.u,n0,true)}${cell(avg(ca.s,ca.o),avg(cb.s,cb.o),money,true)}</tr></tfoot>
+    </table></div>`;
+  document.getElementById('pfn-a').onchange=e=>{pfnCmpA=+e.target.value;pfnCmpB=null;renderPfnCompare();};
+  document.getElementById('pfn-b').onchange=e=>{pfnCmpB=e.target.value?+e.target.value:null;renderPfnCompare();};
+  const exp=fmt=>{const header=['Month',`Net sales FY${A}`,`Net sales FY${B||''}`,`Transactions FY${A}`,`Transactions FY${B||''}`,`Items sold FY${A}`,`Items sold FY${B||''}`,`Avg basket FY${A}`,`Avg basket FY${B||''}`];
+    const rows=M.map(m=>[m.lbl,m.has?m.a.s.toFixed(2):'',B?m.b.s.toFixed(2):'',m.has?m.a.o:'',B?m.b.o:'',m.has?Math.round(m.a.u):'',B?Math.round(m.b.u):'',m.has?avg(m.a.s,m.a.o).toFixed(2):'',B?avg(m.b.s,m.b.o).toFixed(2):'']);
+    rows.push([partial?'Year to date':'Full year',ca.s.toFixed(2),B?cb.s.toFixed(2):'',ca.o,B?cb.o:'',Math.round(ca.u),B?Math.round(cb.u):'',avg(ca.s,ca.o).toFixed(2),B?avg(cb.s,cb.o).toFixed(2):'']);
+    const name=`sales-monthly-compare_FY${A}_vs_FY${B||'none'}_${(!perfCentre||perfCentre==='all')?'all':loc(perfCentre).code}_${today()}`;
+    if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Monthly compare');XLSX.writeFile(wb,name+'.xlsx');toast('Excel exported');}
+    else downloadCSV(name+'.csv',header,rows);};
+  document.getElementById('pfn-cmp-csv').onclick=()=>exp('csv');document.getElementById('pfn-cmp-xls').onclick=()=>exp('xlsx');
+  const ac=fyColor(A),bc=B?fyColor(B):'#999';
+  const pair=(id,fa,fb,isMoney)=>mkChart(id,{type:'bar',data:{labels:FY_MONTHS,datasets:[{label:'FY'+A,data:M.map(m=>m.has?Math.round(fa(m)):null),backgroundColor:ac,borderRadius:4}].concat(B?[{label:'FY'+B,data:M.map(m=>m.hasB?Math.round(fb(m)):null),backgroundColor:bc,borderRadius:4}]:[])},
+    options:{scales:axes(),plugins:{legend:{display:true,position:'top'},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${isMoney?money0(c.parsed.y):Math.round(c.parsed.y).toLocaleString()}`,afterBody:items=>{const m=M[items[0].dataIndex];if(!B||!m.has)return '';const p=pct(fa(m),fb(m));return p==null?'':`Change: ${p>=0?'+':''}${p}%`;}}}}}});
+  window._pfnCmpCharts=[pair('pfn-cmp-sales',m=>m.a.s,m=>m.b.s,true),pair('pfn-cmp-orders',m=>m.a.o,m=>m.b.o,false)].filter(Boolean);
+}
 /* ================= Super Admin: National Sales & Performance (mirrors the FY report) ================= */
 const PAY_LABEL={CARD:'Card',CASH:'Cash',SQUARE_GIFT_CARD:'Gift card',WALLET:'Wallet',BANK_ACCOUNT:'Bank',BUY_NOW_PAY_LATER:'BNPL',THIRD_PARTY_CARD:'3rd-party card',EXTERNAL:'External',OTHER:'Other',NO_SALE:'No sale'};
 function vPerfNational(v){
@@ -4026,6 +4087,9 @@ async function renderPerfNational(){
       <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Net sales by month</h3><div style="height:220px"><canvas id="pfn-month"></canvas></div></div></div>
     <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Financial year</th><th class="num">Net sales</th><th class="num">YoY</th><th class="num">Orders</th><th class="num">YoY</th><th class="num">Avg order</th></tr></thead><tbody>${fys.slice().reverse().map(f=>{const i=fys.indexOf(f);const pv=i>0?byFy[fys[i-1]]:null;return `<tr><td><b>${FYL(f)}</b></td><td class="num tnum">${money0(byFy[f].s)}</td><td class="num tnum">${pv?chg(byFy[f].s,pv.s):'—'}</td><td class="num tnum">${byFy[f].o.toLocaleString()}</td><td class="num tnum">${pv?chg(byFy[f].o,pv.o):'—'}</td><td class="num tnum">${money(avg(byFy[f].s,byFy[f].o))}</td></tr>`;}).join('')}</tbody></table></div>
 
+    ${sh('↔','Monthly comparison','Net sales and transactions month by month, against a previous financial year')}
+    <div id="pfn-cmp"></div>
+
     ${sh(2,'Top centres by share of sales',"% of each year's net sales")}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px">${fys.slice().reverse().map(rankPanel).join('')}</div>
     <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Centre</th>${fys.map(f=>`<th class="num">${FYL(f)}</th><th class="num">Share</th>`).join('')}</tr></thead><tbody>${outletRows.map(r=>`<tr><td>${esc(loc(r.id).name)}</td>${r.byf.map((s,ix)=>{const tot=byFy[fys[ix]].s;return `<td class="num tnum">${money0(s)}</td><td class="num tnum" style="color:var(--muted)">${tot>0?Math.round(s/tot*100)+'%':'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>
@@ -4057,6 +4121,7 @@ async function renderPerfNational(){
       ${[['Net sales',f=>byFy[f].s],['Orders',f=>byFy[f].o],['Items sold',f=>byFy[f].u],['Avg order',f=>avg(byFy[f].s,byFy[f].o)],['Unique customers',f=>(custByFy[f]||{}).uniq||0]].map(([lbl,fn])=>`<tr><td>${lbl}</td>${fys.slice(1).map((f,ix)=>chgCell(fn(f),fn(fys[ix]))).join('')}</tr>`).join('')}
     </tbody></table></div>`;
   function chgCell(a,b){const p=b>0?Math.round((a-b)/b*1000)/10:null;if(p==null)return '<td class="num tnum" style="color:var(--faint)">—</td>';const up=p>=0;return `<td class="num tnum" style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</td>`;}
+  window._pfnData={byYm,fys,curFy,scope:(!perfCentre||perfCentre==='all')?'All centres':loc(perfCentre).name};renderPfnCompare();
   const fyLabels=fys.map(FYL);
   const fyCols=fys.map(fyColor);
   mkChart('pfn-fy',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
