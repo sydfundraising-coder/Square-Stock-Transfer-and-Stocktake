@@ -3404,7 +3404,7 @@ const CC_TABS=[['dead','Never sold · no stock','Not sold in the last 12 months 
   ['unlisted','Not for sale anywhere','Not available for sale at any centre in Square'],
   ['hidden','Hidden','Items already hidden from the app — restore if needed']];
 async function openCatalogueCleanup(){
-  modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
+  modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn" id="cc-del" disabled style="color:var(--crit);border-color:var(--crit)">Delete from Square…</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
   const{data,error}=await sb.rpc('catalogue_cleanup_candidates');
   const body=document.getElementById('cc-body');if(!body)return;
   if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Couldn’t load the clean-up list: ${esc(error.message||'')}. Run <b>51_team_removal_and_catalogue_range.sql</b> in Supabase.</div></div>`;return;}
@@ -3428,7 +3428,7 @@ function renderCleanup(){
   const counts=Object.fromEntries(CC_TABS.map(t=>[t[0],ccList(t[0]).length]));
   const val=L.reduce((s,r)=>s+(+r.stock_value||0),0);
   const noSales=!ccRows.some(r=>+r.sold_365>0);
-  body.innerHTML=`${noSales?`<div class="banner crit" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>No Square sales data found</b>, so every item looks unsold. Run <b>Square Sync → Update sales data</b> first, then come back — don’t hide anything until then.</div></div>`:''}<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Best way to clean up:</b> 1) hide the <b>Never sold · no stock</b> items here (reversible, the app only); 2) for items with stock, clear the stock first (transfer to the warehouse, return to supplier or write off), then hide; 3) export the list and <b>archive the same items in Square</b> (Items → select → Archive) so they drop out everywhere — archived items are made inactive in the app automatically at the next sync. New items (created in Square in the last 90 days) are never suggested.</div></div>
+  body.innerHTML=`${noSales?`<div class="banner crit" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>No Square sales data found</b>, so every item looks unsold. Run <b>Square Sync → Update sales data</b> first, then come back — don’t hide anything until then.</div></div>`:''}<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Best way to clean up:</b> 1) hide the <b>Never sold · no stock</b> items here (reversible, the app only); 2) for items with stock, clear the stock first (transfer to the warehouse, return to supplier or write off), then hide; 3) clean Square too: tick items and use <b>Delete from Square</b> (permanent — only items with no stock, no open orders and no sales in 12 months), or export the list and <b>Archive</b> them in Square if you want a way back — archived items are made inactive in the app automatically at the next sync. New items (created in Square in the last 90 days) are never suggested.</div></div>
     <div class="rep-tabs no-print" style="margin:0 0 10px;flex-wrap:wrap">${CC_TABS.map(t=>`<button class="rep-tab ${ccTab===t[0]?'active':''}" data-cct="${t[0]}">${t[1]} <span class="tag">${counts[t[0]]}</span></button>`).join('')}</div>
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="cc-q" placeholder="Search name, SKU, category…" value="${esc(ccQ)}"></div><span style="font-size:12.5px;color:var(--muted)">${esc(tab[2])}${val>0?' · stock value '+money0(val):''}</span><div class="spacer"></div>
       <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="cc-all"> Select all ${L.length}</label></div>
@@ -3441,7 +3441,46 @@ function renderCleanup(){
   const csv=document.getElementById('cc-csv');if(csv)csv.onclick=()=>downloadCSV(`catalogue-cleanup_${ccTab}_${today()}.csv`,['Product code','Item','Category','Centres selling','On hand (packets)','Stock value','Sold 12 months','Sold 6 months','Last sale','Open transfers/orders','Hidden'],L.map(r=>[r.sku||'',r.name,r.category||'',r.centres_listed,r.on_hand,(+r.stock_value||0).toFixed(2),r.sold_365,r.sold_180,r.last_sale||'',r.open_refs,r.hidden?'yes':'']));
   ccBtn();
 }
+const ccCanDelete=r=>+r.on_hand<=0&&!+r.open_refs&&+r.sold_365<=0&&r.in_square!==false&&!r.square_deleted_at;
+function ccDelBtn(){
+  const d=document.getElementById('cc-del');if(!d)return;
+  const rows=ccRows.filter(r=>ccSel.has(r.item_id));const ok=rows.filter(ccCanDelete);
+  const salesOk=ccRows.some(r=>+r.sold_365>0);
+  d.disabled=!ok.length||!salesOk;
+  d.textContent=ok.length?`Delete ${ok.length} from Square…`:'Delete from Square…';
+  d.title=!salesOk?'Run Square Sync → Update sales data first':(rows.length&&!ok.length?'Only items with no stock, no open orders and no sales in 12 months can be deleted':'');
+  d.onclick=()=>{
+    const skip=rows.length-ok.length;let typed='';
+    stackConfirm('Delete from Square',ok.length+' item'+(ok.length===1?'':'s'),`<div class="banner crit" style="margin-bottom:10px">${svg(I.alert,17)}<div><b>This permanently deletes ${ok.length} item${ok.length===1?'':'s'} from your Square catalogue</b> — from every location, the POS and online. It cannot be undone in Square. Their past Square sales reports are not affected.</div></div>
+      <div style="font-size:13px">In this app they are kept for history (old transfers, invoices and counts) but become inactive and hidden.${skip?` <b>${skip}</b> selected item${skip===1?'':'s'} will be skipped because ${skip===1?'it has':'they have'} stock, open orders or recent sales.`:''}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:8px">Prefer to keep a way back? Close this and <b>Archive</b> them in Square instead — the app hides archived items automatically.</div>
+      <div class="field" style="margin-top:12px"><label>Type <b>DELETE</b> to confirm</label><input id="cc-type" autocomplete="off"></div>`,
+      {okLabel:'Delete permanently',cancelLabel:'Cancel',danger:true,onOk:()=>{if(typed.trim()!=='DELETE')return toast('Type DELETE to confirm — nothing was deleted',true);ccDeleteSquare(ok.map(r=>r.item_id));}});
+    const ti=document.getElementById('cc-type');if(ti){ti.oninput=e=>{typed=e.target.value;};ti.focus();}
+  };
+}
+async function ccDeleteSquare(ids){
+  let del=0,sk=[],fl=[],errs=[];const doneIds=[];
+  for(let i=0;i<ids.length;i+=200){
+    toast(`Deleting from Square… ${Math.min(i+200,ids.length)}/${ids.length}`);
+    const{data,error}=await sb.functions.invoke('square-catalog-clean',{body:{item_ids:ids.slice(i,i+200),confirm:'DELETE'}});
+    if(error){errs.push(await fnErr(error));break;}
+    if(data&&data.error){errs.push(data.error);break;}
+    del+=data.deleted||0;sk=sk.concat(data.skipped||[]);fl=fl.concat(data.failed||[]);errs=errs.concat(data.errors||[]);doneIds.push(...(data.deleted_item_ids||[]));
+  }
+  const set=new Set(doneIds),now=new Date().toISOString();
+  ccRows.forEach(r=>{if(set.has(r.item_id)){r.active=false;r.hidden=true;r.hidden_reason='Deleted from Square';r.square_deleted_at=now;r.in_square=false;}});
+  (S.allItems||[]).forEach(it=>{if(set.has(it.id)){it.active=false;it.hidden=true;it.hidden_reason='Deleted from Square';}});
+  S.items=(S.allItems||S.items).filter(itemInMyRange);
+  ccSel=new Set();renderCleanup();try{if(document.getElementById('list'))catList();}catch(e){}
+  if(del)logEvent('Catalogue clean-up: deleted '+del+' item(s) from Square');
+  const msg=`${del} item${del===1?'':'s'} deleted from Square`+(sk.length?` · ${sk.length} skipped`:'')+(fl.length?` · ${fl.length} failed`:'');
+  if(sk.length||fl.length||errs.length){
+    stackConfirm('Delete from Square — result',msg,`<div>${del?`<b>${del}</b> deleted from Square and retired in the app.`:'Nothing was deleted.'}</div>${errs.length?`<div class="banner crit" style="margin-top:10px">${svg(I.alert,17)}<div>${errs.map(esc).join('<br>')}</div></div>`:''}${sk.concat(fl).length?`<div class="tablewrap" style="margin-top:10px;max-height:260px;overflow:auto"><table style="min-width:0"><thead><tr><th>Item</th><th>Why not</th></tr></thead><tbody>${sk.concat(fl).map(x=>`<tr><td>${esc(x.name)}</td><td style="color:var(--muted)">${esc(x.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}`,{okLabel:'OK',okOnly:true});
+  }else toast(msg);
+}
 function ccBtn(){
+  ccDelBtn();
   const b=document.getElementById('cc-go');if(!b)return;const restore=ccTab==='hidden';const n=ccSel.size;
   b.disabled=!n||(!restore&&!ccRows.some(r=>+r.sold_365>0));b.textContent=n?(restore?`Restore ${n} item${n===1?'':'s'}`:`Hide ${n} item${n===1?'':'s'}`):(restore?'Restore selected':'Hide selected');
   b.onclick=()=>{const ids=[...ccSel];const rows=ccRows.filter(r=>ccSel.has(r.item_id));
