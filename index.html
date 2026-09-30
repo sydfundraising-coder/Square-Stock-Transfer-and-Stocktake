@@ -3422,14 +3422,17 @@ function ccList(tab){
   if(q)L=L.filter(r=>[r.name,r.sku,r.category].some(x=>String(x||'').toLowerCase().includes(q)));
   return L;
 }
+const ccTabBar=counts=>`<div class="rep-tabs no-print" style="margin:0 0 10px;flex-wrap:wrap">${CC_TABS.map(t=>`<button class="rep-tab ${ccTab===t[0]?'active':''}" data-cct="${t[0]}">${t[1]} ${counts?`<span class="tag">${counts[t[0]]}</span>`:''}</button>`).join('')}<button class="rep-tab ${ccTab==='range'?'active':''}" data-cct="range">${svg(I.location,14)} Centre range</button></div>`;
 function renderCleanup(){
   const body=document.getElementById('cc-body');if(!body)return;
+  if(ccTab==='range')return renderRange(body);
+  ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='';});
   const L=ccList(ccTab);const tab=CC_TABS.find(t=>t[0]===ccTab);const restore=ccTab==='hidden';
   const counts=Object.fromEntries(CC_TABS.map(t=>[t[0],ccList(t[0]).length]));
   const val=L.reduce((s,r)=>s+(+r.stock_value||0),0);
   const noSales=!ccRows.some(r=>+r.sold_365>0);
   body.innerHTML=`${noSales?`<div class="banner crit" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>No Square sales data found</b>, so every item looks unsold. Run <b>Square Sync → Update sales data</b> first, then come back — don’t hide anything until then.</div></div>`:''}<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Best way to clean up:</b> 1) hide the <b>Never sold · no stock</b> items here (reversible, the app only); 2) for items with stock, clear the stock first (transfer to the warehouse, return to supplier or write off), then hide; 3) clean Square too: tick items and use <b>Delete from Square</b> (permanent — only items with no stock, no open orders and no sales in 12 months), or export the list and <b>Archive</b> them in Square if you want a way back — archived items are made inactive in the app automatically at the next sync. New items (created in Square in the last 90 days) are never suggested.</div></div>
-    <div class="rep-tabs no-print" style="margin:0 0 10px;flex-wrap:wrap">${CC_TABS.map(t=>`<button class="rep-tab ${ccTab===t[0]?'active':''}" data-cct="${t[0]}">${t[1]} <span class="tag">${counts[t[0]]}</span></button>`).join('')}</div>
+    ${ccTabBar(counts)}
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="cc-q" placeholder="Search name, SKU, category…" value="${esc(ccQ)}"></div><span style="font-size:12.5px;color:var(--muted)">${esc(tab[2])}${val>0?' · stock value '+money0(val):''}</span><div class="spacer"></div>
       <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="cc-all"> Select all ${L.length}</label></div>
     ${L.length?`<div class="tablewrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">Centres selling</th><th class="num">On hand</th><th class="num">Stock value</th><th class="num">Sold 12 mo</th><th>Last sale</th><th class="num">Open orders</th>${restore?'<th>Hidden because</th>':''}</tr></thead><tbody>${L.slice(0,2000).map(r=>`<tr><td><input type="checkbox" data-ccs="${r.item_id}" ${ccSel.has(r.item_id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(r.sku||'')}</span>${esc(r.name)}</div></td><td><span class="tag">${esc(r.category||'—')}</span></td><td class="num tnum">${r.centres_listed}</td><td class="num tnum" style="${+r.on_hand>0?'font-weight:700':''}">${(+r.on_hand).toLocaleString()}</td><td class="num tnum">${+r.stock_value>0?money0(r.stock_value):'—'}</td><td class="num tnum">${Math.round(+r.sold_365).toLocaleString()}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${r.last_sale?fmtDate(r.last_sale):'—'}</td><td class="num tnum" style="${+r.open_refs?'color:var(--crit);font-weight:700':''}">${+r.open_refs||'—'}</td>${restore?`<td style="font-size:12px;color:var(--muted)">${esc(r.hidden_reason||'')}</td>`:''}</tr>`).join('')}</tbody></table></div>${L.length>2000?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 2,000 — search to narrow.</div>`:''}`:`<div class="card empty">${svg(I.check,34)}<div>Nothing in this list.</div></div>`}`;
@@ -3489,6 +3492,85 @@ function ccBtn(){
     let why='';
     stackConfirm('Hide items',n+' item'+(n===1?'':'s'),`<div>Hide <b>${n}</b> item${n===1?'':'s'} from the app? They disappear from the catalogue, pickers and reports for everyone. History is kept and you can restore them from the <b>Hidden</b> list.</div>${withStock||withOpen?`<div class="banner warn" style="margin-top:10px">${svg(I.alert,17)}<div>${withStock?`<b>${withStock}</b> still have stock on hand. `:''}${withOpen?`<b>${withOpen}</b> are on open transfers or orders. `:''}Clear those first if you can.</div></div>`:''}<div class="field" style="margin-top:10px"><label>Reason</label><input id="cc-why" placeholder="e.g. no sales in 12 months"></div><div style="font-size:12.5px;color:var(--muted)">Tip: archive the same items in Square as well, so they stop syncing.</div>`,{okLabel:'Hide items',danger:true,onOk:()=>ccApply(ids,true,why||'No sales in 12 months')});
     const wi=document.getElementById('cc-why');if(wi)wi.oninput=e=>{why=e.target.value.trim();};};
+}
+/* ---- Centre range: switch items on/off for sale at a centre, in Square and the app ---- */
+let rgLoc='',rgShow='all',rgCat='all',rgQ='',rgSel=new Set();
+const rgCentres=()=>S.locations.filter(l=>l.square_location_id&&!l.is_hub).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+function rgLocIds(){return rgLoc==='*'?rgCentres().map(l=>l.id):(rgLoc?[rgLoc]:[]);}
+function rgOnCount(it){return rgLocIds().filter(l=>sellsAt(it,l)).length;}
+function rgList(){
+  const q=rgQ.trim().toLowerCase(),ids=rgLocIds(),n=ids.length;
+  return S.items.filter(i=>i.active!==false&&i.square_variation_id).filter(i=>{
+    if(rgCat!=='all'&&i.category!==rgCat)return false;
+    if(q&&![i.name,i.sku,i.category].some(x=>String(x||'').toLowerCase().includes(q)))return false;
+    if(rgShow==='on')return rgOnCount(i)===n;
+    if(rgShow==='off')return rgOnCount(i)<n;
+    return true;}).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+function renderRange(body){
+  ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
+  const cs=rgCentres();
+  if(!rgLoc&&cs.length)rgLoc=cs[0].id;
+  const soldBy=Object.fromEntries(ccRows.map(r=>[r.item_id,+r.sold_365||0]));
+  const cats=[...new Set(S.items.map(i=>i.category).filter(Boolean))].sort();
+  const L=rgList(),ids=rgLocIds(),n=ids.length,single=n===1?ids[0]:null;
+  const cName=rgLoc==='*'?'all centres':(loc(rgLoc).name||'');
+  const selN=rgSel.size;
+  body.innerHTML=`${ccTabBar(null)}
+    <div class="banner info" style="margin-bottom:12px">${svg(I.location,17)}<div>Choose which items each centre sells. Changes go straight to <b>Square</b> (the item is made available / unavailable at that location) and to this app, so centre staff only see their range. The Central Warehouse and other hubs always carry the full range.</div></div>
+    ${!cs.length?`<div class="banner warn">${svg(I.alert,17)}<div>No Square-linked centres found. Link your centres in Square Sync first.</div></div>`:`
+    <div class="toolbar" style="flex-wrap:wrap">
+      <select class="filter" id="rg-loc">${cs.map(l=>`<option value="${l.id}"${l.id===rgLoc?' selected':''}>${esc(l.name)}</option>`).join('')}<option value="*"${rgLoc==='*'?' selected':''}>All centres (${cs.length})</option></select>
+      <select class="filter" id="rg-show"><option value="all">All items</option><option value="on">For sale ${rgLoc==='*'?'everywhere':'here'}</option><option value="off">Not for sale ${rgLoc==='*'?'somewhere':'here'}</option></select>
+      <select class="filter" id="rg-cat"><option value="all">All categories</option>${cats.map(c=>`<option value="${esc(c)}"${c===rgCat?' selected':''}>${esc(c)}</option>`).join('')}</select>
+      <div class="search">${svg(I.search,16)}<input id="rg-q" placeholder="Search name or SKU…" value="${esc(rgQ)}"></div>
+      <div class="spacer"></div>
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="rg-all"> Select all ${L.length}</label>
+      <button class="btn" id="rg-off" ${selN?'':'disabled'} style="color:var(--crit);border-color:var(--crit)">Disable ${selN||''} at ${esc(cName)}</button>
+      <button class="btn primary" id="rg-on" ${selN?'':'disabled'}>Enable ${selN||''} at ${esc(cName)}</button>
+    </div>
+    ${L.length?`<div class="tablewrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">${single?'On hand here':'Centres selling'}</th><th class="num">Sold 12 mo (all)</th><th>${single?'For sale here':'Status'}</th><th class="no-print"></th></tr></thead><tbody>${L.slice(0,1500).map(i=>{const on=rgOnCount(i);const full=on===n;return `<tr><td><input type="checkbox" data-rgs="${i.id}" ${rgSel.has(i.id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${single?onHand(single,i.id).toLocaleString():on+' / '+n}</td><td class="num tnum">${Math.round(soldBy[i.id]||0).toLocaleString()}</td><td>${full?'<span class="pill p-done">For sale</span>':on?'<span class="pill p-partial">Some centres</span>':'<span class="pill p-cancel">Off</span>'}</td><td class="no-print" style="text-align:right"><button class="btn sm" data-rgt="${i.id}" data-on="${full?'0':'1'}">${full?'Disable':'Enable'}</button></td></tr>`;}).join('')}</tbody></table></div>${L.length>1500?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 1,500 — search or filter to narrow.</div>`:''}`:`<div class="card empty">${svg(I.box,34)}<div>No items match.</div></div>`}`}`;
+  body.querySelectorAll('[data-cct]').forEach(b=>b.onclick=()=>{ccTab=b.dataset.cct;ccSel=new Set();renderCleanup();});
+  if(!cs.length)return;
+  const ls=document.getElementById('rg-loc');ls.onchange=e=>{rgLoc=e.target.value;renderRange(body);};
+  const sh=document.getElementById('rg-show');sh.value=rgShow;sh.onchange=e=>{rgShow=e.target.value;renderRange(body);};
+  document.getElementById('rg-cat').onchange=e=>{rgCat=e.target.value;renderRange(body);};
+  document.getElementById('rg-q').oninput=e=>{rgQ=e.target.value;const p=e.target.selectionStart;renderRange(body);const x=document.getElementById('rg-q');x.focus();x.setSelectionRange(p,p);};
+  const all=document.getElementById('rg-all');all.checked=L.length>0&&L.every(i=>rgSel.has(i.id));
+  all.onchange=e=>{L.forEach(i=>e.target.checked?rgSel.add(i.id):rgSel.delete(i.id));renderRange(body);};
+  body.querySelectorAll('[data-rgs]').forEach(c=>c.onchange=e=>{e.target.checked?rgSel.add(c.dataset.rgs):rgSel.delete(c.dataset.rgs);renderRange(body);});
+  body.querySelectorAll('[data-rgt]').forEach(b=>b.onclick=()=>rgConfirm([b.dataset.rgt],b.dataset.on==='1'));
+  document.getElementById('rg-on').onclick=()=>rgConfirm([...rgSel],true);
+  document.getElementById('rg-off').onclick=()=>rgConfirm([...rgSel],false);
+}
+function rgConfirm(itemIds,enable){
+  const ids=rgLocIds();if(!itemIds.length||!ids.length)return;
+  const cName=rgLoc==='*'?'all '+ids.length+' centres':loc(rgLoc).name;
+  const withStock=enable?0:itemIds.filter(id=>ids.some(l=>onHand(l,id)>0)).length;
+  const n=itemIds.length;
+  stackConfirm((enable?'Enable':'Disable')+' at '+cName,n+' item'+(n===1?'':'s'),`<div>${enable?'Make':'Stop'} <b>${n}</b> item${n===1?'':'s'} ${enable?'available for sale':'being sold'} at <b>${esc(cName)}</b>?</div>
+    <ul style="margin:8px 0 0 18px;font-size:13px"><li>Square is updated now — ${enable?'the items appear on the POS / online at':'the items are removed from the POS / online at'} ${esc(cName)}.</li><li>Centre staff ${enable?'will see':'will no longer see'} them in the app.</li></ul>
+    ${withStock?`<div class="banner warn" style="margin-top:10px">${svg(I.alert,17)}<div><b>${withStock}</b> still have stock at ${esc(cName)}. Consider transferring it back to the warehouse first.</div></div>`:''}`,
+    {okLabel:(enable?'Enable':'Disable')+' in Square',danger:!enable,onOk:()=>rgApply(itemIds,ids,enable)});
+}
+async function rgApply(itemIds,locIds,enable){
+  let changed=[],skipped=[],errs=[],notSq=[];
+  for(let i=0;i<itemIds.length;i+=300){
+    toast(`Updating Square… ${Math.min(i+300,itemIds.length)}/${itemIds.length}`);
+    const{data,error}=await sb.functions.invoke('square-item-availability',{body:{item_ids:itemIds.slice(i,i+300),location_ids:locIds,enable}});
+    if(error){errs.push(await fnErr(error));break;}
+    if(data&&data.error){errs.push(data.error);break;}
+    changed=changed.concat(data.changed||[]);skipped=skipped.concat(data.skipped||[]);errs=errs.concat(data.errors||[]);notSq=data.not_in_square_locations||notSq;
+  }
+  const map=Object.fromEntries(changed.map(c=>[c.id,c.sale_locs]));
+  (S.allItems||S.items).forEach(it=>{if(map[it.id])it.sale_locs=map[it.id];});
+  rgSel=new Set();
+  const body=document.getElementById('cc-body');if(body&&ccTab==='range')renderRange(body);
+  try{if(document.getElementById('list'))catList();}catch(e){}
+  const msg=`${changed.length} item${changed.length===1?'':'s'} ${enable?'enabled':'disabled'} in Square`+(skipped.length?` · ${skipped.length} skipped`:'');
+  if(errs.length||skipped.length||notSq.length)stackConfirm('Centre range — result',msg,`<div>${changed.length?`<b>${changed.length}</b> updated in Square and in the app.`:'Nothing was changed.'}</div>${notSq.length?`<div style="margin-top:8px;font-size:13px">Not linked to Square (skipped): ${notSq.map(esc).join(', ')}</div>`:''}${errs.length?`<div class="banner crit" style="margin-top:10px">${svg(I.alert,17)}<div>${errs.map(esc).join('<br>')}</div></div>`:''}${skipped.length?`<div class="tablewrap" style="margin-top:10px;max-height:220px;overflow:auto"><table style="min-width:0"><tbody>${skipped.map(x=>`<tr><td>${esc(x.name)}</td><td style="color:var(--muted)">${esc(x.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}`,{okLabel:'OK',okOnly:true});
+  else toast(msg);
+  if(changed.length)logEvent(`Centre range: ${enable?'enabled':'disabled'} ${changed.length} item(s) at ${rgLoc==='*'?'all centres':loc(rgLoc).name}`);
 }
 async function ccApply(ids,hide,reason){
   let done=0;
