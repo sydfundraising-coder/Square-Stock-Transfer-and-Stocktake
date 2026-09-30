@@ -625,7 +625,18 @@ async function reloadRecvDrafts(){try{const{data}=await sb.from('receive_drafts'
 /* For DISPLAY, centres are shown by full name everywhere — .code returns the name too
    (the short code stays only in the raw S.locations rows, used for internal matching). */
 const loc=id=>{const l=S.locations.find(x=>x.id===id);return l?{...l,code:l.name}:{name:'—',code:'—'};};
-const item=id=>S.items.find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
+const item=id=>S.items.find(i=>i.id===id)||(S.allItems||[]).find(i=>i.id===id)||{name:'—',sku:'?',unit_cost:0};
+/* Catalogue range: is this item available for sale at a centre in Square? Hubs (Central Warehouse) carry the full range.
+   sale_locs is filled by square-sync (migration 51); until then (null) every item counts as available. */
+function sellsAt(it,locId){if(!it||!locId)return true;const l=S.locations.find(x=>x.id===locId);if(l&&l.is_hub)return true;if(!Array.isArray(it.sale_locs))return true;return it.sale_locs.includes(locId);}
+/* What this person sees in the app: hidden (cleaned-up) items never; centre users only their centres' range. */
+function itemInMyRange(it){
+  if(it.hidden)return false;
+  if(!scoped())return true;
+  const mineL=(MYLOCS&&MYLOCS.length?MYLOCS:(HOME?[HOME]:[]));
+  if(!mineL.length)return true;
+  return mineL.some(l=>sellsAt(it,l));
+}
 const supplier=id=>S.suppliers.find(s=>s.id===id)||{name:'—'};
 const onHand=(l,i)=>S.stock[l+'__'+i]||0;
 /* packets-per-carton (boxes) helpers — it is an item OBJECT */
@@ -848,7 +859,7 @@ async function loadAll(){
       q(sb.from('sales_monthly').select('*')).catch(()=>[]),
       q(sb.from('sales_payment').select('*')).catch(()=>[]),
     ]);
-    S.locations=locations.map(l=>({...l})); S.items=items; S.transfers=transfers; S.receipts=receipts;
+    S.locations=locations.map(l=>({...l})); S.allItems=items; S.items=items.filter(itemInMyRange); S.transfers=transfers; S.receipts=receipts;
     S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
     S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
@@ -929,6 +940,7 @@ async function startApp(){
   ME=user;
   let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
   if(!prof){ prof={id:user.id,email:user.email,full_name:user.email,role:'user',home_centre:null}; }
+  if(prof.active===false){ try{await sb.auth.signOut();}catch(e){} window.__appStarted=false; showLogin('Your access has been removed'+(prof.deactivated_reason?' ('+prof.deactivated_reason+')':'')+'. Ask the Super Admin if this is a mistake.'); return; }
   ROLE=prof.role||'user'; HOME=prof.home_centre;
   try{ const{data:pl}=await sb.from('profile_locations').select('location_id').eq('profile_id',user.id); MYLOCS=(pl||[]).map(r=>r.location_id); }catch(e){ MYLOCS=[]; }
   if(!MYLOCS.length && HOME) MYLOCS=[HOME];
@@ -1117,7 +1129,7 @@ function ssSelfTest(){
 /* build the per-store row set with calc + ABC */
 function ssRows(locId){
   const cfg=ssSettings();const fr=SS._fr||{},fl=SS._fl||{inc:{},out:{},incPO:{},eta:{}};const td=today();
-  const rows=S.items.filter(i=>i.active!==false).map(it=>{
+  const rows=S.items.filter(i=>i.active!==false&&(sellsAt(i,locId)||onHand(locId,i.id)>0)).map(it=>{
     const id=it.id,k=locId+'__'+id;const soh=onHand(locId,id);const w=ssWin(locId,id),ov=ssOverride(id);
     // Age drives ADS (units/day). Square's created date is unreliable (its updated_at is bumped on every sync,
     // so every item looks a few days old and ADS explodes). So we DON'T use created_at for age. We use:
@@ -2818,7 +2830,8 @@ function newTransfer(presetItem){
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
   document.getElementById('dlT').onclick=()=>{const fromV=(document.getElementById('tf-from')||{}).value;const fl=fromV?loc(fromV):null;
     const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
-    const items=S.items.filter(i=>i.active!==false).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
+    const toV=(document.getElementById('tf-to')||{}).value;
+    const items=S.items.filter(i=>i.active!==false&&(!toV||sellsAt(i,toV))).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
     downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
       items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',hasPpc(i)?'':'No pack size set - cannot be transferred until a National Admin sets it'];}));
     toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
@@ -2838,7 +2851,7 @@ async function saveTransferDraft(){
 }
 function fillRecommended(){
   const to=document.getElementById('tf-to').value;
-  const low=S.items.filter(i=>i.active!==false&&hasPpc(i)&&isLow(to,i.id)).map(i=>({item:i.id,qty:recPk(recQty(to,i.id),item(i.id))})).filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty);
+  const low=S.items.filter(i=>i.active!==false&&hasPpc(i)&&sellsAt(i,to)&&isLow(to,i.id)).map(i=>({item:i.id,qty:recPk(recQty(to,i.id),item(i.id))})).filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty);
   if(!low.length)return toast('Every item at '+loc(to).code+' has 2+ months cover, or there’s no sales data yet (run Square Sync → Update sales data).',true);
   dLines=low;edLines();sum();
   toast('Filled '+low.length+' item(s) below 2 months at '+loc(to).code);
@@ -2848,7 +2861,8 @@ function edLines(){
   const to=(document.getElementById('tf-to')||{}).value;
   const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>{const a=av(i.id);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}" data-a="${boxDec(a,i)} bx" data-ac="${a>0?'pos':'neg'}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(a,i)} bx</option>`;}).join('');
+  const inLines=new Set(dLines.map(l=>l.item).filter(Boolean));
+  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)&&(!to||sellsAt(i,to)||inLines.has(i.id))).map(i=>{const a=av(i.id);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}" data-a="${boxDec(a,i)} bx" data-ac="${a>0?'pos':'neg'}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(a,i)} bx</option>`;}).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
   ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const availBx=(has&&from&&pc)?boxDec(av(l.item),it0):null;const qBox=(has&&pc)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${has&&from?' — '+av(l.item)+' packets':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?(availBx!=null?availBx+'<div style="font-size:9px;color:var(--faint);font-weight:400">bx</div>':av(l.item)):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}${has&&u!=null&&pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(u,it0)}</div>`:''}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" step="1" value="${qBox}" data-lq="${ix}" title="${has&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><div class="lbox" data-lqpk="${ix}" title="Packets that will move (auto from boxes × pack size)" style="color:var(--faint)">${has&&pc?l.qty+`<div style="font-size:9px;color:var(--faint);font-weight:400">pk</div>`:'—'}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
@@ -3370,7 +3384,7 @@ function vCatalog(v){
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
       <div class="spacer"></div>
       <button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
-      ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button>`:''}
+      ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button><button class="btn" id="cat-clean">${svg(I.check,15)} Clean up catalogue</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
   const cenSel=document.getElementById('cen');cenSel.value=catCentre;cenSel.onchange=e=>{catCentre=e.target.value;catList();};
@@ -3379,10 +3393,76 @@ function vCatalog(v){
   document.getElementById('cat-csv').onclick=()=>exportCatalogue('csv');
   document.getElementById('cat-xls').onclick=()=>exportCatalogue('xlsx');
   const ci=document.getElementById('cat-import');if(ci)ci.onclick=importCostCarton;
+  const cc=document.getElementById('cat-clean');if(cc)cc.onclick=openCatalogueCleanup;
   catList();
+}
+/* ---------- Catalogue clean-up (National / Super Admin) ---------- */
+let ccRows=[],ccTab='dead',ccSel=new Set(),ccQ='';
+const CC_TABS=[['dead','Never sold · no stock','Not sold in the last 12 months and no stock at any centre — safe to hide now'],
+  ['slowstock','No sales · has stock','Not sold in 12 months but stock is still sitting somewhere — sell, return or write it off first'],
+  ['slow','Slow (no sale in 6 months)','Sold in the last year but nothing in the last 6 months — review the range'],
+  ['unlisted','Not for sale anywhere','Not available for sale at any centre in Square'],
+  ['hidden','Hidden','Items already hidden from the app — restore if needed']];
+async function openCatalogueCleanup(){
+  modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
+  const{data,error}=await sb.rpc('catalogue_cleanup_candidates');
+  const body=document.getElementById('cc-body');if(!body)return;
+  if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Couldn’t load the clean-up list: ${esc(error.message||'')}. Run <b>51_team_removal_and_catalogue_range.sql</b> in Supabase.</div></div>`;return;}
+  ccRows=data||[];ccSel=new Set();renderCleanup();
+}
+function ccIsNew(r){return r.sq_created_at&&(Date.now()-new Date(r.sq_created_at).getTime())<90*864e5;}
+function ccList(tab){
+  const live=ccRows.filter(r=>r.active!==false&&!r.hidden);
+  const q=ccQ.trim().toLowerCase();
+  let L=tab==='hidden'?ccRows.filter(r=>r.hidden)
+    :tab==='dead'?live.filter(r=>+r.sold_365<=0&&+r.on_hand<=0&&!+r.open_refs&&!ccIsNew(r))
+    :tab==='slowstock'?live.filter(r=>+r.sold_365<=0&&+r.on_hand>0&&!ccIsNew(r))
+    :tab==='slow'?live.filter(r=>+r.sold_365>0&&+r.sold_180<=0)
+    :live.filter(r=>+r.centres_listed===0);
+  if(q)L=L.filter(r=>[r.name,r.sku,r.category].some(x=>String(x||'').toLowerCase().includes(q)));
+  return L;
+}
+function renderCleanup(){
+  const body=document.getElementById('cc-body');if(!body)return;
+  const L=ccList(ccTab);const tab=CC_TABS.find(t=>t[0]===ccTab);const restore=ccTab==='hidden';
+  const counts=Object.fromEntries(CC_TABS.map(t=>[t[0],ccList(t[0]).length]));
+  const val=L.reduce((s,r)=>s+(+r.stock_value||0),0);
+  const noSales=!ccRows.some(r=>+r.sold_365>0);
+  body.innerHTML=`${noSales?`<div class="banner crit" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>No Square sales data found</b>, so every item looks unsold. Run <b>Square Sync → Update sales data</b> first, then come back — don’t hide anything until then.</div></div>`:''}<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Best way to clean up:</b> 1) hide the <b>Never sold · no stock</b> items here (reversible, the app only); 2) for items with stock, clear the stock first (transfer to the warehouse, return to supplier or write off), then hide; 3) export the list and <b>archive the same items in Square</b> (Items → select → Archive) so they drop out everywhere — archived items are made inactive in the app automatically at the next sync. New items (created in Square in the last 90 days) are never suggested.</div></div>
+    <div class="rep-tabs no-print" style="margin:0 0 10px;flex-wrap:wrap">${CC_TABS.map(t=>`<button class="rep-tab ${ccTab===t[0]?'active':''}" data-cct="${t[0]}">${t[1]} <span class="tag">${counts[t[0]]}</span></button>`).join('')}</div>
+    <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="cc-q" placeholder="Search name, SKU, category…" value="${esc(ccQ)}"></div><span style="font-size:12.5px;color:var(--muted)">${esc(tab[2])}${val>0?' · stock value '+money0(val):''}</span><div class="spacer"></div>
+      <label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="cc-all"> Select all ${L.length}</label></div>
+    ${L.length?`<div class="tablewrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Category</th><th class="num">Centres selling</th><th class="num">On hand</th><th class="num">Stock value</th><th class="num">Sold 12 mo</th><th>Last sale</th><th class="num">Open orders</th>${restore?'<th>Hidden because</th>':''}</tr></thead><tbody>${L.slice(0,2000).map(r=>`<tr><td><input type="checkbox" data-ccs="${r.item_id}" ${ccSel.has(r.item_id)?'checked':''}></td><td><div style="font-weight:600"><span class="icode">${esc(r.sku||'')}</span>${esc(r.name)}</div></td><td><span class="tag">${esc(r.category||'—')}</span></td><td class="num tnum">${r.centres_listed}</td><td class="num tnum" style="${+r.on_hand>0?'font-weight:700':''}">${(+r.on_hand).toLocaleString()}</td><td class="num tnum">${+r.stock_value>0?money0(r.stock_value):'—'}</td><td class="num tnum">${Math.round(+r.sold_365).toLocaleString()}</td><td style="font-size:12.5px;color:var(--muted);white-space:nowrap">${r.last_sale?fmtDate(r.last_sale):'—'}</td><td class="num tnum" style="${+r.open_refs?'color:var(--crit);font-weight:700':''}">${+r.open_refs||'—'}</td>${restore?`<td style="font-size:12px;color:var(--muted)">${esc(r.hidden_reason||'')}</td>`:''}</tr>`).join('')}</tbody></table></div>${L.length>2000?`<div style="font-size:12px;color:var(--faint);margin-top:6px">Showing the first 2,000 — search to narrow.</div>`:''}`:`<div class="card empty">${svg(I.check,34)}<div>Nothing in this list.</div></div>`}`;
+  body.querySelectorAll('[data-cct]').forEach(b=>b.onclick=()=>{ccTab=b.dataset.cct;ccSel=new Set();renderCleanup();});
+  const qi=document.getElementById('cc-q');qi.oninput=e=>{ccQ=e.target.value;const pos=e.target.selectionStart;renderCleanup();const n=document.getElementById('cc-q');n.focus();n.setSelectionRange(pos,pos);};
+  const all=document.getElementById('cc-all');all.checked=L.length>0&&L.every(r=>ccSel.has(r.item_id));
+  all.onchange=e=>{L.forEach(r=>e.target.checked?ccSel.add(r.item_id):ccSel.delete(r.item_id));renderCleanup();};
+  body.querySelectorAll('[data-ccs]').forEach(c=>c.onchange=e=>{e.target.checked?ccSel.add(c.dataset.ccs):ccSel.delete(c.dataset.ccs);ccBtn();});
+  const csv=document.getElementById('cc-csv');if(csv)csv.onclick=()=>downloadCSV(`catalogue-cleanup_${ccTab}_${today()}.csv`,['Product code','Item','Category','Centres selling','On hand (packets)','Stock value','Sold 12 months','Sold 6 months','Last sale','Open transfers/orders','Hidden'],L.map(r=>[r.sku||'',r.name,r.category||'',r.centres_listed,r.on_hand,(+r.stock_value||0).toFixed(2),r.sold_365,r.sold_180,r.last_sale||'',r.open_refs,r.hidden?'yes':'']));
+  ccBtn();
+}
+function ccBtn(){
+  const b=document.getElementById('cc-go');if(!b)return;const restore=ccTab==='hidden';const n=ccSel.size;
+  b.disabled=!n||(!restore&&!ccRows.some(r=>+r.sold_365>0));b.textContent=n?(restore?`Restore ${n} item${n===1?'':'s'}`:`Hide ${n} item${n===1?'':'s'}`):(restore?'Restore selected':'Hide selected');
+  b.onclick=()=>{const ids=[...ccSel];const rows=ccRows.filter(r=>ccSel.has(r.item_id));
+    if(restore){ccApply(ids,false,null);return;}
+    const withStock=rows.filter(r=>+r.on_hand>0).length,withOpen=rows.filter(r=>+r.open_refs>0).length;
+    let why='';
+    stackConfirm('Hide items',n+' item'+(n===1?'':'s'),`<div>Hide <b>${n}</b> item${n===1?'':'s'} from the app? They disappear from the catalogue, pickers and reports for everyone. History is kept and you can restore them from the <b>Hidden</b> list.</div>${withStock||withOpen?`<div class="banner warn" style="margin-top:10px">${svg(I.alert,17)}<div>${withStock?`<b>${withStock}</b> still have stock on hand. `:''}${withOpen?`<b>${withOpen}</b> are on open transfers or orders. `:''}Clear those first if you can.</div></div>`:''}<div class="field" style="margin-top:10px"><label>Reason</label><input id="cc-why" placeholder="e.g. no sales in 12 months"></div><div style="font-size:12.5px;color:var(--muted)">Tip: archive the same items in Square as well, so they stop syncing.</div>`,{okLabel:'Hide items',danger:true,onOk:()=>ccApply(ids,true,why||'No sales in 12 months')});
+    const wi=document.getElementById('cc-why');if(wi)wi.oninput=e=>{why=e.target.value.trim();};};
+}
+async function ccApply(ids,hide,reason){
+  let done=0;
+  for(let i=0;i<ids.length;i+=500){const{data,error}=await sb.rpc('set_items_hidden',{p_ids:ids.slice(i,i+500),p_hidden:hide,p_reason:reason});if(error)return toast(error.message,true);done+=data||0;}
+  toast((hide?'Hidden ':'Restored ')+done+' item'+(done===1?'':'s'));
+  const set=new Set(ids);ccRows.forEach(r=>{if(set.has(r.item_id)){r.hidden=hide;r.hidden_reason=hide?reason:null;}});
+  (S.allItems||[]).forEach(it=>{if(set.has(it.id)){it.hidden=hide;it.hidden_reason=hide?reason:null;}});
+  S.items=(S.allItems||S.items).filter(itemInMyRange);
+  ccSel=new Set();renderCleanup();try{if(document.getElementById('list'))catList();}catch(e){}
 }
 function catFiltered(){
   const q=catSearch.toLowerCase();let list=S.items.slice();
+  if(catCentre)list=list.filter(i=>sellsAt(i,catCentre)||onHand(catCentre,i.id)>0);   // that centre's range (hubs: everything)
   if(catCat!=='all')list=list.filter(i=>i.category===catCat);
   if(q)list=list.filter(i=>i.name.toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q));
   return list;
@@ -3638,12 +3718,13 @@ async function linkLocations(){
     renderSq();
   }catch(e){toast('Failed: '+(e.message||e),true);}
 }
-let usrSort={key:'name',dir:1};
+let usrSort={key:'name',dir:1},usrShowOff=false;
 function vUsers(v){
   const badge=r=>({user:'p-draft',admin:'p-appr',national_admin:'p-partial',super_admin:'p-transit'}[r]||'p-draft');
   const arrow=k=>usrSort.key===k?(usrSort.dir>0?' ↑':' ↓'):'';
   const roleRank=r=>({user:0,admin:1,national_admin:2,super_admin:3}[r]!=null?{user:0,admin:1,national_admin:2,super_admin:3}[r]:0);
-  const uList=S.profiles.slice().sort((a,b)=>{let x,y;if(usrSort.key==='role'){x=roleRank(a.role);y=roleRank(b.role);}else{x=(a.full_name||a.email||'').toLowerCase();y=(b.full_name||b.email||'').toLowerCase();}return (x<y?-1:x>y?1:0)*usrSort.dir;});
+  const nOff=S.profiles.filter(p=>p.active===false).length;
+  const uList=S.profiles.filter(p=>usrShowOff||p.active!==false).sort((a,b)=>{if((a.active===false)!==(b.active===false))return a.active===false?1:-1;let x,y;if(usrSort.key==='role'){x=roleRank(a.role);y=roleRank(b.role);}else{x=(a.full_name||a.email||'').toLowerCase();y=(b.full_name||b.email||'').toLowerCase();}return (x<y?-1:x>y?1:0)*usrSort.dir;});
   const centresCell=u=>{
     if(u.role==='national_admin'||u.role==='super_admin')return '<span class="tag">All centres</span>';
     const names=(S.plocs||[]).filter(p=>p.profile_id===u.id).map(p=>loc(p.location_id).name).filter(Boolean).sort();
@@ -3654,10 +3735,17 @@ function vUsers(v){
     return `${shown}${can('*')?` <button class="btn sm" data-ucentres="${u.id}">Edit</button>`:''}`;
   };
   v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres.</div></div>
-    ${ROLE==='super_admin'?`<div class="toolbar"><div class="spacer"></div><button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button></div>`:''}
-    <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th></tr></thead><tbody>${uList.map(u=>`<tr><td style="font-weight:600">${esc(u.full_name||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
+    <div class="toolbar">${nOff?`<label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="usr-off" ${usrShowOff?'checked':''}> Show ${nOff} removed user${nOff===1?'':'s'}</label>`:''}<div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button>`:''}</div>
+    <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">${svg(I.info,13)} People removed from (or made inactive in) the Square team lose access at the next team sync (every night, or click <b>Sync team from Square</b>). Their history is kept.</div>
+    <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th>${ROLE==='super_admin'?'<th>Access</th>':''}</tr></thead><tbody>${uList.map(u=>`<tr style="${u.active===false?'opacity:.55':''}"><td style="font-weight:600">${esc(u.full_name||'—')}${u.active===false?`<div><span class="pill p-cancel">Removed</span> <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(u.deactivated_reason||'')}${u.deactivated_at?' · '+fmtDate(u.deactivated_at):''}</span></div>`:''}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
-      <td>${centresCell(u)}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${centresCell(u)}</td>${ROLE==='super_admin'?`<td style="white-space:nowrap">${u.role==='super_admin'?'<span class="tag">Always</span>':u.active===false?`<button class="btn sm" data-uon="${u.id}">Reinstate</button>`:`<button class="btn sm" data-uoff="${u.id}" style="color:var(--crit);border-color:var(--crit)">Remove access</button>`}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+  const uo=document.getElementById('usr-off');if(uo)uo.onchange=e=>{usrShowOff=e.target.checked;renderView();};
+  v.querySelectorAll('[data-uoff]').forEach(b=>b.onclick=()=>{const u=S.profiles.find(p=>p.id===b.dataset.uoff);if(!u)return;
+    stackConfirm('Remove access',u.full_name||u.email,`<div>Remove <b>${esc(u.full_name||u.email)}</b>'s access to the portal? They can no longer see or change anything. Their history is kept and you can reinstate them any time.</div><div style="margin-top:8px;font-size:12.5px;color:var(--muted)">If they are still an active member of the Square team, also remove them in Square — otherwise leave that to the team sync.</div>`,{okLabel:'Remove access',danger:true,onOk:async()=>{const{error}=await sb.from('profiles').update({active:false,deactivated_at:new Date().toISOString(),deactivated_reason:'Removed by Super Admin'}).eq('id',u.id);if(error)return toast(error.message,true);toast('Access removed');refresh();}});});
+  v.querySelectorAll('[data-uon]').forEach(b=>b.onclick=async()=>{const u=S.profiles.find(p=>p.id===b.dataset.uon);if(!u)return;
+    const{error}=await sb.from('profiles').update({active:true,deactivated_at:null,deactivated_reason:null}).eq('id',u.id);if(error)return toast(error.message,true);
+    toast(String(u.deactivated_reason||'').startsWith('Removed from Square')?'Reinstated — add them back to the Square team too, or the next team sync will remove them again, and they can sign in once the team sync has run':'Access reinstated');refresh();});
   v.querySelectorAll('[data-usort]').forEach(th=>th.onclick=()=>{const k=th.dataset.usort;if(usrSort.key===k)usrSort.dir*=-1;else{usrSort.key=k;usrSort.dir=1;}renderView();});
   if(can('*')){
     document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
@@ -5155,7 +5243,9 @@ async function runTeamSync(){
   toast('Importing team from Square…');
   try{const{data,error}=await sb.functions.invoke('square-team-sync');if(error)throw error;
     if(data&&data.error){toast('Team sync: '+data.error,true);return;}
-    toast(`Team imported — ${data?data.created:0} new, ${data?data.updated:0} updated`);refresh();}
+    const rm=(data&&data.removed)||0,ri=(data&&data.reinstated)||0;
+    toast(`Team synced — ${data?data.created:0} new, ${data?data.updated:0} updated`+(rm?`, ${rm} removed (no longer in Square)`:'')+(ri?`, ${ri} reinstated`:''));
+    if(rm)logEvent('Team sync removed access for: '+(data.removed_emails||[]).join(', '));refresh();}
   catch(e){toast('Team sync failed: '+(e.message||e),true);}
 }
 
