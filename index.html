@@ -3465,6 +3465,7 @@ function ccDelBtn(){
 async function ccDeleteSquare(ids){
   let del=0,sk=[],fl=[],errs=[];const doneIds=[];
   for(let i=0;i<ids.length;i+=200){
+    if(i>0)await new Promise(r=>setTimeout(r,2000));
     toast(`Deleting from Square… ${Math.min(i+200,ids.length)}/${ids.length}`);
     const{data,error}=await sb.functions.invoke('square-catalog-clean',{body:{item_ids:ids.slice(i,i+200),confirm:'DELETE'}});
     if(error){errs.push(await fnErr(error));break;}
@@ -3511,6 +3512,11 @@ const rgIsNew=i=>i.sq_created_at&&(Date.now()-new Date(i.sq_created_at).getTime(
 const rgNeedsOn=(i,l)=>!sellsAt(i,l)&&(onHand(l,i.id)>0||rgSoldAt(l,i.id)>0);           // sold or stocked, but switched off
 const rgCanOff=(i,l)=>sellsAt(i,l)&&onHand(l,i.id)<=0&&rgSoldAt(l,i.id)<=0&&!rgIsNew(i);  // switched on, but no stock and no sales in 12 months
 const rgPool=()=>S.items.filter(i=>i.active!==false&&i.square_variation_id);
+/* missing product code (SKU) or barcode */
+const noSku=i=>!String((i&&i.sku)||'').trim(),noBar=i=>!String((i&&i.barcode)||'').trim();
+const noCode=i=>noSku(i)||noBar(i);
+const missLbl=i=>noSku(i)&&noBar(i)?'Code & barcode':noSku(i)?'Product code':noBar(i)?'Barcode':'';
+const rgNoCodeOff=(i,l)=>noCode(i)&&rgCanOff(i,l);   // no code/barcode AND no stock or sales here → can be disabled
 function rgList(){
   const q=rgQ.trim().toLowerCase(),ids=rgLocIds(),n=ids.length;
   return rgPool().filter(i=>{
@@ -3589,9 +3595,10 @@ function rgConfirm(itemIds,enable){
 }
 async function rgApply(itemIds,locIds,enable){
   let changed=[],skipped=[],errs=[],notSq=[];
-  for(let i=0;i<itemIds.length;i+=300){
-    toast(`Updating Square… ${Math.min(i+300,itemIds.length)}/${itemIds.length}`);
-    const{data,error}=await sb.functions.invoke('square-item-availability',{body:{item_ids:itemIds.slice(i,i+300),location_ids:locIds,enable}});
+  for(let i=0;i<itemIds.length;i+=150){
+    if(i>0)await new Promise(r=>setTimeout(r,2000));   // Square processes one catalogue write at a time
+    toast(`Updating Square… ${Math.min(i+150,itemIds.length)}/${itemIds.length}`);
+    const{data,error}=await sb.functions.invoke('square-item-availability',{body:{item_ids:itemIds.slice(i,i+150),location_ids:locIds,enable}});
     if(error){errs.push(await fnErr(error));break;}
     if(data&&data.error){errs.push(data.error);break;}
     changed=changed.concat(data.changed||[]);skipped=skipped.concat(data.skipped||[]);errs=errs.concat(data.errors||[]);notSq=data.not_in_square_locations||notSq;
@@ -5726,13 +5733,4 @@ document.getElementById('setPwSave').onclick=async()=>{
 document.getElementById('newPw2').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('setPwSave').click();});
 document.getElementById('changePw').onclick=()=>{
   document.getElementById('userDrop').hidden=true;
-  modal('Change password','Used with your Square email to sign in',`<div class="field"><label>New password</label><input id="cpw1" type="password" autocomplete="new-password"></div><div class="field"><label>Type it again</label><input id="cpw2" type="password" autocomplete="new-password"></div><div class="hint" id="cpwMsg">At least 10 characters, with letters and numbers.</div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cpwGo">Save password</button>`);
-  document.getElementById('cpwGo').onclick=async()=>{const b=document.getElementById('cpwGo');b.disabled=true;
-    const ok=await savePassword(document.getElementById('cpw1').value,document.getElementById('cpw2').value,()=>{closeOverlay();toast('Password changed');},document.getElementById('cpwMsg'));
-    if(!ok)b.disabled=false;};
-};
-
-boot();
-</script>
-</body>
-</html>
+  modal('Change password','Used with your Square email to sign in',`<div class="field"><label>New password</label><input id="cpw1" type="password" autocomplete="new-password"></div><div class="field"><label>Type it again</label><input id="cpw2" type="password" autocomplete="new-password"></div><div class="hint" id="cpwMsg">At least 10 characters, with letters and numbers.</div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="cpwGo">Save pas
