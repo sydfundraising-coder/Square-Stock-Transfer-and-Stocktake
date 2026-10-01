@@ -3609,16 +3609,16 @@ function rgConfirm(itemIds,enable){
     {okLabel:(enable?'Enable':'Disable')+' in Square',danger:!enable,onOk:()=>rgApply(itemIds,ids,enable)});
 }
 async function rgApply(itemIds,locIds,enable){
-  let changed=[],skipped=[],errs=[],notSq=[];
+  let changed=[],truth=[],skipped=[],errs=[],notSq=[];
   for(let i=0;i<itemIds.length;i+=150){
     if(i>0)await new Promise(r=>setTimeout(r,2000));   // Square processes one catalogue write at a time
     toast(`Updating Square… ${Math.min(i+150,itemIds.length)}/${itemIds.length}`);
     const{data,error}=await sb.functions.invoke('square-item-availability',{body:{item_ids:itemIds.slice(i,i+150),location_ids:locIds,enable}});
     if(error){errs.push(await fnErr(error));break;}
     if(data&&data.error){errs.push(data.error);break;}
-    changed=changed.concat(data.changed||[]);skipped=skipped.concat(data.skipped||[]);errs=errs.concat(data.errors||[]);notSq=data.not_in_square_locations||notSq;
+    changed=changed.concat(data.changed||[]);truth=truth.concat(data.truth||data.changed||[]);skipped=skipped.concat(data.skipped||[]);errs=errs.concat(data.errors||[]);notSq=data.not_in_square_locations||notSq;
   }
-  const map=Object.fromEntries(changed.map(c=>[c.id,c.sale_locs]));
+  const map=Object.fromEntries(truth.map(c=>[c.id,c.sale_locs]));   // what Square actually holds after the change
   (S.allItems||S.items).forEach(it=>{if(map[it.id])it.sale_locs=map[it.id];});
   rgSel=new Set();
   const body=document.getElementById('cc-body');if(body&&ccTab==='range')renderRange(body);
