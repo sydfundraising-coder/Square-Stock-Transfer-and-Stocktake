@@ -229,6 +229,12 @@
     body.printing-invoice *{visibility:hidden}
     body.printing-invoice #invoicePrint,body.printing-invoice #invoicePrint *{visibility:visible}
     body.printing-invoice #invoicePrint{display:block;position:absolute;left:0;top:0;width:100%;padding:24px;color:#111}
+    body.printing-st *{visibility:hidden}
+    body.printing-st #svr-print-area,body.printing-st #svr-print-area *{visibility:visible}
+    body.printing-st #svr-print-area{position:absolute;left:0;top:0;width:100%;color:#111}
+    body.printing-st .scrim,body.printing-st .modal{position:static!important;overflow:visible!important;max-height:none!important;transform:none!important;box-shadow:none!important}
+    body.printing-st #svr-print-area .toolbar,body.printing-st #svr-print-area .st-chips{display:none}
+    body.printing-st .sr-item{break-inside:avoid}
     @page{margin:14mm}
   }
   /* ---- Reports ---- */
@@ -411,7 +417,10 @@
   .scan-entry{max-width:460px;width:100%;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg);box-shadow:inset 0 4px 0 var(--accent),var(--shadow-lg)}
   .scan-entry .panel-body{padding:16px 20px}
   .scan-entry .field input,.scan-entry .field select{width:100%;padding:10px 11px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink);font-size:15px}
-  .se-qty{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+  .se-qty{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .se-step{display:flex;gap:6px;align-items:stretch}
+  .se-step input{flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700}
+  .se-step .btn{width:46px;min-height:44px;padding:0;justify-content:center;font-size:20px;font-weight:700}
   .se-qty input{font-size:20px!important;font-weight:700;text-align:center;height:52px}
   .se-hint{font-weight:400;color:var(--muted);font-size:12px}
   .se-cur{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:10px}
@@ -514,6 +523,84 @@
   .st-sync.busy i{background:var(--warn)}.st-sync.bad i{background:var(--crit)}
   .recv-row.st-flash{animation:stflash 1.4s ease}
   @keyframes stflash{0%{background:var(--accent-soft)}100%{background:transparent}}
+  /* ---- stock-take counting screen ---- */
+  .panel.stp{overflow:hidden}
+  .panel.stp .panel-body{overflow-y:auto;padding-top:0;min-height:0;-webkit-overflow-scrolling:touch}
+  .st-head{position:sticky;top:0;z-index:5;background:var(--surface);margin:0 -20px 12px;padding:12px 20px 10px;border-bottom:1px solid var(--border);box-shadow:0 6px 12px -10px rgba(0,0,0,.25)}
+  .st-head .st-scanrow{display:flex;gap:8px}
+  .st-head .st-scanrow .search{flex:1;max-width:none}
+  .st-head .st-scanrow input{font-size:16px}
+  .st-prog{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
+  .st-prog .bar{flex:1;height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden}
+  .st-prog .bar>div{height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .2s}
+  .st-prog .txt{font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+  .st-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .st-tools .spacer{flex:1}
+  .st-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .st-chips::-webkit-scrollbar{display:none}
+  .st-chip{flex:none;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .st-chip b{font-weight:700;color:var(--muted);margin-left:4px}
+  .st-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}.st-chip.on b{color:#fff;opacity:.85}
+  .stl{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--border-strong);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .stl.done{border-left-color:var(--good)}
+  .stl-top{display:flex;gap:12px;align-items:flex-start}
+  .stl-name{flex:1;min-width:0;font-weight:600;font-size:14px;line-height:1.35;word-break:break-word}
+  .stl-name .icode{margin-right:6px}
+  .stl-qty{flex:none;display:flex;align-items:center;gap:6px}
+  .stl-qty input{width:84px;height:44px;padding:6px 8px;border:1.5px solid var(--border-strong);border-radius:10px;background:var(--surface);color:var(--ink);text-align:right;font-size:18px;font-weight:700}
+  .stl.done .stl-qty input{border-color:var(--good)}
+  .stl-qty .btn{height:44px;padding:0 12px}
+  .stl-unit{font-size:11px;color:var(--muted);text-align:right;margin-top:2px}
+  .stl-qty.bx{justify-content:flex-end}
+  .stl-qty.bx .btn{height:40px}
+  .stl-qty.bx [data-stbox]{font-weight:700;min-width:84px}
+  .stl-q{display:flex;flex-direction:column;gap:2px}
+  .stl-q>span{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;text-align:right}
+  .stl-qty .stl-q input{width:74px}
+  .st-bxm{height:32px;font-size:12.5px}
+  @media (max-width:700px){.stl-qty .stl-q input{width:68px}.stl.bxm .stl-top{flex-wrap:wrap}.stl.bxm .stl-top>.stl-name{flex-basis:100%}.stl.bxm .stl-top>div:last-child{margin-left:auto}}
+  .stl-f>span .lnk{border:0;background:none;color:var(--accent-ink);font:inherit;font-weight:700;text-transform:none;letter-spacing:0;padding:0 0 0 6px;cursor:pointer;text-decoration:underline}
+  .stl-det{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,.7fr) minmax(0,1fr);gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);align-items:end}
+  .stl-f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .stl-f>span{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .stl-f input,.stl-f select{width:100%;min-width:0;height:38px;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);font-size:14px}
+  .stl-f .stl-dates{height:38px;display:flex;align-items:center;font-size:13px;color:var(--ink);font-weight:600}
+  .stl-det .btn{height:38px;white-space:nowrap}
+  .stl.st-flash{animation:stflash 1.4s ease}
+  .stl-nd{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:4px;cursor:pointer;text-transform:none}
+  .stl-nd input{width:16px!important;height:16px!important;margin:0;padding:0!important}
+  .stl-need{display:none;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--warn)}
+  .stl.needdate{border-left-color:var(--warn)}
+  .stl.needdate .stl-need{display:block}
+  .stl.needdate .stl-bb input[type=date]{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 25%,transparent)}
+  .st-chip.warn:not(.on){border-color:var(--warn);color:var(--warn)}
+  .stl.req .stl-f.need input,.stl.req .stl-f.need select{border-color:var(--warn)}
+  @media (max-width:700px){
+    .hide-sm{display:none}
+    .st-head{margin:0 -14px 10px;padding:10px 14px 8px}
+    .stl{padding:12px}
+    .stl-det{grid-template-columns:1fr 1fr}
+    .stl-det .stl-f.wide{grid-column:1 / -1}
+    .stl-f input,.stl-f select{height:42px;font-size:16px}
+    .stl-det .btn{height:42px}
+  }
+  /* stock-take reports */
+  .sr-item{border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--surface)}
+  .sr-item>.sr-h{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 74px 90px;gap:8px;align-items:center;padding:10px 14px;cursor:pointer}
+  .sr-item>.sr-h .n{font-weight:600;font-size:13.5px;min-width:0}
+  .sr-item>.sr-h .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .sr-item>.sr-h .v small{display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase}
+  .sr-item.short{border-left:4px solid var(--crit)}.sr-item.over{border-left:4px solid var(--transit)}.sr-item.ok{border-left:4px solid var(--good)}.sr-item.nc{border-left:4px solid var(--border-strong)}
+  .sr-ents{background:var(--surface-2);padding:6px 14px 10px;font-size:12.5px}
+  .sr-ent{display:grid;grid-template-columns:120px minmax(0,1fr) 90px 80px minmax(0,1fr);gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .sr-ent:last-child{border-bottom:0}
+  .sr-ent .m{color:var(--muted)}
+  .sr-bar{height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin-top:6px}.sr-bar>div{height:100%;background:var(--accent)}
+  @media (max-width:700px){
+    .sr-item>.sr-h{grid-template-columns:1fr 1fr 1fr 1fr}
+    .sr-item>.sr-h .n{grid-column:1 / -1}
+    .sr-ent{grid-template-columns:1fr 1fr}
+  }
   @media (max-width:700px){.capw{display:block;min-width:0}.capw>input,.capw>select{width:100%}}
 
   @media (max-width:700px){
@@ -3261,35 +3348,43 @@ function cycleCountModal(){
 let stCounts={}, stCurrentId=null, stSaveT=null, stEditable=false, stArea={}, stAisle={}, stExp={}, stSplit={};
 function persistStLocations(st){const rows=(st.lines||[]).filter(l=>(stArea[l.id]||'')!==''||(stAisle[l.id]||'')!=='').map(l=>({item:l.item_id,area:stArea[l.id]||'',aisle:stAisle[l.id]||''}));if(rows.length)setItemLocations(st.location_id,rows,true);}
 function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
-function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
+function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);if(st)stChips(st);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
 function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;stAmending=!!amend;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
       if(Array.isArray(l.splits)&&l.splits.length){stSplit[l.id]=l.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[l.id]='';}else stExp[l.id]=(l.expiry?String(l.expiry).slice(0,10):'')||((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';
+      stNoExp[l.id]=!!l.no_expiry;if(l.no_expiry)stExp[l.id]='';
+      stSig[l.id]=stLineSig(l);
       if(l.counted_by_name)stWho[l.id]={name:l.counted_by_name,at:l.counted_at,n:l.entries};}); stLoadPending(id); }
   stCurrentId=id;
   const camOk=('BarcodeDetector' in window);
   let head='';
-  if(open){ head=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Blind count.</b> Enter what you physically count — the on-hand figure is hidden so the count stays honest. Scan with a USB scanner or your camera, or search below. Progress saves as you go.</div></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="st-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam">${svg(I.box,16)} Camera</button>`:''}</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><button class="btn sm" id="st-hist">${svg(I.audit||I.receipt,14)} Count history</button></div>
-    <div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span id="st-prog-txt">0 of 0 counted</span><span id="st-prog-pct" class="tnum">0%</span></div><div style="height:7px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div id="st-prog-bar" style="height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .2s"></div></div></div>`;
-  } else if(editable){ head=`<div class="banner warn">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="search" style="max-width:none;margin-bottom:12px">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div>`; }
+  if(!stFilt||stCurrentIdPrev!==id)stFilt='all';stCurrentIdPrev=id;
+  if(open){ head=`<div class="st-head">
+      <div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam" title="Scan with the camera">${svg(I.box,16)}<span class="hide-sm"> Camera</span></button>`:''}</div>
+      <div class="st-prog"><div class="bar"><div id="st-prog-bar"></div></div><span class="txt"><span id="st-prog-txt">0 of 0 counted</span> · <span id="st-prog-pct" class="tnum">0%</span></span></div>
+      <div class="st-chips" id="st-chips"></div>
+      <div class="st-tools" style="margin-top:8px"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><div class="spacer"></div>${(st.lines||[]).some(l=>hasPpc(item(l.item_id)))?`<select class="filter st-bxm" id="st-bxm" title="How to enter quantities on this device" aria-label="Count in"><option value="1"${stBoxMode(st.location_id)?' selected':''}>Count in boxes + packets</option><option value="0"${stBoxMode(st.location_id)?'':' selected'}>Count in packets</option></select>`:''}<button class="btn sm" id="st-rep">${svg(I.chart||I.stocktake,14)} Progress</button><button class="btn sm" id="st-hist">${svg(I.audit||I.receipt,14)} History</button></div>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);margin:0 0 10px"><b>Blind count</b> — type what you see, or tap <b>+</b> to add a count with its location and best-before. Everything saves straight away.</div>`;
+  } else if(editable){ head=`<div class="st-head"><div class="banner warn" style="margin-bottom:8px">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div></div><div class="st-chips" id="st-chips" style="margin-top:8px"></div></div>`; }
   const canDel=!HELPER&&(open?can('stocktake.do'):(ROLE==='super_admin'&&!amend));
   let foot=`<button class="btn" data-close>Close</button>`;
-  if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`;
+  if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)}<span class="hide-sm"> Delete</span></button>`;
   if(!open&&!editable) foot+=`<button class="btn" id="st-hist2">Count history</button>`;
+  if(!open&&!editable&&ROLE==='super_admin') foot+=`<button class="btn" id="st-var">${svg(I.chart||I.stocktake,16)} Variance report</button>`;
   if(open&&HELPER) foot+=`<button class="btn primary" id="st-save">${svg(I.check,16)} Done for now</button>`;
   else if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
   else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
   else if(st.status==='completed'&&ROLE==='super_admin') foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
-  slideover(st.code,loc(st.location_id).name,`${head}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div><div id="stList">${renderStRows(st,editable,'')}</div>`,foot);
+  const info=editable?'':`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd>${st.completed_at?`<dt>Finalised</dt><dd>${fmtDT(st.completed_at)}</dd>`:''}</dl></div>`;
+  slideover(st.code,loc(st.location_id).name+(open?' · started '+fmtDate(st.started_at):''),`${head}${info}<div id="stList">${renderStRows(st,editable,'')}</div>`,foot,editable?'stp':'');
   if(editable){
     const scan=document.getElementById('st-scan');
     if(scan){ scan.oninput=()=>renderStList(st); scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const code=scan.value.trim();if(!code)return;const hit=stFindLine(st,code);if(!hit&&!/^\d{6,}$/.test(code))return;scan.value='';stScanCode(st,code,{onDone:()=>{renderStList(st);const sc=document.getElementById('st-scan');if(sc)sc.focus();}});renderStList(st);}}; if(open)setTimeout(()=>scan.focus(),60); }
-    bindStInputs(); if(open)updateStProgress();
+    renderStList(st);   // adds the location / aisle suggestions, binds the boxes, updates progress
     const cam=document.getElementById('st-cam'); if(cam)cam.onclick=()=>openScanner(st);
     const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>{saveStProgress(st,true);if(HELPER)setTimeout(()=>{if(!stPending.length)closeOverlay();},600);};
     const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
@@ -3299,7 +3394,22 @@ function openStock(id,amend){
     const amb=document.getElementById('st-amend'); if(amb)amb.onclick=()=>openStock(id,true);
   }
   const hi=document.getElementById('st-hist')||document.getElementById('st-hist2'); if(hi)hi.onclick=()=>openStHistory(st);
+  const rp=document.getElementById('st-rep'); if(rp)rp.onclick=()=>openStProgressReport(st);
+  const bm=document.getElementById('st-bxm'); if(bm)bm.onchange=e=>{stSetBoxMode(st.location_id,e.target.value==='1');renderStList(st);};
+  const vr=document.getElementById('st-var'); if(vr)vr.onclick=()=>openStVarianceReport(st);
+  const ch=document.getElementById('st-chips'); if(ch){ ch.onclick=e=>{const b=e.target.closest('[data-stf]');if(!b)return;stFilt=b.dataset.stf;renderStList(st);const pb=document.querySelector('.panel.stp .panel-body');if(pb)pb.scrollTop=0;}; stChips(st); }
 }
+let stFilt='all', stCurrentIdPrev=null, stMine=new Set(), stSig={}, stNoExp={};
+function stLineSig(l){return JSON.stringify([l.counted_qty??null,l.area??null,l.aisle??null,l.expiry??null,l.splits??null,l.counted_by_name??null,l.counted_at??null,l.entries??0,!!l.no_expiry]);}
+/* best-before is mandatory: a counted item needs a date (or dates) or the "No date on pack" tick */
+function stNeedsDate(id){const v=stCounts[id];if(v===''||v==null||+v<=0)return false;if(stNoExp[id])return false;if(stSplit[id]&&stSplit[id].length)return false;return !stExp[id];}
+function stLineCols(){return 'id,counted_qty,area,aisle,expiry,splits,counted_by,counted_by_name,counted_at,entries,updated_at'+(window._stNoNd?'':',no_expiry');}
+function stIsDone(id){const v=stCounts[id];return !(v===''||v==null);}
+function stIsMine(l){return stMine.has(l.id)||(ME&&l.counted_by===ME.id);}
+function stChips(st){const el=document.getElementById('st-chips');if(!el)return;const L=st.lines||[];
+  const n={all:L.length,todo:L.filter(l=>!stIsDone(l.id)).length,done:L.filter(l=>stIsDone(l.id)).length,mine:L.filter(stIsMine).length,nodate:L.filter(l=>stNeedsDate(l.id)).length};
+  const lab={all:'All',todo:'To count',done:'Counted',mine:'My counts',nodate:'Needs date'};
+  el.innerHTML=Object.keys(lab).filter(k=>k!=='nodate'||n.nodate||stFilt==='nodate').map(k=>`<button type="button" class="st-chip${stFilt===k?' on':''}${k==='nodate'?' warn':''}" data-stf="${k}">${lab[k]}<b>${n[k]}</b></button>`).join('');}
 async function reviewStocktake(st){
   if(HELPER)return toast('Your Admin finalises the count',true);
   if(!stAmending&&!window._stLegacy){
@@ -3308,13 +3418,17 @@ async function reviewStocktake(st){
     toast('Collecting everyone’s counts…');
     await stFlush();
     if(stPending.length)return toast(`${stPending.length} count(s) on this device haven’t reached the server yet — check the connection and try again`,true);
-    const{data,error}=await sb.from('stocktake_lines').select('id,counted_qty,area,aisle,expiry,splits,counted_by_name,counted_at,entries,updated_at').eq('stocktake_id',st.id);
+    let{data,error}=await sbAll(()=>sb.from('stocktake_lines').select(stLineCols()).eq('stocktake_id',st.id).order('id'));
+    if(error&&/no_expiry/i.test(error.message||'')){window._stNoNd=true;({data,error}=await sbAll(()=>sb.from('stocktake_lines').select(stLineCols()).eq('stocktake_id',st.id).order('id')));}
     if(error)return toast('Could not load the latest counts: '+error.message,true);
-    (data||[]).forEach(r=>{stApplyLine(r,true);if(r.counted_qty==null){stCounts[r.id]='';}});
+    (data||[]).forEach(r=>{stApplyLine(r,true,true);if(r.counted_qty==null){stCounts[r.id]='';}});
     st=S.stocktakes.find(x=>x.id===st.id)||st;
   }
   const counted=stCountsArray();
   if(!counted.length)return toast('Enter at least one count',true);
+  if(!stAmending){const miss=(st.lines||[]).filter(l=>stNeedsDate(l.id));
+    if(miss.length){stFilt='nodate';renderStList(st);const pb=document.querySelector('.panel.stp .panel-body');if(pb)pb.scrollTop=0;
+      return toast(`Best before is needed on ${miss.length} counted item(s) — enter the date or tick “No date on pack”. They’re listed under “Needs date”.`,true);}}
   const total=(st.lines||[]).length, doneN=counted.length, uncounted=total-doneN;
   let varUnits=0,varVal=0; const rows=[];
   counted.forEach(c=>{const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)return;const it=item(l.item_id);const sys=onHand(st.location_id,l.item_id);const d=c.counted-sys;if(d!==0){varUnits+=Math.abs(d);varVal+=Math.abs(d)*it.unit_cost;rows.push(`<tr><td>${esc(it.name)}</td><td class="num tnum">${sys}</td><td class="num tnum">${c.counted}</td><td class="num tnum" style="color:${d>0?'var(--transit)':'var(--crit)'}">${d>0?'+'+d:d}</td></tr>`);}});
@@ -3347,28 +3461,76 @@ function renderStRows(st,editable,filter){
   const q=(filter||'').toLowerCase();
   let lines=st.lines||[];
   if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});
-  if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;
+  if(editable&&stFilt==='todo')lines=lines.filter(l=>!stIsDone(l.id));
+  else if(editable&&stFilt==='done')lines=lines.filter(l=>stIsDone(l.id));
+  else if(editable&&stFilt==='mine')lines=lines.filter(stIsMine);
+  else if(editable&&stFilt==='nodate')lines=lines.filter(l=>stNeedsDate(l.id));
+  if(!lines.length)return `<div class="empty" style="padding:24px">${svg(editable&&stFilt==='todo'&&!q?I.check:I.search,30)}<div>${editable&&stFilt==='todo'&&!q?'Everything has been counted.':editable&&stFilt==='mine'&&!q?'You haven’t counted anything yet.':editable&&stFilt==='nodate'&&!q?'Every counted item has a best-before (or “No date on pack”).':'No items match.'}</div></div>`;
   return lines.map(l=>{const it=item(l.item_id);
-    if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
-      const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div><div class="st-who" data-stwho="${l.id}">${stWhoHtml(l.id)}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}">${(stSplit[l.id]&&stSplit[l.id].length)?`<span style="font-size:12px;color:var(--muted)">${stSplit[l.id].length} best-before dates</span>`:`<input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional)" style="${ist}">`}<button class="btn sm" data-stsplit="${l.id}" style="padding:4px 8px;font-size:12px">${(stSplit[l.id]&&stSplit[l.id].length)?'Edit dates':'+ dates'}</button></div></div>`;}
+    if(editable){const c=stCounts[l.id];const done=stIsDone(l.id);const hubS=isHub(st.location_id);const sp=stSplit[l.id]&&stSplit[l.id].length;const per=hasPpc(it)?ppc(it):0;
+      const areaCtl=hubS?`<select data-starea="${l.id}"><option value="">Choose…</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`
+                       :`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="e.g. Front shop" autocomplete="off">`;
+      const nd=!!stNoExp[l.id];
+      return `<div class="stl${done?' done':''}${hubS?' req':''}${per&&stBoxMode(st.location_id)?' bxm':''}${stNeedsDate(l.id)?' needdate':''}" data-stl="${l.id}">
+        <div class="stl-top"><div class="stl-name"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}<div class="st-who" data-stwho="${l.id}">${stWhoHtml(l.id)}</div></div>
+          ${per&&stBoxMode(st.location_id)
+            ?`<div><div class="stl-qty bx"><label class="stl-q"><span>Boxes</span><input type="number" min="0" inputmode="numeric" value="${done?Math.floor(+c/per):''}" placeholder="0" data-cb="${l.id}" aria-label="Boxes of ${esc(it.name)}"></label><label class="stl-q"><span>Pkts</span><input type="number" min="0" inputmode="numeric" value="${done?(+c%per):''}" placeholder="0" data-ck="${l.id}" aria-label="Loose packets of ${esc(it.name)}"></label></div>
+               <div class="stl-qty bx" style="margin-top:6px"><button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per} packets) to the count">+1 box</button><button type="button" class="btn primary" data-stadd="${l.id}" title="Add a count with location and best-before" aria-label="Add a count">${svg(I.plus,18)}</button></div>
+               <div class="stl-unit" data-stunit="${l.id}">${done?`= <b>${+c}</b> packets · `:''}${per} per box</div></div></div>`
+            :`<div><div class="stl-qty"><input type="number" min="0" inputmode="numeric" value="${done?c:''}" placeholder="–" data-c="${l.id}" aria-label="Counted packets for ${esc(it.name)}"><button type="button" class="btn primary" data-stadd="${l.id}" title="Add a count with location and best-before" aria-label="Add a count">${svg(I.plus,18)}</button></div><div class="stl-unit" data-stunit="${l.id}">packets${per&&done?' · '+boxDec(+c,it)+' bx':''}</div>${per?`<div style="text-align:right;margin-top:4px"><button type="button" class="btn sm" data-stbox="${l.id}" title="Add one box (${per} packets)">+1 box</button></div>`:''}</div></div>`}
+        <div class="stl-det">
+          <label class="stl-f wide${hubS?' need':''}"><span>Location${hubS?' *':''}</span>${areaCtl}</label>
+          <label class="stl-f${hubS?' need':''}"><span>Aisle${hubS?' *':''}</span><input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="#" autocomplete="off"></label>
+          <div class="stl-f stl-bb"><span>Best before *${nd?'':`<button type="button" class="lnk" data-stsplit="${l.id}">${sp?'edit':'+ more'}</button>`}</span>${nd?`<div class="stl-dates">No date on pack</div>`:sp?`<div class="stl-dates">${stSplit[l.id].map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join(', ')}</div>`:`<input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" aria-label="Best before">`}
+            <label class="stl-nd"><input type="checkbox" data-snd="${l.id}"${nd?' checked':''}> No date on pack</label></div>
+        </div><div class="stl-need">Best before needed — enter the date or tick “No date on pack”.</div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
 }
 function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="st-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
-function bindStInputs(){
+function bindStInputs(root){
+  const R=root||document.getElementById('stList');if(!R)return;
   const live=!stAmending&&!window._stLegacy;   // amending a finalised count keeps the old "save all" behaviour
-  document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};
+  R.querySelectorAll('[data-stadd]').forEach(b=>b.onclick=()=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===b.dataset.stadd);if(!l)return;
+    openScanEntry(st,l,{onDone:saved=>{if(saved){stCardRefresh(l.id);}}});});
+  // boxes + loose packets: the count is saved in packets (boxes × per box + loose)
+  const bxTotal=lid=>{const card=R.matches&&R.matches('[data-stl]')?R:R.querySelector(`[data-stl="${lid}"]`);const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===lid);if(!card||!l)return null;
+    const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;const bi=card.querySelector('[data-cb]'),ki=card.querySelector('[data-ck]');if(!bi||!ki)return null;
+    if(bi.value===''&&ki.value==='')return '';return Math.max(0,parseInt(bi.value,10)||0)*per+Math.max(0,parseInt(ki.value,10)||0);};
+  R.querySelectorAll('[data-cb],[data-ck]').forEach(inp=>{const lid=inp.dataset.cb||inp.dataset.ck;
+    inp.oninput=()=>{const t=bxTotal(lid);if(t==null)return;stCounts[lid]=t;stCardMark(lid);updateStProgress();};
+    inp.onchange=()=>{const t=bxTotal(lid);if(t==null)return;stCounts[lid]=t;if(!live)return saveStProgress({id:stCurrentId},false);
+      if(t===''){stQueue({line:lid,mode:'clear'});return;}
+      stQueue({line:lid,mode:'set',qty:t,area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stSplit[lid]&&stSplit[lid].length?null:(stExp[lid]||null)});};});
+  // +1 box: adds one box on the server each tap, so several people can keep adding
+  R.querySelectorAll('[data-stbox]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stbox;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===lid);if(!l)return;
+    const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;if(!per)return;
+    if(isHub(st.location_id)&&(!(stArea[lid]||'').trim()||!(stAisle[lid]||'').trim())){toast('Central Warehouse: choose the location and aisle # first',true);const f=document.querySelector(`#stList [data-stl="${lid}"] [data-starea]`);if(f)f.focus();return;}
+    if(stSplit[lid]&&stSplit[lid].length){toast('This item has several best-before dates — enter the boxes with their date',false);openScanEntry(st,l,{onDone:s=>{if(s)stCardRefresh(lid);}});return;}
+    if(!stNoExp[lid]&&!stExp[lid]){toast('Enter the best-before date first, or tick “No date on pack”',true);const f=document.querySelector(`#stList [data-stl="${lid}"] [data-sexp]`);if(f){f.focus();try{f.showPicker&&f.showPicker();}catch(e){}}return;}
+    const cur=stIsDone(lid)?+stCounts[lid]:0;stCounts[lid]=cur+per;
+    if(live)stQueue({line:lid,mode:'add',qty:per,area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stSplit[lid]&&stSplit[lid].length?null:(stExp[lid]||null)});
+    else saveStProgress({id:stCurrentId},false);
+    if(navigator.vibrate)navigator.vibrate(15);
+    stCardRefresh(lid);updateStProgress();
+    const nc=document.querySelector(`#stList [data-stl="${lid}"]`);if(nc){nc.classList.remove('st-flash');void nc.offsetWidth;nc.classList.add('st-flash');}
+    toast(`${it.name}: +1 box → ${stCounts[lid]} packets (${boxDec(stCounts[lid],it)} bx)`);});
+  R.querySelectorAll('[data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);stCardMark(e.target.dataset.c);updateStProgress();};
     inp.onchange=e=>{const lid=e.target.dataset.c;if(!live)return saveStProgress({id:stCurrentId},false);
       if(e.target.value===''){stQueue({line:lid,mode:'clear'});return;}
       stQueue({line:lid,mode:'set',qty:Math.max(0,+e.target.value||0),area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stSplit[lid]&&stSplit[lid].length?null:(stExp[lid]||null)});};});
   const det=lid=>{if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null});};
-  document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();det(e.target.dataset.starea);});
-  document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();det(e.target.dataset.saisle);});
-  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;det(e.target.dataset.sexp);});
-  document.querySelectorAll('#stList [data-stsplit]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stsplit;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=(st&&st.lines||[]).find(x=>x.id===lid);openBatchSplit('Best-before dates'+(l?' — '+item(l.item_id).name:''),null,stSplit[lid]||(stExp[lid]?[{qty:(+stCounts[lid]||''),exp:stExp[lid]}]:null),rows=>{stSplit[lid]=rows;stCounts[lid]=rows.reduce((s,r)=>s+r.qty,0);renderStList(st);
-    if(live)stQueue({line:lid,mode:'set',qty:stCounts[lid],area:stArea[lid]||'',aisle:stAisle[lid]||'',splits:rows.filter(r=>r.qty>0&&r.exp).map(r=>({qty:+r.qty,exp:r.exp}))});else saveStProgress({id:stCurrentId},false);});});}
+  R.querySelectorAll('[data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();det(e.target.dataset.starea);});
+  R.querySelectorAll('[data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();det(e.target.dataset.saisle);});
+  R.querySelectorAll('[data-sexp]').forEach(inp=>{inp.oninput=e=>{stExp[e.target.dataset.sexp]=e.target.value;stCardMark(e.target.dataset.sexp);updateStProgress();};
+    inp.onchange=e=>{const lid=e.target.dataset.sexp;stExp[lid]=e.target.value;if(e.target.value)stNoExp[lid]=false;stCardMark(lid);updateStProgress();if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null,noexp:e.target.value?false:undefined});};});
+  // "No date on pack" (non-dated stock): satisfies the mandatory best-before
+  R.querySelectorAll('[data-snd]').forEach(cb=>cb.onchange=e=>{const lid=e.target.dataset.snd,on=e.target.checked;stNoExp[lid]=on;if(on){stExp[lid]='';stSplit[lid]=null;}
+    if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:null,noexp:on});else saveStProgress({id:stCurrentId},false);
+    stCardRefresh(lid);updateStProgress();if(!on){const d=document.querySelector(`#stList [data-sexp="${lid}"]`);if(d)d.focus();}});
+  R.querySelectorAll('[data-stsplit]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stsplit;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=(st&&st.lines||[]).find(x=>x.id===lid);openBatchSplit('Best-before dates'+(l?' — '+item(l.item_id).name:''),null,stSplit[lid]||(stExp[lid]?[{qty:(+stCounts[lid]||''),exp:stExp[lid]}]:null),rows=>{stSplit[lid]=rows;stCounts[lid]=rows.reduce((s,r)=>s+r.qty,0);if(rows.some(r=>r.exp))stNoExp[lid]=false;renderStList(st);
+    if(live)stQueue({line:lid,mode:'set',qty:stCounts[lid],area:stArea[lid]||'',aisle:stAisle[lid]||'',splits:rows.filter(r=>r.qty>0&&r.exp).map(r=>({qty:+r.qty,exp:r.exp})),noexp:rows.some(r=>r.exp)?false:undefined});else saveStProgress({id:stCurrentId},false);});});}
 /* ---- stock take scanning: one scan = one entry (quantity, location, best-before) ---- */
 let stScanLast={code:'',t:0}, stScanOpen=false;
 function stFindLine(st,code){const cl=String(code||'').trim().toLowerCase();if(!cl)return null;return (st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;})||null;}
@@ -3394,12 +3556,14 @@ function openScanEntry(st,line,opts){
     <div class="panel-body">
       ${cur!=null?`<div class="se-cur">Already counted: <b>${cur}</b> packet${cur===1?'':'s'}${per?` (${boxDec(cur,it)} bx)`:''}</div>
       <div class="se-mode"><label><input type="radio" name="se-mode" value="add" checked> Add to count</label><label><input type="radio" name="se-mode" value="set"> Replace count</label></div>`:''}
-      <div class="se-qty">${per?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></div>`:''}
-        <div class="field"><label for="se-pk">${per?'Loose packets':'Packets'}</label><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></div></div>
+      <div class="se-qty">${per?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><div class="se-step"><button type="button" class="btn" data-sestep="se-box:-1" aria-label="One box less">−</button><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0"><button type="button" class="btn" data-sestep="se-box:1" aria-label="One more box">+</button></div></div>`:''}
+        <div class="field"><label for="se-pk">${per?'Loose packets':'Packets'}</label><div class="se-step"><button type="button" class="btn" data-sestep="se-pk:-1" aria-label="One packet less">−</button><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0"><button type="button" class="btn" data-sestep="se-pk:1" aria-label="One more packet">+</button></div></div></div>
       <div class="se-total" id="se-total">Quantity: <b>0</b> packets</div>
       <div class="grid2"><div class="field"><label for="se-area">Location / store area${hub?' *':''}</label>${areaCtl}</div>
         <div class="field"><label for="se-aisle">Aisle #${hub?' *':''}</label><input id="se-aisle" list="se-aisles" value="${esc(aisle)}" placeholder="e.g. 3"><datalist id="se-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist></div></div>
-      <div class="field" style="margin-bottom:0"><label for="se-exp">Best before</label><input id="se-exp" type="date" value="${esc(exp)}"><div class="hint">Leave blank if there is no date. A different date on the same item is kept as a separate best-before.</div></div>
+      <div class="field" style="margin-bottom:0"><label for="se-exp">Best before *</label><input id="se-exp" type="date" value="${esc(stNoExp[line.id]?'':exp)}"${stNoExp[line.id]?' disabled':''}>
+        <label class="stl-nd" style="font-size:13px;margin-top:8px"><input type="checkbox" id="se-nd"${stNoExp[line.id]?' checked':''}> No date on pack (non-dated item)</label>
+        <div class="hint">Required. A different date on the same item is kept as a separate best-before.</div></div>
       <div class="se-err" id="se-err" hidden></div>
     </div>
     <div class="panel-foot"><button class="btn" id="se-cancel">Cancel</button><button class="btn primary" id="se-save">${svg(I.check,16)} Save count</button></div></div>`;
@@ -3409,6 +3573,8 @@ function openScanEntry(st,line,opts){
   const upd=()=>{const q=qty();const mode=(host.querySelector('input[name=se-mode]:checked')||{}).value||'set';const tot=mode==='add'&&cur!=null?cur+q:q;
     $('se-total').innerHTML=`Quantity: <b>${q}</b> packet${q===1?'':'s'}${per?` (${boxDec(q,it)} bx)`:''}${cur!=null?` &nbsp;·&nbsp; new count: <b>${tot}</b>`:''}`;};
   host.querySelectorAll('input').forEach(i=>i.addEventListener('input',upd));upd();
+  {const nd=$('se-nd'),ex=$('se-exp');if(nd&&ex)nd.onchange=()=>{ex.disabled=nd.checked;if(nd.checked)ex.value='';else ex.focus();};}
+  host.querySelectorAll('[data-sestep]').forEach(b=>b.onclick=()=>{const[id,d]=b.dataset.sestep.split(':');const el=$(id);if(!el)return;el.value=Math.max(0,(parseInt(el.value,10)||0)+(+d));upd();});
   let closed=false;
   const close=(saved)=>{if(closed)return;closed=true;host.remove();stScanOpen=false;stScanLast.t=Date.now();if(opts.onDone)opts.onDone(saved);};
   const looksLikeScan=v=>{v=String(v||'').trim();return v.length>=6&&(!!stFindLine(st,v)||+v>99999);};
@@ -3420,6 +3586,8 @@ function openScanEntry(st,line,opts){
     const err=m=>{$('se-err').hidden=false;$('se-err').textContent=m;};
     if(q<=0&&!(mode==='set'&&cur!=null))return err('Enter the quantity you counted.');
     if(hub&&q>0&&(!a||!b))return err('Central Warehouse: choose a store area and enter an aisle #.');
+    const ndOn=!!($('se-nd')&&$('se-nd').checked);
+    if(q>0&&!e&&!ndOn)return err('Enter the best-before date, or tick “No date on pack”.');
     const prev=cur||0,prevExp=stExp[line.id]||'',prevSplit=stSplit[line.id]&&stSplit[line.id].length?stSplit[line.id].map(r=>({...r})):null;
     if(mode==='add'&&cur!=null){
       stCounts[line.id]=prev+q;
@@ -3432,8 +3600,9 @@ function openScanEntry(st,line,opts){
       stCounts[line.id]=q;stSplit[line.id]=null;stExp[line.id]=e||'';
     }
     if(a)stArea[line.id]=a;if(b)stAisle[line.id]=b;
+    if(ndOn){stNoExp[line.id]=true;stExp[line.id]='';stSplit[line.id]=null;}else if(e)stNoExp[line.id]=false;
     // the server does the adding, so two people counting the same item in different places can't overwrite each other
-    if(!stAmending&&!window._stLegacy)stQueue({line:line.id,mode:(mode==='add'&&cur!=null)?'add':'set',qty:q,area:a,aisle:b,expiry:e||null});
+    if(!stAmending&&!window._stLegacy)stQueue({line:line.id,mode:(mode==='add'&&cur!=null)?'add':'set',qty:q,area:a,aisle:b,expiry:ndOn?null:(e||null),noexp:ndOn?true:(e?false:undefined)});
     else saveStProgress(st,false);
     updateStProgress();
     toast(it.name+': counted '+stCounts[line.id]+' packet'+(stCounts[line.id]===1?'':'s'));
@@ -3457,51 +3626,80 @@ function stSavePending(){try{if(stCurrentId)localStorage.setItem(stQKey(stCurren
 function stSyncUi(){const el=document.getElementById('st-sync');if(!el)return;const n=stPending.length;
   el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All counts saved · live'}`;}
 /* one count entry for one line: mode add | set | clear | details */
-function stQueue(op){if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
+function stQueue(op){if(op&&op.line&&(op.mode==='add'||op.mode==='set'))stMine.add(op.line);if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
 async function stFlush(){
   if(stFlushing||window._stLegacy)return;stFlushing=true;stSyncUi();
   while(stPending.length){const op=stPending[0];
-    const{data,error}=await sb.rpc('st_record_count',{p_line:op.line,p_mode:op.mode,p_qty:op.qty==null?null:Math.max(0,Math.round(+op.qty)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_splits:op.splits||null,p_device:stDevice()});
+    const prm={p_line:op.line,p_mode:op.mode,p_qty:op.qty==null?null:Math.max(0,Math.round(+op.qty)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_splits:op.splits||null,p_device:stDevice()};
+    if(!window._stNoNd)prm.p_no_expiry=(op.noexp===true||op.noexp===false)?op.noexp:null;
+    const{data,error}=await sb.rpc('st_record_count',prm);
     if(error){
       const m=error.message||'';
+      // 55 not run yet: carry on without the "No date on pack" option
+      if(!window._stNoNd&&/schema cache|could not find|p_no_expiry|does not exist/i.test(m)){window._stNoNd=true;toast('Run 55_stocktake_best_before.sql in Supabase to save “No date on pack”',true);continue;}
       if(/st_record_count|does not exist|schema cache/i.test(m)){window._stLegacy=true;stPending=[];stSavePending();stFlushing=false;stSyncErr='';saveStProgress({id:stCurrentId},false);toast('Run 54_stocktake_team.sql in Supabase to turn on safe group counting',true);return;}
       if(/finalised|not counting|not found|Bad mode/i.test(m)){toast(m,true);stPending.shift();stSavePending();continue;}
       op.tries=(op.tries||0)+1;stSyncErr=m;stSyncUi();stFlushing=false;
       setTimeout(stFlush,Math.min(30000,1500*op.tries));return;           // offline or a hiccup: keep it and retry
     }
-    stPending.shift();stSavePending();stSyncErr='';stApplyLine(data,true);
+    stPending.shift();stSavePending();stSyncErr='';
+    if(!stPending.some(p=>p.line===op.line))stApplyLine(data,true);   // wait for the last tap on this item before redrawing it
   }
   stFlushing=false;stSyncUi();
 }
 window.addEventListener('online',()=>{if(stPending.length)stFlush();});
 /* bring one line up to date from the database and refresh it on screen without redrawing the list */
-function stApplyLine(r,mine){
-  if(!r||!r.id)return;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===r.id);
-  if(l)Object.assign(l,{counted_qty:r.counted_qty,area:r.area,aisle:r.aisle,expiry:r.expiry,splits:r.splits,counted_by_name:r.counted_by_name,counted_at:r.counted_at,entries:r.entries});
+function stApplyLine(r,mine,force){
+  if(!r||!r.id)return;
+  const sig=stLineSig(r);
+  if(!force&&stSig[r.id]===sig)return;         // nothing new on this line
+  stSig[r.id]=sig;
+  const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===r.id);
+  if(l)Object.assign(l,{counted_qty:r.counted_qty,area:r.area,aisle:r.aisle,expiry:r.expiry,splits:r.splits,counted_by_name:r.counted_by_name,counted_at:r.counted_at,entries:r.entries,no_expiry:!!r.no_expiry});
+  if(r.no_expiry!==undefined){stNoExp[r.id]=!!r.no_expiry;if(r.no_expiry)stExp[r.id]='';}
   const changed=String(stCounts[r.id]??'')!==String(r.counted_qty??'');
   stCounts[r.id]=r.counted_qty==null?'':r.counted_qty;
   if(r.area)stArea[r.id]=r.area;if(r.aisle)stAisle[r.id]=r.aisle;
   if(Array.isArray(r.splits)&&r.splits.length){stSplit[r.id]=r.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[r.id]='';}
   else{stSplit[r.id]=null;if(r.expiry)stExp[r.id]=String(r.expiry).slice(0,10);}
   stWho[r.id]={name:r.counted_by_name,at:r.counted_at,n:r.entries};
+  if(l&&r.counted_by!==undefined)l.counted_by=r.counted_by;
+  const card=document.querySelector(`#stList [data-stl="${r.id}"]`);
+  if(card&&!card.contains(document.activeElement)&&!stScanOpen){stCardRefresh(r.id);const nc=document.querySelector(`#stList [data-stl="${r.id}"]`);if(!mine&&changed&&nc){nc.classList.remove('st-flash');void nc.offsetWidth;nc.classList.add('st-flash');}updateStProgress();return;}
   const inp=document.querySelector(`#stList [data-c="${r.id}"]`);if(inp&&document.activeElement!==inp)inp.value=stCounts[r.id];
+  {const bi=document.querySelector(`#stList [data-cb="${r.id}"]`),ki=document.querySelector(`#stList [data-ck="${r.id}"]`);
+   if(bi&&ki&&document.activeElement!==bi&&document.activeElement!==ki&&l){const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;const t=stCounts[r.id];if(per){bi.value=t===''?'':Math.floor(+t/per);ki.value=t===''?'':(+t%per);}}}
+  stCardMark(r.id);
   const ar=document.querySelector(`#stList [data-starea="${r.id}"]`);if(ar&&document.activeElement!==ar&&r.area)ar.value=r.area;
   const ai=document.querySelector(`#stList [data-saisle="${r.id}"]`);if(ai&&document.activeElement!==ai&&r.aisle)ai.value=r.aisle;
   const ex=document.querySelector(`#stList [data-sexp="${r.id}"]`);if(ex&&document.activeElement!==ex&&r.expiry)ex.value=String(r.expiry).slice(0,10);
   const who=document.querySelector(`#stList [data-stwho="${r.id}"]`);if(who)who.innerHTML=stWhoHtml(r.id);
-  if(!mine&&changed&&inp){const row=inp.closest('.recv-row');if(row){row.classList.remove('st-flash');void row.offsetWidth;row.classList.add('st-flash');}}
+  if(!mine&&changed&&inp){const row=inp.closest('.stl');if(row){row.classList.remove('st-flash');void row.offsetWidth;row.classList.add('st-flash');}}
   updateStProgress();
 }
+/* mark one count card counted / not counted without redrawing it */
+function stCardMark(id){const card=document.querySelector(`#stList [data-stl="${id}"]`);if(!card)return;card.classList.toggle('done',stIsDone(id));card.classList.toggle('needdate',stNeedsDate(id));
+  const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===id);const u=card.querySelector('[data-stunit]');
+  if(l&&u){const it=item(l.item_id);const per=hasPpc(it)?ppc(it):0;const d=stIsDone(id);
+    if(per&&card.querySelector('[data-cb]'))u.innerHTML=(d?`= <b>${+stCounts[id]}</b> packets · `:'')+per+' per box';
+    else u.textContent='packets'+(per&&d?' · '+boxDec(+stCounts[id],it)+' bx':'');}}
+/* boxes + packets entry: Central Warehouse by default, switchable per device */
+function stBoxMode(locId){try{const v=localStorage.getItem('st-boxmode-'+locId);if(v==='1')return true;if(v==='0')return false;}catch(e){}return isHub(locId);}
+function stSetBoxMode(locId,on){try{localStorage.setItem('st-boxmode-'+locId,on?'1':'0');}catch(e){}}
+/* redraw one count card in place (keeps the list and scroll position as they are) */
+function stCardRefresh(id){const card=document.querySelector(`#stList [data-stl="${id}"]`);if(!card)return;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===id);if(!l)return;
+  const f=stFilt;stFilt='all';const html=renderStRows({...st,lines:[l]},true,'');stFilt=f;
+  const t=document.createElement('div');t.innerHTML=html;const nc=t.firstElementChild;if(nc&&nc.matches('.stl')){card.replaceWith(nc);bindStInputs(nc);}}
 function stWhoHtml(id){const w=stWho[id];if(!w||!w.name)return '';const m=w.at?Math.max(0,Math.round((Date.now()-new Date(w.at))/60000)):null;
   return `Last counted by <b>${esc(w.name)}</b>${m==null?'':m<1?' · just now':m<60?` · ${m} min ago`:` · ${fmtDT(w.at)}`}${w.n>1?` · ${w.n} entries`:''}`;}
 async function stPoll(full){
   clearTimeout(stPollT);
   if(!stCurrentId||!document.getElementById('stList')||window._stLegacy)return;
   try{
-    let q=sb.from('stocktake_lines').select('id,counted_qty,area,aisle,expiry,splits,counted_by_name,counted_at,entries,updated_at').eq('stocktake_id',stCurrentId);
-    if(stLastSeen&&!full)q=q.gt('updated_at',stLastSeen);
-    const{data,error}=await q;
+    const sid=stCurrentId,since=(stLastSeen&&!full)?stLastSeen:null;
+    const{data,error}=await sbAll(()=>{let q=sb.from('stocktake_lines').select(stLineCols()).eq('stocktake_id',sid);if(since)q=q.gt('updated_at',since);return q.order('id');});
     if(!error){(data||[]).forEach(r=>{if(r.updated_at&&(!stLastSeen||r.updated_at>stLastSeen))stLastSeen=r.updated_at;if(stPending.some(p=>p.line===r.id))return;stApplyLine(r,false);});}
+    else if(!window._stNoNd&&/no_expiry/i.test(error.message||'')){window._stNoNd=true;}   // 55 not run yet — next poll reads without it
     else if(/column|does not exist/i.test(error.message||'')){window._stLegacy=true;return;}
     const{data:s}=await sb.from('stocktakes').select('status').eq('id',stCurrentId).maybeSingle();
     if(s&&s.status!=='open'&&stEditable&&!stAmending){toast('This stock take has just been finalised by someone else',true);closeOverlay();refreshOps([]);return;}
@@ -3523,6 +3721,113 @@ async function openStHistory(st){
   const bind=()=>{const s=document.getElementById('sth-who');if(s)s.onchange=e=>{filt=e.target.value;document.getElementById('sth-body').innerHTML=body();bind();};
     const c=document.getElementById('sth-csv');if(c)c.onclick=()=>downloadCSV(`count-history_${st.code}_${today()}.csv`,['When','Who','Helper','Device','Product code','Item','Action','Entered','Before','After','Area','Aisle','Best before'],rows.filter(r=>!filt||r.actor_name===filt).map(r=>{const it=r.item_id?item(r.item_id):{};return[r.ts,r.actor_name||'',r.is_helper?'yes':'',r.device||'',it.sku||'',it.name||'',r.action,r.qty??'',r.before_qty??'',r.after_qty??'',r.area||'',r.aisle||'',r.splits&&r.splits.length?r.splits.map(s=>s.qty+'@'+s.exp).join('; '):(r.expiry||'')];}));};
   bind();document.getElementById('sth-back').onclick=()=>openStock(st.id);
+}
+/* Supabase returns at most 1000 rows per request, so read in pages. mk() must return a fresh, ordered query. */
+async function sbAll(mk){let out=[],from=0;for(let i=0;i<60;i++){const{data,error}=await mk().range(from,from+999);if(error)return{error,data:out};out=out.concat(data||[]);if(!data||data.length<1000)break;from+=1000;}return{data:out,error:null};}
+/* ---------- live progress report: how much each person has counted ---------- */
+async function stLoadReportData(stId,lineCols){
+  const all=sbAll;
+  const [a,b]=await Promise.all([
+    all(()=>sb.from('stocktake_lines').select(lineCols).eq('stocktake_id',stId).order('id')),
+    all(()=>sb.from('stocktake_count_log').select('id,ts,actor,actor_name,is_helper,action,qty,before_qty,after_qty,line_id,item_id,area,aisle,expiry,splits,device').eq('stocktake_id',stId).order('id',{ascending:true}))]);
+  return {error:a.error,lines:a.data||[],logs:b.error?[]:(b.data||[]),noLog:!!b.error};
+}
+async function openStProgressReport(st){
+  modal('Count progress — '+st.code,loc(st.location_id).name+' · who has counted what so far',`<div id="spr-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
+    `<button class="btn" id="spr-back">Back to the count</button><button class="btn" id="spr-csv">Export CSV</button><button class="btn primary" id="spr-ref">Refresh</button>`,'full form');
+  let D=null;
+  const draw=()=>{const box=document.getElementById('spr-body');if(!box||!D)return;
+    if(D.error){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${esc(D.error.message)}</div></div>`;return;}
+    const L=D.lines,total=L.length,done=L.filter(l=>l.counted_qty!=null),pk=done.reduce((s,l)=>s+(+l.counted_qty||0),0),pct=total?Math.round(done.length/total*100):0;
+    // per counter
+    const P={};
+    const ent=D.logs.filter(r=>r.action==='add'||r.action==='set');
+    if(ent.length){ent.forEach(r=>{const k=r.actor||r.actor_name||'?';const p=P[k]=P[k]||{name:r.actor_name||'Unknown',helper:!!r.is_helper,me:!!(ME&&r.actor===ME.id),n:0,lines:new Set(),pk:0,first:r.ts,last:r.ts,cur:0};p.n++;p.lines.add(r.line_id);p.pk+=(+r.qty||0);p.last=r.ts;});}
+    else{done.forEach(l=>{const k=l.counted_by||l.counted_by_name||'?';const p=P[k]=P[k]||{name:l.counted_by_name||'Unknown',helper:false,me:!!(ME&&l.counted_by===ME.id),n:0,lines:new Set(),pk:0,first:l.counted_at,last:l.counted_at,cur:0};p.n+=(l.entries||1);p.lines.add(l.id);p.pk+=(+l.counted_qty||0);if(l.counted_at>p.last)p.last=l.counted_at;if(l.counted_at<p.first)p.first=l.counted_at;});}
+    done.forEach(l=>{const k=Object.keys(P).find(k=>k===l.counted_by)||Object.keys(P).find(k=>P[k].name===l.counted_by_name);if(k)P[k].cur++;});
+    const people=Object.values(P).sort((a,b)=>b.lines.size-a.lines.size);const maxL=Math.max(1,...people.map(p=>p.lines.size));
+    const pace=p=>{const h=(new Date(p.last)-new Date(p.first))/36e5;return h>=0.25?Math.round(p.lines.size/h):null;};
+    // by location
+    const A={};L.forEach(l=>{const k=(l.area||'').trim()||'No location yet';const a=A[k]=A[k]||{t:0,d:0};a.t++;if(l.counted_qty!=null)a.d++;});
+    const areas=Object.entries(A).sort((a,b)=>a[0]==='No location yet'?1:b[0]==='No location yet'?-1:a[0].localeCompare(b[0]));
+    const todo=L.filter(l=>l.counted_qty==null).map(l=>item(l.item_id)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+    box.innerHTML=`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:14px">
+        <div class="tile"><div class="lbl">Items counted</div><div class="val tnum">${done.length} <span style="font-size:14px;color:var(--muted)">of ${total}</span></div><div class="sr-bar"><div style="width:${pct}%"></div></div><div class="meta">${pct}% done · ${total-done.length} to go</div></div>
+        <div class="tile"><div class="lbl">Packets counted</div><div class="val tnum">${pk.toLocaleString()}</div><div class="meta">across all locations</div></div>
+        <div class="tile"><div class="lbl">People counting</div><div class="val tnum">${people.length}</div><div class="meta">${people.filter(p=>p.helper).length} helper(s)</div></div>
+        <div class="tile"><div class="lbl">Entries saved</div><div class="val tnum">${ent.length||done.reduce((s,l)=>s+(l.entries||1),0)}</div><div class="meta">updated ${new Date().toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'})}</div></div></div>
+      <h3 style="font-size:14px;margin:4px 0 8px">By counter</h3>
+      ${people.length?`<div class="tablewrap" style="margin-bottom:16px"><table class="no-cards"><thead><tr><th>Counter</th><th class="num">Items counted</th><th style="width:28%"></th><th class="num">Packets entered</th><th class="num">Entries</th><th>Counting since</th><th>Last entry</th></tr></thead><tbody>${people.map(p=>`<tr${p.me?' style="background:var(--accent-soft)"':''}><td><b>${esc(p.name)}</b>${p.me?' <span class="tag">you</span>':''}${p.helper?' <span class="tag">helper</span>':''}</td><td class="num tnum"><b>${p.lines.size}</b></td><td><div class="sr-bar" style="margin:0"><div style="width:${Math.round(p.lines.size/maxL*100)}%"></div></div></td><td class="num tnum">${p.pk.toLocaleString()}</td><td class="num tnum">${p.n}</td><td style="font-size:12.5px;white-space:nowrap">${p.first?fmtDT(p.first):'—'}</td><td style="font-size:12.5px;white-space:nowrap">${p.last?fmtDT(p.last):'—'}${pace(p)?`<div style="font-size:11px;color:var(--muted)">~${pace(p)} items / hour</div>`:''}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty" style="margin-bottom:16px"><div>Nobody has counted anything yet.</div></div>`}
+      <h3 style="font-size:14px;margin:4px 0 8px">By location</h3>
+      <div class="card pad" style="margin-bottom:16px">${areas.map(([k,a])=>`<div style="display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:10px;align-items:center;margin-bottom:8px"><div><div style="font-size:13px;font-weight:600">${esc(k)}</div><div class="sr-bar" style="margin-top:4px"><div style="width:${a.t?Math.round(a.d/a.t*100):0}%;${a.d===a.t?'background:var(--good)':''}"></div></div></div><div class="tnum" style="text-align:right;font-size:13px">${a.d} / ${a.t}</div></div>`).join('')}</div>
+      <details${todo.length&&todo.length<=60?' open':''}><summary style="cursor:pointer;font-weight:700;font-size:14px;margin-bottom:8px">Still to count (${todo.length})</summary>
+        ${todo.length?`<div class="card pad" style="columns:2 260px;column-gap:24px;font-size:13px">${todo.map(it=>`<div style="break-inside:avoid;padding:3px 0"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>`).join('')}</div>`:`<div class="banner info">${svg(I.check,17)}<div>Every item has been counted.</div></div>`}</details>
+      ${D.noLog?`<div style="font-size:12px;color:var(--muted);margin-top:10px">Run 54_stocktake_team.sql for per-entry figures.</div>`:''}`;
+    D.people=people;D.todo=todo;};
+  const load=async()=>{D=await stLoadReportData(st.id,'id,item_id,counted_qty,area,aisle,counted_by,counted_by_name,counted_at,entries');draw();};
+  document.getElementById('spr-back').onclick=()=>openStock(st.id);
+  document.getElementById('spr-ref').onclick=load;
+  document.getElementById('spr-csv').onclick=()=>{if(!D||!D.people)return;
+    const rows=D.people.map(p=>['Counter',p.name,p.helper?'helper':'',p.lines.size,p.pk,p.n,p.first||'',p.last||'']).concat(D.todo.map(it=>['Not counted',it.name,it.sku||'','','','','','']));
+    downloadCSV(`count-progress_${st.code}_${today()}.csv`,['Type','Name / item','Helper / code','Items counted','Packets entered','Entries','First entry','Last entry'],rows);};
+  load();
+}
+/* ---------- post stock-take variance report (Super Admin): each item with its counters underneath ---------- */
+async function openStVarianceReport(st){
+  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  modal('Variance report — '+st.code,loc(st.location_id).name+' · finalised '+fmtDT(st.completed_at),`<div id="svr-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
+    `<button class="btn" id="svr-back">Back</button><button class="btn" id="svr-csv">Export CSV</button><button class="btn" id="svr-print">Print</button>`,'full form');
+  const D=await stLoadReportData(st.id,'id,item_id,system_qty,counted_qty,area,aisle,expiry,splits,counted_by,counted_by_name,counted_at,entries');
+  const box=document.getElementById('svr-body');if(!box)return;
+  if(D.error){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${esc(D.error.message)}</div></div>`;return;}
+  const byLine={};D.logs.forEach(r=>{if(!r.line_id)return;(byLine[r.line_id]=byLine[r.line_id]||[]).push(r);});
+  const R=D.lines.map(l=>{const it=item(l.item_id);const sys=+l.system_qty||0;const cnt=l.counted_qty==null?null:+l.counted_qty;const v=cnt==null?null:cnt-sys;const cost=+it.unit_cost||0;
+    const ents=(byLine[l.id]||[]);const names=[...new Set(ents.filter(e=>e.action==='add'||e.action==='set').map(e=>e.actor_name||'Unknown'))];if(!names.length&&l.counted_by_name)names.push(l.counted_by_name);
+    return {l,it,sys,cnt,v,val:v==null?0:v*cost,cost,ents,names,kind:cnt==null?'nc':v<0?'short':v>0?'over':'ok'};});
+  const cnted=R.filter(r=>r.cnt!=null),vars=cnted.filter(r=>r.v!==0),sh=vars.filter(r=>r.v<0),ov=vars.filter(r=>r.v>0);
+  const sum=(a,f)=>a.reduce((s,r)=>s+f(r),0);
+  // counter discrepancy summary
+  const C={};R.forEach(r=>r.names.forEach(n=>{const c=C[n]=C[n]||{n:0,v:0,val:0,helper:false};c.n++;if(r.v)c.v++;c.val+=Math.abs(r.val);}));
+  D.logs.forEach(e=>{if(e.is_helper&&C[e.actor_name])C[e.actor_name].helper=true;});
+  let filt='var',q='',sort='val',openAll=false;
+  const money2=x=>money(x);
+  const entHtml=r=>{const E=r.ents.filter(e=>e.action!=='finalise');if(!E.length)return `<div class="sr-ents"><div class="m" style="padding:6px 0">${r.cnt==null?'Not counted.':r.cnt===0&&!r.l.counted_by_name?'No count entered — set to 0 when the count was finalised (“treat not-counted as 0”).':'No entry detail recorded (counted before entry logging was switched on).'}</div></div>`;
+    const act={add:'Added',set:'Set to',clear:'Cleared',details:'Location / date'};
+    return `<div class="sr-ents">${E.map(e=>`<div class="sr-ent"><div><b>${esc(e.actor_name||'—')}</b>${e.is_helper?' <span class="tag">helper</span>':''}<div class="m" style="font-size:11px">${fmtDT(e.ts)}</div></div><div>${act[e.action]||esc(e.action)} ${e.qty!=null&&e.action!=='details'?`<b class="tnum">${e.qty}</b>`:''}<div class="m" style="font-size:11px">${esc(e.device||'')}</div></div><div class="tnum">${e.action==='details'?'':`${e.before_qty==null?'—':e.before_qty} → <b>${e.after_qty==null?'—':e.after_qty}</b>`}</div><div>${esc([e.area,e.aisle].filter(Boolean).join(' · ')||'—')}</div><div class="m">${e.splits&&e.splits.length?e.splits.map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join(', '):e.expiry?'BB '+fmtDate(e.expiry):''}</div></div>`).join('')}</div>`;};
+  const list=()=>{let L=R.slice();const ql=q.toLowerCase();
+    if(filt==='var')L=L.filter(r=>r.kind==='short'||r.kind==='over');else if(filt!=='all')L=L.filter(r=>r.kind===filt);
+    if(ql)L=L.filter(r=>String(r.it.name).toLowerCase().includes(ql)||String(r.it.sku||'').toLowerCase().includes(ql)||r.names.some(n=>n.toLowerCase().includes(ql)));
+    L.sort(sort==='val'?(a,b)=>Math.abs(b.val)-Math.abs(a.val)||Math.abs(b.v||0)-Math.abs(a.v||0):sort==='units'?(a,b)=>Math.abs(b.v||0)-Math.abs(a.v||0):(a,b)=>String(a.it.name).localeCompare(String(b.it.name)));
+    if(!L.length)return `<div class="card empty"><div>${filt==='var'?'No variances — every counted item matched the system.':'Nothing matches.'}</div></div>`;
+    return L.slice(0,800).map(r=>{const show=openAll||r.kind==='short'||r.kind==='over';return `<div class="sr-item ${r.kind}" data-sri="${r.l.id}"><div class="sr-h"><div class="n"><span class="icode">${esc(r.it.sku||'')}</span>${esc(r.it.name)}<div style="font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px">${r.names.length?'Counted by '+r.names.map(esc).join(', '):'Not counted'}${r.l.area?' · '+esc([r.l.area,r.l.aisle].filter(Boolean).join(' · ')):''}</div></div>
+      <div class="v"><small>System</small>${r.sys}</div><div class="v"><small>Counted</small>${r.cnt==null?'—':r.cnt}</div><div class="v" style="color:${r.v==null?'var(--faint)':r.v<0?'var(--crit)':r.v>0?'var(--transit)':'var(--good)'}"><small>Variance</small>${r.v==null?'—':r.v>0?'+'+r.v:r.v}</div><div class="v" style="color:${r.val<0?'var(--crit)':r.val>0?'var(--transit)':'inherit'}"><small>Value</small>${r.v?money2(r.val):'—'}</div></div>
+      <div class="sr-body"${show?'':' hidden'}>${entHtml(r)}</div></div>`;}).join('')+(L.length>800?`<div style="color:var(--muted);font-size:12px">Showing the first 800 — narrow the filter or export CSV.</div>`:'');};
+  const chips=()=>{const n={var:vars.length,short:sh.length,over:ov.length,ok:cnted.length-vars.length,nc:R.length-cnted.length,all:R.length};const lab={var:'All variances',short:'Short',over:'Over',ok:'Matched',nc:'Not counted',all:'All items'};
+    return Object.keys(lab).map(k=>`<button type="button" class="st-chip${filt===k?' on':''}" data-svf="${k}">${lab[k]}<b>${n[k]}</b></button>`).join('');};
+  box.id='svr-print-area';
+  box.innerHTML=`<div class="print-only" style="margin-bottom:10px"><h2 style="margin:0">Stock take variance — ${esc(st.code)}</h2><div>${esc(loc(st.location_id).name)} · finalised ${fmtDT(st.completed_at)}</div></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:14px">
+      <div class="tile"><div class="lbl">Items counted</div><div class="val tnum">${cnted.length} <span style="font-size:14px;color:var(--muted)">of ${R.length}</span></div><div class="meta">${vars.length} with a variance</div></div>
+      <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${sum(sh,r=>r.v)}</div><div class="meta">${money2(sum(sh,r=>r.val))} · ${sh.length} item(s)</div></div>
+      <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${sum(ov,r=>r.v)}</div><div class="meta">${money2(sum(ov,r=>r.val))} · ${ov.length} item(s)</div></div>
+      <div class="tile"><div class="lbl">Net variance</div><div class="val tnum">${money2(sum(vars,r=>r.val))}</div><div class="meta">gross ${money2(sum(vars,r=>Math.abs(r.val)))} · at unit cost</div></div></div>
+    ${Object.keys(C).length?`<h3 style="font-size:14px;margin:4px 0 8px">By counter</h3><div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Counter</th><th class="num">Items counted</th><th class="num">With variance</th><th class="num">Variance rate</th><th class="num">Variance value (gross)</th></tr></thead><tbody>${Object.entries(C).sort((a,b)=>b[1].val-a[1].val).map(([n,c])=>`<tr class="clickable" data-svc="${esc(n)}"><td><b>${esc(n)}</b>${c.helper?' <span class="tag">helper</span>':''}</td><td class="num tnum">${c.n}</td><td class="num tnum">${c.v}</td><td class="num tnum">${c.n?Math.round(c.v/c.n*100):0}%</td><td class="num tnum">${money2(c.val)}</td></tr>`).join('')}</tbody></table></div>`:''}
+    <div class="st-chips" id="svr-chips" style="margin-bottom:8px">${chips()}</div>
+    <div class="toolbar" style="margin-bottom:10px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="svr-q" placeholder="Search item, code or counter" autocomplete="off"></div><select class="filter" id="svr-sort"><option value="val">Biggest $ variance</option><option value="units">Biggest unit variance</option><option value="name">Item name</option></select><button class="btn sm" id="svr-exp">Expand all</button></div>
+    <div id="svr-list">${list()}</div>`;
+  const redraw=()=>{document.getElementById('svr-list').innerHTML=list();document.getElementById('svr-chips').innerHTML=chips();};
+  document.getElementById('svr-chips').onclick=e=>{const b=e.target.closest('[data-svf]');if(!b)return;filt=b.dataset.svf;redraw();};
+  document.getElementById('svr-q').oninput=e=>{q=e.target.value;redraw();};
+  document.getElementById('svr-sort').onchange=e=>{sort=e.target.value;redraw();};
+  document.getElementById('svr-exp').onclick=e=>{openAll=!openAll;e.target.textContent=openAll?'Collapse':'Expand all';redraw();};
+  document.getElementById('svr-list').onclick=e=>{const h=e.target.closest('.sr-h');if(!h)return;const b=h.parentElement.querySelector('.sr-body');if(b)b.hidden=!b.hidden;};
+  box.querySelectorAll('[data-svc]').forEach(tr=>tr.onclick=()=>{q=tr.dataset.svc;filt='all';const qi=document.getElementById('svr-q');qi.value=q;redraw();qi.scrollIntoView({block:'center',behavior:'smooth'});});
+  document.getElementById('svr-back').onclick=()=>openStock(st.id);
+  document.getElementById('svr-print').onclick=()=>{openAll=true;redraw();document.body.classList.add('printing-st');
+    const done=()=>{document.body.classList.remove('printing-st');window.removeEventListener('afterprint',done);};window.addEventListener('afterprint',done);setTimeout(()=>window.print(),100);};
+  document.getElementById('svr-csv').onclick=()=>{const rows=[];R.forEach(r=>{const base=[r.it.sku||'',r.it.name,r.sys,r.cnt==null?'':r.cnt,r.v==null?'':r.v,r.v?r.val.toFixed(2):'',r.cost.toFixed(2),r.names.join('; ')];
+      const E=r.ents.filter(e=>e.action!=='finalise');if(!E.length)rows.push([...base,'','','','','','','','','']);
+      E.forEach(e=>rows.push([...base,e.ts,e.actor_name||'',e.is_helper?'yes':'',e.action,e.qty??'',e.before_qty??'',e.after_qty??'',[e.area,e.aisle].filter(Boolean).join(' / '),e.splits&&e.splits.length?e.splits.map(s=>s.qty+'@'+s.exp).join('; '):(e.expiry||'')]));});
+    downloadCSV(`variance_${st.code}_${today()}.csv`,['Product code','Item','System','Counted','Variance','Variance $','Unit cost','Counted by','Entry time','Entry by','Helper','Action','Entered','Before','After','Area / aisle','Best before'],rows);};
 }
 /* ---------- stock-take helpers (people not in Square who only count) ---------- */
 async function openStHelpers(){
