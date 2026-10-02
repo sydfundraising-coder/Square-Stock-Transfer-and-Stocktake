@@ -579,7 +579,26 @@
   .stl.req .stl-f.need input,.stl.req .stl-f.need select{border-color:var(--warn)}
   @media (max-width:700px){
     .hide-sm{display:none}
-    .st-head{margin:0 -14px 10px;padding:10px 14px 8px}
+    .st-head{margin:0 -14px 10px;padding:8px 14px 6px}
+    .st-head .st-prog{margin:7px 0 6px;gap:8px}
+    .st-head .st-chips{gap:5px}
+    .st-head .st-chip{padding:5px 10px;font-size:12.5px}
+    .st-head .st-tools{margin-top:6px!important;flex-wrap:nowrap;gap:6px}
+    .st-head .st-tools .spacer{flex:1;min-width:4px}
+    .st-head .st-tools .btn.sm{height:36px;width:40px;padding:0;justify-content:center;flex:none}
+    .st-head .st-sync{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+    .st-head .st-bxm{height:36px!important;font-size:16px!important;line-height:1.2;padding:0 26px 0 10px!important;width:auto;max-width:46vw;flex:none}
+    /* scrolled down: keep only search + progress on top */
+    .panel.stp.st-scrolled .st-head .st-chips,.panel.stp.st-scrolled .st-head .st-tools{display:none}
+    /* typing a count: give the item the room — hide the extras and the footer (the keyboard covers it anyway) */
+    .panel.stp.st-typing .st-head .st-chips,.panel.stp.st-typing .st-head .st-tools,.panel.stp.st-typing .st-head .st-scanrow{display:none}
+    .panel.stp.st-typing .st-head .st-prog{margin:2px 0}
+    .panel.stp.st-typing .panel-foot{display:none}
+    .panel.stp .stl{scroll-margin-top:96px}
+    /* footer: buttons side by side, not stacked */
+    .panel.stp .panel-foot{flex-direction:row!important;flex-wrap:nowrap;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
+    .panel.stp .panel-foot .btn{flex:1 1 0;min-width:0;width:auto!important;min-height:46px;margin:0!important;padding:0 8px;justify-content:center;white-space:nowrap}
+    .panel.stp .panel-foot [data-st-del]{flex:0 0 46px}
     .stl{padding:12px}
     .stl-det{grid-template-columns:1fr 1fr}
     .stl-det .stl-f.wide{grid-column:1 / -1}
@@ -3370,7 +3389,7 @@ function openStock(id,amend){
       <div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam" title="Scan with the camera">${svg(I.box,16)}<span class="hide-sm"> Camera</span></button>`:''}</div>
       <div class="st-prog"><div class="bar"><div id="st-prog-bar"></div></div><span class="txt"><span id="st-prog-txt">0 of 0 counted</span> · <span id="st-prog-pct" class="tnum">0%</span></span></div>
       <div class="st-chips" id="st-chips"></div>
-      <div class="st-tools" style="margin-top:8px"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><div class="spacer"></div>${(st.lines||[]).some(l=>hasPpc(item(l.item_id)))?`<select class="filter st-bxm" id="st-bxm" title="How to enter quantities on this device" aria-label="Count in"><option value="1"${stBoxMode(st.location_id)?' selected':''}>Count in boxes + packets</option><option value="0"${stBoxMode(st.location_id)?'':' selected'}>Count in packets</option></select>`:''}<button class="btn sm" id="st-rep">${svg(I.chart||I.stocktake,14)} Progress</button><button class="btn sm" id="st-hist">${svg(I.audit||I.receipt,14)} History</button></div>
+      <div class="st-tools" style="margin-top:8px"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><div class="spacer"></div>${(st.lines||[]).some(l=>hasPpc(item(l.item_id)))?`<select class="filter st-bxm" id="st-bxm" title="How to enter quantities on this device" aria-label="Count in"><option value="1"${stBoxMode(st.location_id)?' selected':''}>Boxes + packets</option><option value="0"${stBoxMode(st.location_id)?'':' selected'}>Packets only</option></select>`:''}<button class="btn sm" id="st-rep" title="Progress" aria-label="Progress">${svg(I.chart||I.stocktake,15)}<span class="hide-sm"> Progress</span></button><button class="btn sm" id="st-hist" title="Count history" aria-label="Count history">${svg(I.audit||I.receipt,15)}<span class="hide-sm"> History</span></button></div>
     </div>
     <div style="font-size:12.5px;color:var(--muted);margin:0 0 10px"><b>Blind count</b> — type what you see, or tap <b>+</b> to add a count with its location and best-before. Everything saves straight away.</div>`;
   } else if(editable){ head=`<div class="st-head"><div class="banner warn" style="margin-bottom:8px">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div></div><div class="st-chips" id="st-chips" style="margin-top:8px"></div></div>`; }
@@ -3390,6 +3409,7 @@ function openStock(id,amend){
     const scan=document.getElementById('st-scan');
     if(scan){ scan.oninput=()=>renderStList(st); scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const code=scan.value.trim();if(!code)return;const hit=stFindLine(st,code);if(!hit&&!/^\d{6,}$/.test(code))return;scan.value='';stScanCode(st,code,{onDone:()=>{renderStList(st);const sc=document.getElementById('st-scan');if(sc)sc.focus();}});renderStList(st);}}; if(open)setTimeout(()=>scan.focus(),60); }
     renderStList(st);   // adds the location / aisle suggestions, binds the boxes, updates progress
+    stPhoneLayout();
     const cam=document.getElementById('st-cam'); if(cam)cam.onclick=()=>openScanner(st);
     const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>{saveStProgress(st,true);if(HELPER)setTimeout(()=>{if(!stPending.length)closeOverlay();},600);};
     const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
@@ -3404,6 +3424,15 @@ function openStock(id,amend){
   const vr=document.getElementById('st-var'); if(vr)vr.onclick=()=>openStVarianceReport(st);
   const f2=document.getElementById('st-flags2'); if(f2)f2.onclick=()=>openStDateFlags(st.id);
   const ch=document.getElementById('st-chips'); if(ch){ ch.onclick=e=>{const b=e.target.closest('[data-stf]');if(!b)return;stFilt=b.dataset.stf;renderStList(st);const pb=document.querySelector('.panel.stp .panel-body');if(pb)pb.scrollTop=0;}; stChips(st); }
+}
+/* phones: shrink the top bar while scrolling, and hide the extras + footer while typing a count */
+function stPhoneLayout(){
+  const pnl=document.querySelector('.panel.stp');const pb=pnl&&pnl.querySelector('.panel-body');if(!pb||pnl.dataset.stPh)return;pnl.dataset.stPh='1';
+  pb.addEventListener('scroll',()=>{const t=pb.scrollTop;if(t>140)pnl.classList.add('st-scrolled');else if(t<12)pnl.classList.remove('st-scrolled');},{passive:true});
+  const isEntry=el=>el&&el.closest&&el.closest('#stList')&&el.matches('input:not([type=checkbox]):not([type=radio]),select');
+  pnl.addEventListener('focusin',e=>{if(!isEntry(e.target)||window.innerWidth>700)return;pnl.classList.add('st-typing');
+    const card=e.target.closest('.stl');if(card)setTimeout(()=>{try{card.scrollIntoView({block:'start',behavior:'smooth'});}catch(_){}},260);});
+  pnl.addEventListener('focusout',()=>setTimeout(()=>{if(!isEntry(document.activeElement))pnl.classList.remove('st-typing');},150));
 }
 let stFilt='all', stCurrentIdPrev=null, stMine=new Set(), stSig={}, stNoExp={}, stKnown={}, stOther={};
 /* best-before pick list: the dates already on the system for each item at this centre */
@@ -3707,7 +3736,7 @@ function stDevice(){const u=navigator.userAgent||'';return (/iPhone/.test(u)?'iP
 function stLoadPending(id){try{stPending=JSON.parse(localStorage.getItem(stQKey(id))||'[]')||[];}catch(e){stPending=[];}}
 function stSavePending(){try{if(stCurrentId)localStorage.setItem(stQKey(stCurrentId),JSON.stringify(stPending));}catch(e){}}
 function stSyncUi(){const el=document.getElementById('st-sync');if(!el)return;const n=stPending.length;
-  el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All counts saved · live'}`;}
+  el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All saved · live'}`;}
 /* one count entry for one line: mode add | set | clear | details */
 function stQueue(op){if(op&&op.line&&(op.mode==='add'||op.mode==='set'))stMine.add(op.line);if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
 async function stFlush(){
