@@ -1242,7 +1242,7 @@ function navVisible(n){ if(HELPER)return n.id==='stocktake'; if(n.show&&!n.show(
 function myActionCount(){return S.transfers.filter(t=>{if(!canSee(t))return false;if(t.status==='requested'&&canApproveT(t))return true;if((t.status==='approved'||t.status==='picked')&&canDispatchT(t))return true;if((t.status==='in_transit'||t.status==='partially_received')&&canReceiveT(t))return true;return false;}).length;}
 function incomingCount(){return S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).length;}
 function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&&(!scoped()||mine(r.location_id))).length;}
-const ADJST={pending:{l:'Pending',c:'p-req'},approved:{l:'Approved',c:'p-done'},rejected:{l:'Rejected',c:'p-cancel'},cancelled:{l:'Cancelled',c:'p-cancel'}};
+const ADJST={pending:{l:'Pending',c:'p-req'},approved:{l:'Approved',c:'p-done'},rejected:{l:'Rejected',c:'p-cancel'},cancelled:{l:'Cancelled',c:'p-cancel'},reversed:{l:'Reversed',c:'p-cancel'}};
 const adjPill=s=>`<span class="pill ${(ADJST[s]||{c:'p-draft'}).c}">${(ADJST[s]||{l:s}).l}</span>`;
 function renderNav(){
   let html='',g='';
@@ -3505,7 +3505,7 @@ async function reviewStocktake(st){
     {const{error:fe}=await sb.rpc('finalize_stocktake',{p_id:st.id,p_counts:counts});
      if(fe)return toast(fe.message||'Submit failed',true);
      clearTimeout(stPollT);closeOverlay();toast('Stock take submitted');await refreshOps([st.location_id]);}
-    if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,Math.min(+c.counted||0,onHand(st.location_id,l.item_id)))});   // units sold / dispatched during the count leave the bin}catch(e){console.error('bin_reset',e);}}await loadBins();}
+    if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,Math.min(+c.counted||0,onHand(st.location_id,l.item_id)))}); /* units sold / dispatched during the count leave the bin */}catch(e){console.error('bin_reset',e);}}await loadBins();}
     // Backfill / update expiry: a counted line with best-before date(s) sets that item's batches.
     // with migration 59 the database sets the best-before batches itself at finalising (counted qty + dates);
     // anything sold during the count is then used up from the earliest best-before first
@@ -4147,10 +4147,13 @@ async function submitReceipt(){
   for(const l of lines){if(l.batches&&l.batches.length){const sum=l.batches.reduce((s,r)=>s+r.qty,0);if(sum!==+l.qty)return toast(item(l.item).name+': dated quantities ('+sum+') must equal quantity ('+l.qty+')',true);}}
   const area=saVal('area','rcpt_area'),aisle=saVal('aisle','rcpt_aisle');
   if(isHub(lc)&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
-  await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
+  const rid=await callRpc('post_receipt',{p_loc:lc,p_supplier:sup,p_ref:ref,p_date:date,p_notes:notes,p_lines:lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}))},'Receipt posted',{location_id:lc,item_ids:lines.map(l=>l.item)});
+  if(rid===undefined)return;   // posting failed — don't add dates or bins
+  // the receipt's code goes on its best-before batches so a reversal can take exactly those back off
+  let rcode=null;try{const{data:rc}=await sb.from('receipts').select('code').eq('id',rid).maybeSingle();rcode=rc&&rc.code;}catch(e){}
   if(area||aisle)await setItemLocations(lc,lines.map(l=>({item:l.item,area,aisle})));
   await binReceiveLines(lc,lines.map(l=>({item:l.item,area,aisle,qty:l.qty})));
-  for(const l of lines){const rowsX=(l.batches&&l.batches.length)?l.batches:[{qty:l.qty,exp:l.exp}];for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:lc,p_item:l.item,p_qty:r.qty,p_expiry:r.exp,p_source:'supplier',p_ref:sup});}catch(e){console.error('batch_add',e);}}}
+  for(const l of lines){const rowsX=(l.batches&&l.batches.length)?l.batches:[{qty:l.qty,exp:l.exp}];for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:lc,p_item:l.item,p_qty:r.qty,p_expiry:r.exp,p_source:'supplier',p_ref:rcode||sup});}catch(e){console.error('batch_add',e);}}}
   await loadBatches();
 }
 /* Catalog */
@@ -5284,9 +5287,10 @@ function renderAdjList(){
   if(ajFilter==='pending')list=list.filter(r=>r.status==='pending');
   else if(ajFilter==='approved')list=list.filter(r=>r.status==='approved');
   else if(ajFilter==='rejected')list=list.filter(r=>r.status==='rejected'||r.status==='cancelled');
-  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Ref</th><th>Date</th><th>Centre</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Value</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>${list.map(r=>{const it=item(r.item_id);const val=r.qty*(it.unit_cost||0);return `<tr><td class="mono">${esc(r.code||'')}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(r.requested_at)}</td><td>${loc(r.location_id).code}</td><td>${esc(it.name)}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td class="num tnum">${money(val)}</td><td>${adjPill(r.status)}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'—')):(r.decision_note?`<span style="font-size:12px;color:var(--muted)">${esc(r.decision_note)}</span>`:'')}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.alert,34)}<div>No ${ajFilter==='all'?'':esc(ajFilter)+' '}requests.</div></div>`;
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Ref</th><th>Date</th><th>Centre</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Value</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>${list.map(r=>{const it=item(r.item_id);const val=r.qty*(it.unit_cost||0);return `<tr><td class="mono">${esc(r.code||'')}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(r.requested_at)}</td><td>${loc(r.location_id).code}</td><td>${esc(it.name)}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td class="num tnum">${money(val)}</td><td>${adjPill(r.status)}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'—')):(r.status==='approved'&&ROLE==='super_admin'?`<button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rv="${r.id}" title="Put the stock back">Reverse</button> `:'')+(r.status==='reversed'&&r.reverse_reason?`<span style="font-size:12px;color:var(--muted)">Reversed: ${esc(r.reverse_reason)}</span>`:(r.decision_note?`<span style="font-size:12px;color:var(--muted)">${esc(r.decision_note)}</span>`:''))}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.alert,34)}<div>No ${ajFilter==='all'?'':esc(ajFilter)+' '}requests.</div></div>`;
   el.querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
   el.querySelectorAll('[data-areq-rj]').forEach(b=>b.onclick=()=>decideAdjust('reject_adjustment',b.dataset.areqRj,false));
+  el.querySelectorAll('[data-areq-rv]').forEach(b=>b.onclick=()=>{const r=(S.adjReq||[]).find(x=>x.id===b.dataset.areqRv);if(r)doReverse('reverse_adjustment',r.id,lkind(r.kind).l.toLowerCase()+' write-off '+(r.code||''),[r.location_id],[r.item_id]);});
   el.querySelectorAll('[data-areq-cx]').forEach(b=>b.onclick=()=>{if(confirm('Cancel this request?'))cancelAdjust(b.dataset.areqCx);});
 }
 function newAdjustRequest(){
@@ -6515,11 +6519,12 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
 async function doReverse(fn,id,label,affectedLocs,itemIds){
   const reason=window.prompt('Reason for reversing '+label+'? (required — this will be recorded in the audit log)');
   if(reason===null)return; if(!reason.trim()){toast('A reason is required to reverse',true);return;}
-  if(!window.confirm('Reverse '+label+'?\n\nThis will correct stock in the system and push the correction to LIVE Square. It cannot be undone (though you can re-enter the transaction if needed).'))return;
+  if(!window.confirm('Reverse '+label+'?\n\nThis undoes everything it did: stock at every centre involved, the best-before dates it added, warehouse bins and (for supplier receipts) the average cost — and sends the correction to LIVE Square as “Reversal”. Both the original and the reversal stay in the history.'))return;
   const{error}=await sb.rpc(fn,{p_id:id,p_reason:reason.trim()});
   if(error){toast(error.message||'Reversal failed',true);return;}
   closeOverlay();toast(label.charAt(0).toUpperCase()+label.slice(1)+' reversed');
-  (affectedLocs||[]).filter(Boolean).forEach(lc=>sb.functions.invoke('square-push',{body:{location_id:lc,item_ids:itemIds}}).catch(e=>console.error('square-push',e)));
+  sb.functions.invoke('square-push',{body:{mode:'queue'}}).catch(e=>console.error('square-push',e));
+  try{await loadBatches();}catch(e){}try{if(typeof loadBins==='function')await loadBins();}catch(e){}
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
 async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
