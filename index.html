@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e8f83">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Stock Control">
+<meta name="format-detection" content="telephone=no">
 <title>Shayona Stock Control Portal</title>
 <!-- ====================================================================
      EDIT THESE TWO LINES with the values from Supabase → Project Settings → API
@@ -463,6 +469,129 @@
   .hint,.sub,small,.sec-hint,.meta{color:var(--muted)}
   ::placeholder{color:var(--muted);opacity:1}
   #app select,#overlay select{color:var(--ink)}
+
+  /* =====================================================================
+     USER & MOBILE POLISH — same screens, easier to use on phones & tablets
+     ===================================================================== */
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+  body{overscroll-behavior-y:none}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button,.btn,.nav-item,.mtab,.rep-tab,tr.clickable,a{-webkit-tap-highlight-color:rgba(14,143,131,.12);touch-action:manipulation}
+  input[type=checkbox],input[type=radio]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+  .btn:active{transform:translateY(1px)}
+  .btn.is-busy{pointer-events:none;opacity:.7}
+  .btn.is-busy::after{content:"";width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-left:4px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* toast: readable, tappable, above the phone tab bar */
+  .toast{max-width:min(560px,calc(100vw - 24px));line-height:1.35;text-align:left;pointer-events:none}
+  .toast.show{pointer-events:auto;cursor:pointer}
+  /* offline bar */
+  .net-bar{position:fixed;left:0;right:0;top:0;z-index:10090;background:var(--crit);color:#fff;font-weight:700;font-size:13px;text-align:center;padding:calc(6px + env(safe-area-inset-top,0px)) 12px 6px;transform:translateY(-110%);transition:transform .2s}
+  .net-bar.show{transform:none}.net-bar.ok{background:var(--good)}
+  /* back-to-top on long lists */
+  .to-top{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:30;width:44px;height:44px;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-lg);display:none;place-items:center;font-size:18px;font-weight:800}
+  .to-top.show{display:grid}
+  /* tables: sticky first column on wide scrolling tables (desktop + tablet) */
+  .tablewrap{-webkit-overflow-scrolling:touch}
+  /* phone tab bar: bigger targets */
+  @media (max-width:900px){
+    .mtab{min-height:52px;font-size:11px}.mtab svg{width:22px;height:22px}
+    .nav-item{min-height:44px}
+    .content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+    .toast{bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+    /* help panel & item picker as full-width sheets */
+    .hp{width:100vw}
+  }
+  @media (min-width:901px){.to-top{bottom:24px}}
+  .capw{display:contents}
+  @media (max-width:700px){.capw{display:block;min-width:0}.capw>input,.capw>select{width:100%}}
+
+  @media (max-width:700px){
+    /* 16px inputs stop phones zooming in when a field is tapped */
+    input:not([type=checkbox]):not([type=radio]),select,textarea,.search input,select.filter,.ip-search input{font-size:16px!important}
+    .btn{min-height:44px;padding:10px 14px;font-size:14px;justify-content:center}
+    .btn.sm{min-height:36px;padding:7px 11px;font-size:13px}
+    .field input,.field select,.field textarea,select.filter,.search input{min-height:44px}
+    td .btn.sm{min-height:34px}
+    .topbar{gap:10px}.topbar h1{font-size:17px;line-height:1.2}.topbar .sub{display:none}
+    .content{padding:12px 12px calc(20px + env(safe-area-inset-bottom,0px))}
+    .tiles{gap:10px}.tile{padding:12px 13px}.tile .val{font-size:21px;margin-top:4px}.tile .lbl{font-size:11px}
+    .card.pad,.pad{padding:13px 14px}
+    .section-head{margin:18px 0 10px;flex-wrap:wrap}
+    .banner{font-size:13px}
+    /* toolbars: search full width, filters share the row */
+    .toolbar,.rep-controls{gap:8px}
+    .toolbar .search,.rep-controls .search{max-width:none;flex:1 1 100%}
+    .toolbar select.filter,.rep-actions select.filter{flex:1 1 45%;min-width:0}
+    .toolbar .spacer{display:none}
+    .rep-actions{flex-wrap:wrap;width:100%}
+    /* tabs scroll sideways instead of stacking */
+    .rep-tabs{flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;gap:4px;padding:4px;margin-bottom:14px}
+    .rep-tabs::-webkit-scrollbar{display:none}
+    .rep-tab{flex:none;padding:9px 14px;font-size:14px;white-space:nowrap}
+    /* windows fill the screen and keep their buttons in reach */
+    .scrim.center{padding:0;align-items:stretch}
+    .modal,.modal.full{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0;display:flex;flex-direction:column}
+    .modal .panel-body{flex:1;overflow:auto}
+    .panel,.panel.wide,.panel.full{width:100vw;max-width:100vw}
+    .panel-head{padding:calc(12px + env(safe-area-inset-top,0px)) 14px 12px}
+    .panel-head h2{font-size:16.5px}
+    .panel-body{padding:14px}
+    .panel-foot{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;gap:8px;box-shadow:0 -6px 18px rgba(15,26,42,.08)}
+    .panel-foot .btn{flex:1 1 calc(50% - 8px)}
+    .panel-foot .btn.primary{flex-basis:100%;order:-1;min-height:48px;font-size:15px}
+    .x{width:44px;height:44px}
+    .kv{font-size:13.5px}
+    /* item picker becomes a bottom sheet */
+    .ip-panel{left:0!important;right:0!important;top:auto!important;bottom:0!important;width:100vw!important;max-height:78dvh!important;border-radius:16px 16px 0 0!important;padding-bottom:env(safe-area-inset-bottom,0px)}
+    .ip-head,.ip-row{grid-template-columns:96px minmax(0,1fr) 84px;padding:11px 12px}
+    .ip-row{min-height:48px}
+    /* item lines (transfer, order, invoice…): wrap into a compact card per line, with captions */
+    .lines-scroll{margin:0;padding:0;overflow:visible}
+    .lines-scroll>*{min-width:0!important}
+    .lines-scroll>.linerow-lbl{display:none!important}
+    .tray .tf-line,.tray .linerow,.tf-line,.linerow{grid-template-columns:repeat(auto-fill,minmax(78px,1fr))!important;gap:8px!important;position:relative;padding-top:10px}
+    .tray .tf-line>:first-child,.tray .linerow>:first-child,.tf-line>:first-child,.linerow>:first-child{grid-column:1 / -1}
+    .tray .tf-line>.rm,.tray .linerow>.rm,.tf-line>.rm,.linerow>.rm{position:absolute;top:4px;right:4px;width:40px;height:40px}
+    .tray .tf-line>:first-child,.tray .linerow>:first-child,.tf-line>:first-child,.linerow>:first-child{margin-right:46px;min-width:0}
+    [data-cap]{position:relative}
+    [data-cap]::before{content:attr(data-cap);display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:none;letter-spacing:0;margin-bottom:3px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .lines-scroll .lbox[data-cap]{padding-top:6px}
+    .tray .tf-line input[type=number],.tray .linerow input[type=number],.tf-line input[type=number],.linerow input[type=number]{height:46px!important;font-size:18px!important}
+    .addmore{min-height:48px}
+    /* receiving / picking / counting rows */
+    .recv-row{grid-template-columns:1fr 1fr 1fr!important}
+    .recv-row>:first-child{grid-column:1 / -1}
+    #pkList .recv-row{grid-template-columns:1fr 1fr!important}
+    .panel-body input[data-plq]{width:100%!important}
+    .se-qty input{height:56px}
+    /* phone-friendly tables: each row becomes a card (set up by the script below) */
+    table.rt{min-width:0!important;border-collapse:separate;border-spacing:0}
+    table.rt thead{display:none}
+    table.rt,table.rt tbody,table.rt tfoot,table.rt tr,table.rt td{display:block;width:100%}
+    table.rt tr{border-bottom:1px solid var(--border);padding:10px 12px}
+    table.rt tbody tr:last-child{border-bottom:0}
+    table.rt td{border:0!important;padding:3px 0!important;display:flex;align-items:baseline;justify-content:space-between;gap:12px;text-align:right!important;font-size:14px;min-height:0}
+    table.rt td::before{content:attr(data-label);flex:none;max-width:48%;text-align:left;font-size:12px;font-weight:700;color:var(--muted)}
+    table.rt td[data-label=""]::before{display:none}
+    table.rt td:first-child{display:block;text-align:left!important;font-size:15px;font-weight:600;padding-bottom:5px!important}
+    table.rt td:first-child::before{display:none}
+    table.rt td:empty{display:none}
+    table.rt td>.btn,table.rt td>button{margin-left:auto}
+    table.rt tfoot tr{background:var(--surface-2)}
+    table.rt tr.clickable{cursor:pointer}
+    table.rt tr.clickable td:first-child::after{content:"›";float:right;color:var(--faint);font-size:20px;line-height:1;margin-left:8px}
+    .tablewrap:has(table.rt){overflow:visible}
+  }
+  @media (max-width:700px){
+    /* confirmation pop-ups stay a compact card */
+    .modal.sc-modal{height:auto!important;max-height:90dvh!important;border-radius:16px!important;width:100%!important}
+  }
+  @media (max-width:420px){
+    .tiles{grid-template-columns:1fr 1fr}
+    .panel-foot .btn{flex-basis:100%}
+    .rolechip{display:none}
+  }
 </style>
 </head>
 <body>
@@ -751,7 +880,7 @@ function stackConfirm(title,sub,html,opts){
   const host=document.createElement('div');
   host.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
   const close=()=>{try{host.remove();}catch(e){}};
-  host.innerHTML=`<div class="modal" style="max-width:540px;width:100%;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg)"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">${esc(sub||'')}</div></div><button class="x" id="sc-x">${svg(I.x,20)}</button></div><div class="panel-body">${html}</div><div class="panel-foot">${opts.okOnly?'':`<button class="btn" id="sc-cancel">${esc(opts.cancelLabel||'Go back')}</button>`}<button class="btn ${opts.danger?'':'primary'}" id="sc-ok"${opts.danger?' style="background:var(--crit);border-color:var(--crit);color:#fff"':''}>${esc(opts.okLabel||'Confirm')}</button></div></div>`;
+  host.innerHTML=`<div class="modal sc-modal" role="alertdialog" aria-modal="true" style="max-width:540px;width:100%;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg)"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">${esc(sub||'')}</div></div><button class="x" id="sc-x">${svg(I.x,20)}</button></div><div class="panel-body">${html}</div><div class="panel-foot">${opts.okOnly?'':`<button class="btn" id="sc-cancel">${esc(opts.cancelLabel||'Go back')}</button>`}<button class="btn ${opts.danger?'':'primary'}" id="sc-ok"${opts.danger?' style="background:var(--crit);border-color:var(--crit);color:#fff"':''}>${esc(opts.okLabel||'Confirm')}</button></div></div>`;
   document.body.appendChild(host);
   host.querySelector('#sc-x').onclick=close;const cc=host.querySelector('#sc-cancel');if(cc)cc.onclick=close;
   host.querySelector('#sc-ok').onclick=()=>{close();if(opts.onOk)opts.onOk();};
@@ -5700,8 +5829,85 @@ function modal(t,s,b,f,cls){overlayEl().innerHTML=`<div class="scrim center" id=
 function showScrim(){const s=document.getElementById('scrim');requestAnimationFrame(()=>s.classList.add('show'));/* Do NOT close on backdrop click — windows only close via a button (data-close) or after processing, so an accidental click can't wipe entered data. */}
 function closeOverlay(){if(window._stopScan){try{window._stopScan();}catch(e){}window._stopScan=null;}if(typeof ipClose==='function'&&ipCur)ipClose();const s=document.getElementById('scrim');if(!s)return;s.classList.remove('show');s.removeAttribute('id');setTimeout(()=>{if(document.getElementById('scrim'))s.remove();else overlayEl().innerHTML='';},180);}
 let toastT;
-function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800);}
+function toast(m,bad){const t=document.getElementById('toast');t.innerHTML=`${svg(bad?I.alert:I.check,17)}<span>${esc(m)}</span>`;t.style.background=bad?'var(--crit)':'var(--ink)';t.style.color=bad?'#fff':'var(--bg)';t.setAttribute('role',bad?'alert':'status');t.classList.add('show');t.onclick=()=>t.classList.remove('show');clearTimeout(toastT);
+  // long or error messages stay up longer so people can read them; tap to dismiss
+  const ms=Math.min(9000,Math.max(bad?5500:2800,String(m||'').length*55));toastT=setTimeout(()=>t.classList.remove('show'),ms);
+  if(bad&&navigator.vibrate){try{navigator.vibrate(60);}catch(e){}}}
 function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('open',f);document.getElementById('sidebarScrim').classList.toggle('show',f);}
+
+/* ---------- user & mobile polish (works on every screen without changing it) ---------- */
+(function(){
+  const isPhone=()=>window.matchMedia('(max-width:700px)').matches;
+  // 1. Tables become one card per row on phones: give every cell its column name
+  function labelTables(){
+    document.querySelectorAll('.tablewrap table').forEach(t=>{
+      if(t.closest('.inv-sheet,.lines-scroll,#invoicePrint,.lbl-layout,.shot')||/\b(inv-tbl|pc-sum|wh-mat|no-cards)\b/.test(t.className))return;
+      const h=t.tHead;if(!h||h.rows.length!==1)return;
+      const cells=[...h.rows[0].cells];if(cells.length<4||cells.some(c=>c.colSpan>1||c.rowSpan>1))return;
+      const labels=cells.map(c=>c.textContent.replace(/\s+/g,' ').trim());
+      const sig=labels.join('|')+'#'+t.rows.length;if(t.dataset.rtSig===sig)return;
+      t.dataset.rtSig=sig;t.classList.add('rt');
+      [...t.tBodies,...(t.tFoot?[t.tFoot]:[])].forEach(b=>[...b.rows].forEach(r=>{let i=0;[...r.cells].forEach(c=>{if(!c.hasAttribute('data-label'))c.setAttribute('data-label',c.colSpan>1?'':(labels[i]||''));i+=c.colSpan||1;});}));
+    });
+  }
+  // 2. Item lines (transfer / order / invoice / receipt): caption each box on phones
+  function captionLines(){
+    document.querySelectorAll('.lines-scroll').forEach(ls=>{
+      const hdr=ls.querySelector('.linerow-lbl');if(!hdr)return;
+      const caps=[...hdr.children].map(s=>s.textContent.replace(/\s+/g,' ').trim());
+      ls.querySelectorAll('.tf-line,.linerow').forEach(row=>{
+        [...row.children].forEach((c,i)=>{
+          const cap=caps[i];if(!i||!cap||c.classList.contains('rm')||c.classList.contains('capw'))return;
+          if(c.matches('input,select,textarea')){const w=document.createElement('span');w.className='capw';w.dataset.cap=cap;c.replaceWith(w);w.appendChild(c);}
+          else if(c.dataset.cap!==cap)c.dataset.cap=cap;
+        });
+      });
+    });
+  }
+  // 3. Number fields: number keypad, "Next" on the keyboard
+  function enhanceInputs(){
+    document.querySelectorAll('input[type=number]:not([data-uxk])').forEach(inp=>{
+      inp.dataset.uxk='1';
+      const st=inp.getAttribute('step');inp.setAttribute('inputmode',st&&st!=='1'&&st!=='any'?'decimal':(st==='any'?'decimal':'numeric'));
+      if(!inp.getAttribute('enterkeyhint'))inp.setAttribute('enterkeyhint','next');
+    });
+    document.querySelectorAll('.search input:not([data-uxk]),input[type=search]:not([data-uxk])').forEach(inp=>{inp.dataset.uxk='1';inp.setAttribute('enterkeyhint','search');inp.setAttribute('autocomplete','off');});
+  }
+  let pend=false;
+  const run=()=>{pend=false;try{labelTables();captionLines();enhanceInputs();}catch(e){console.warn('ux polish',e);}};
+  const sched=()=>{if(!pend){pend=true;requestAnimationFrame(run);}};
+  new MutationObserver(sched).observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('DOMContentLoaded',sched);
+
+  // 4. "Next" / Enter in a number box jumps to the next number box in the same window
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Enter'||!e.target.matches||!e.target.matches('input[type=number]'))return;
+    const scope=e.target.closest('.panel,.modal,.scan-entry,.content')||document;
+    const list=[...scope.querySelectorAll('input[type=number]:not([disabled]):not([readonly])')].filter(x=>x.offsetParent!==null);
+    const i=list.indexOf(e.target);if(i>-1&&list[i+1]){e.preventDefault();list[i+1].focus();try{list[i+1].select();}catch(_){}}
+  });
+  // 5. Keep the field you are typing in visible above the phone keyboard
+  document.addEventListener('focusin',e=>{if(!isPhone()||!e.target.matches('input,select,textarea'))return;setTimeout(()=>{try{e.target.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}},280);});
+  // select-all when tapping a quantity so it can be typed over
+  document.addEventListener('focusin',e=>{if(e.target.matches&&e.target.matches('input[type=number]')){setTimeout(()=>{try{e.target.select();}catch(_){}},0);}});
+  // 6. Stop accidental double taps on the main action button submitting twice
+  document.addEventListener('click',e=>{
+    const b=e.target.closest&&e.target.closest('.panel-foot .btn.primary,#sc-ok');if(!b)return;
+    const now=Date.now();if(+b.dataset.uxBusy>now){e.preventDefault();e.stopImmediatePropagation();return;}
+    b.dataset.uxBusy=now+1200;b.classList.add('is-busy');setTimeout(()=>b.classList.remove('is-busy'),900);
+  },true);
+  // 7. Offline / back online bar
+  const bar=document.createElement('div');bar.className='net-bar';document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(bar));
+  const net=()=>{if(!document.body.contains(bar))document.body.appendChild(bar);
+    if(!navigator.onLine){bar.className='net-bar show';bar.textContent='You are offline — changes can’t be saved until the connection is back.';}
+    else if(bar.classList.contains('show')){bar.className='net-bar show ok';bar.textContent='Back online';setTimeout(()=>bar.className='net-bar',1800);}};
+  window.addEventListener('offline',net);window.addEventListener('online',net);
+  // 8. Back-to-top button on long pages
+  const top=document.createElement('button');top.className='to-top no-print';top.type='button';top.setAttribute('aria-label','Back to top');top.textContent='↑';
+  document.addEventListener('DOMContentLoaded',()=>{document.body.appendChild(top);const c=document.querySelector('.content');if(!c)return;
+    c.addEventListener('scroll',()=>top.classList.toggle('show',c.scrollTop>900),{passive:true});
+    top.onclick=()=>c.scrollTo({top:0,behavior:'smooth'});});
+})();
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
