@@ -3535,7 +3535,7 @@ const CC_TABS=[['dead','Never sold · no stock','Not sold in the last 12 months 
   ['nocode','No code / barcode','For information: items missing a product code or barcode — add them in Square (export this list). Ones that don’t sell are already covered by the 12-month lists'],
   ['hidden','Hidden','Items already hidden from the app — restore if needed']];
 async function openCatalogueCleanup(){
-  modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn" id="cc-del" disabled style="color:var(--crit);border-color:var(--crit)">Delete from Square…</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
+  modal('Clean up catalogue','Find items that never sell and hide them from the app',`<div id="cc-body"><div class="card empty">${svg(I.catalog||I.box,30)}<div>Checking every item’s sales and stock…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn" id="cc-csv">${svg(I.receipt,15)} Export this list</button><button class="btn" id="cc-dis" disabled title="Stop selling the ticked items at the centres you choose — in Square and in the app">Disable at centres…</button><button class="btn" id="cc-del" disabled style="color:var(--crit);border-color:var(--crit)">Delete from Square…</button><button class="btn primary" id="cc-go" disabled>Hide selected</button>`,'full form');
   const{data,error}=await sb.rpc('catalogue_cleanup_candidates');
   const body=document.getElementById('cc-body');if(!body)return;
   if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Couldn’t load the clean-up list: ${esc(error.message||'')}. Run <b>51_team_removal_and_catalogue_range.sql</b> in Supabase.</div></div>`;return;}
@@ -3569,6 +3569,7 @@ function renderCleanup(){
   keepScroll(body);
   if(ccTab==='range')return renderRange(body);
   ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display=ccTab==='nocode'?'none':'';});   // the code/barcode list is information only
+  {const b=document.getElementById('cc-dis');if(b)b.style.display=(ccTab==='nocode'||ccTab==='hidden')?'none':'';}
   const L=ccList(ccTab);const tab=CC_TABS.find(t=>t[0]===ccTab);const restore=ccTab==='hidden';
   const counts=Object.fromEntries(CC_TABS.map(t=>[t[0],ccList(t[0]).length]));
   const val=L.reduce((s,r)=>s+(+r.stock_value||0),0);
@@ -3625,8 +3626,33 @@ async function ccDeleteSquare(ids){
     stackConfirm('Delete from Square — result',msg,`<div>${del?`<b>${del}</b> deleted from Square and retired in the app.`:'Nothing was deleted.'}</div>${errs.length?`<div class="banner crit" style="margin-top:10px">${svg(I.alert,17)}<div>${errs.map(esc).join('<br>')}</div></div>`:''}${sk.concat(fl).length?`<div class="tablewrap" style="margin-top:10px;max-height:260px;overflow:auto"><table style="min-width:0"><thead><tr><th>Item</th><th>Why not</th></tr></thead><tbody>${sk.concat(fl).map(x=>`<tr><td>${esc(x.name)}</td><td style="color:var(--muted)">${esc(x.reason)}</td></tr>`).join('')}</tbody></table></div>`:''}`,{okLabel:'OK',okOnly:true});
   }else toast(msg);
 }
+/* Disable the ticked items at chosen centres (Square + app), straight from the clean-up lists */
+function ccDisBtn(){
+  const d=document.getElementById('cc-dis');if(!d)return;
+  const ids=[...ccSel].filter(id=>{const it=ccItem({item_id:id});return it&&it.square_variation_id;});
+  d.disabled=!ids.length;d.textContent=ids.length?`Disable ${ids.length} at centres…`:'Disable at centres…';
+  d.onclick=()=>{
+    const cs=S.locations.filter(l=>l.square_location_id).sort((a,b)=>(b.is_hub?1:0)-(a.is_hub?1:0)||String(a.name).localeCompare(String(b.name)));
+    if(!cs.length)return toast('No centres are linked to Square',true);
+    const items=ids.map(id=>ccItem({item_id:id}));
+    const sellCount=l=>items.filter(it=>sellsAt(it,l.id)).length;
+    const picked=new Set();
+    stackConfirm('Disable at centres',ids.length+' item'+(ids.length===1?'':'s'),`<div style="font-size:13.5px;margin-bottom:10px">Choose the centres where the <b>${ids.length}</b> ticked item${ids.length===1?'':'s'} should <b>no longer be sold</b>. Square is updated straight away (they drop off the POS and online at those centres) and centre staff stop seeing them in the app.</div>
+      <label style="display:flex;gap:9px;align-items:center;font-weight:700;padding:8px 0;border-bottom:1px solid var(--border)"><input type="checkbox" id="ccd-all"> All centres</label>
+      <div style="display:grid;gap:2px;max-height:46vh;overflow:auto;margin-top:6px">${cs.map(l=>{const n=sellCount(l);return `<label style="display:flex;gap:9px;align-items:center;padding:9px 2px;font-size:14px;border-bottom:1px solid var(--border)"><input type="checkbox" data-ccdl="${l.id}"> <span style="flex:1"><b>${esc(l.name)}</b>${l.is_hub?' <span class="tag">hub · keeps full range in the app</span>':''}</span><span style="font-size:12px;color:var(--muted)">${n} of ${ids.length} enabled here now</span></label>`;}).join('')}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:10px">Items can be switched back on any time from <b>Centre range</b>. Large selections are sent to Square in batches — keep the window open until the result shows.</div>`,
+      {okLabel:'Disable in Square',danger:true,onOk:()=>{
+        const locIds=[...picked];if(!locIds.length)return toast('Tick at least one centre — nothing was changed',true);
+        rgApply(ids,locIds,false).then(()=>{ccSel=new Set();renderCleanup();});
+      }});
+    const all=document.getElementById('ccd-all');
+    const boxes=[...document.querySelectorAll('[data-ccdl]')];
+    boxes.forEach(b=>b.onchange=()=>{b.checked?picked.add(b.dataset.ccdl):picked.delete(b.dataset.ccdl);all.checked=boxes.every(x=>x.checked);});
+    all.onchange=()=>{boxes.forEach(b=>{b.checked=all.checked;all.checked?picked.add(b.dataset.ccdl):picked.delete(b.dataset.ccdl);});};
+  };
+}
 function ccBtn(){
-  ccDelBtn();
+  ccDelBtn();ccDisBtn();
   const b=document.getElementById('cc-go');if(!b)return;const restore=ccTab==='hidden';const n=ccSel.size;
   b.disabled=!n||(!restore&&!ccRows.some(r=>+r.sold_365>0));b.textContent=n?(restore?`Restore ${n} item${n===1?'':'s'}`:`Hide ${n} item${n===1?'':'s'}`):(restore?'Restore selected':'Hide selected');
   b.onclick=()=>{const ids=[...ccSel];const rows=ccRows.filter(r=>ccSel.has(r.item_id));
@@ -3695,7 +3721,7 @@ function rgSummary(cs){
 function renderRange(body){
   keepScroll(body);
   rgLoadWin();
-  ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
+  ['cc-go','cc-del','cc-dis'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
   const cs=rgCentres();
   if(!rgLoc&&cs.length)rgLoc=cs[0].id;
   const soldBy=Object.fromEntries(ccRows.map(r=>[r.item_id,+r.sold_365||0]));
