@@ -504,6 +504,16 @@
   }
   @media (min-width:901px){.to-top{bottom:24px}}
   .capw{display:contents}
+  /* stock-take helpers only ever see Stock Take */
+  .is-helper .mobile-tabs .mtab:not([data-route="stocktake"]){display:none}
+  .is-helper .sq-status,.is-helper .help-btn{display:none}
+  .st-who{font-size:12px;color:var(--muted);margin-top:2px}
+  .st-who b{color:var(--accent-ink)}
+  .st-sync{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
+  .st-sync i{width:8px;height:8px;border-radius:50%;background:var(--good);display:inline-block}
+  .st-sync.busy i{background:var(--warn)}.st-sync.bad i{background:var(--crit)}
+  .recv-row.st-flash{animation:stflash 1.4s ease}
+  @keyframes stflash{0%{background:var(--accent-soft)}100%{background:transparent}}
   @media (max-width:700px){.capw{display:block;min-width:0}.capw>input,.capw>select{width:100%}}
 
   @media (max-width:700px){
@@ -734,7 +744,7 @@ const ROLES={
   national_admin:{name:'National Admin',scoped:false,can:['view','transfer.create','transfer.receive','receipt.create','order.create','order.receive','stocktake.do','transfer.approve','transfer.dispatch','transfer.cancel','audit.view','supplier.manage','catalog.edit','location.manage','sync.run']},
   super_admin:{name:'Super Admin',scoped:false,can:['*']},
 };
-let ME=null, ROLE='user', HOME=null, MYLOCS=[];
+let ME=null, ROLE='user', HOME=null, MYLOCS=[], HELPER=false, HELPER_UNTIL=null;   /* HELPER = stock-take helper account (counts only) */
 const roleDef=()=>ROLES[ROLE]||ROLES.user;
 const can=a=>{const r=roleDef();return r.can.includes('*')||r.can.includes(a);};
 const scoped=()=>roleDef().scoped;
@@ -1070,7 +1080,10 @@ async function startApp(){
   let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
   if(!prof){ prof={id:user.id,email:user.email,full_name:user.email,role:'user',home_centre:null}; }
   if(prof.active===false){ try{await sb.auth.signOut();}catch(e){} window.__appStarted=false; showLogin('Your access has been removed'+(prof.deactivated_reason?' ('+prof.deactivated_reason+')':'')+'. Ask the Super Admin if this is a mistake.'); return; }
+  if(prof.expires_at&&new Date(prof.expires_at)<new Date()){ try{await sb.auth.signOut();}catch(e){} window.__appStarted=false; showLogin('Your stock-take access ended on '+fmtDate(prof.expires_at)+'. Ask your centre Admin if you need more time.'); return; }
+  HELPER=prof.access_scope==='stocktake'; HELPER_UNTIL=prof.expires_at||null;
   ROLE=prof.role||'user'; HOME=prof.home_centre;
+  if(HELPER){ ROLE='user'; route='stocktake'; document.body.classList.add('is-helper'); }
   try{ const{data:pl}=await sb.from('profile_locations').select('location_id').eq('profile_id',user.id); MYLOCS=(pl||[]).map(r=>r.location_id); }catch(e){ MYLOCS=[]; }
   if(!MYLOCS.length && HOME) MYLOCS=[HOME];
   if(!HOME && MYLOCS.length) HOME=MYLOCS[0];
@@ -1117,7 +1130,7 @@ const MOBILE=['dashboard','transfers','orders','stocktake'];
 let route='dashboard';
 const poLocs=()=>S.locations.filter(l=>l.active!==false&&(l.po_enabled===true||(l.po_enabled==null&&(l.is_hub||/perth/i.test(l.name||'')))));
 const canPO=()=>!scoped()||poLocs().some(l=>mine(l.id));
-function navVisible(n){ if(n.show&&!n.show())return false; if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'; return can(n.need); }
+function navVisible(n){ if(HELPER)return n.id==='stocktake'; if(n.show&&!n.show())return false; if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'; return can(n.need); }
 function myActionCount(){return S.transfers.filter(t=>{if(!canSee(t))return false;if(t.status==='requested'&&canApproveT(t))return true;if((t.status==='approved'||t.status==='picked')&&canDispatchT(t))return true;if((t.status==='in_transit'||t.status==='partially_received')&&canReceiveT(t))return true;return false;}).length;}
 function incomingCount(){return S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).length;}
 function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&&(!scoped()||mine(r.location_id))).length;}
@@ -1130,7 +1143,7 @@ function renderNav(){
   const mt=document.getElementById('mtabs');
   mt.innerHTML=MOBILE.filter(id=>{const n=NAV.find(x=>x.id===id);return n&&navVisible(n);}).map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['insights','perf','adjustments','freight','receipts','expiry','invoices','sales','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
 }
-function go(r){if(r==='__more'){toggleSidebar(true);return;}route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
+function go(r){if(r==='__more'){toggleSidebar(true);return;}if(HELPER)r='stocktake';route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
 /* =========================================================
    STOCK STATUS REPORT  (excess / reorder / dead-stock by item & category)
@@ -3190,10 +3203,13 @@ function doDeleteOrder(id){
 }
 /* Stock take */
 function vStock(v){
-  const list=S.stocktakes.filter(s=>!scoped()||mine(s.location_id));
-  v.innerHTML=`<div class="banner info">${svg(I.stocktake,17)}<div>Physical counts, live-adjusted against sales until you finalise.</div></div>
-    <div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
-    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>No stock takes yet.</div></div>`}`;
+  const list=S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&(!HELPER||s.status==='open'));
+  const canHelpers=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
+  v.innerHTML=(HELPER?`<div class="banner info">${svg(I.stocktake,17)}<div><b>You’re signed in to count stock</b> at ${esc((MYLOCS.length?MYLOCS:[HOME]).filter(Boolean).map(l=>loc(l).name).join(', ')||'your centre')}${HELPER_UNTIL?` until <b>${fmtDate(HELPER_UNTIL)}</b>`:''}. Open a count below, scan or search each item and enter what you see. Every entry saves straight away — your team sees it live.</div></div>`
+    :`<div class="banner info">${svg(I.stocktake,17)}<div>Physical counts, live-adjusted against sales until you finalise. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+`
+    <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
+  const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
 }
 function newStock(){
   const cats=['(all categories)',...new Set(S.items.map(i=>i.category).filter(Boolean))];
@@ -3249,19 +3265,24 @@ function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);co
 function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
-  stEditable=editable;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=areaOf(st.location_id,l.item_id);stAisle[l.id]=aisleOf(st.location_id,l.item_id);stExp[l.id]=((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';}); }
+  stEditable=editable;stAmending=!!amend;
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
+      if(Array.isArray(l.splits)&&l.splits.length){stSplit[l.id]=l.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[l.id]='';}else stExp[l.id]=(l.expiry?String(l.expiry).slice(0,10):'')||((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry)||'';
+      if(l.counted_by_name)stWho[l.id]={name:l.counted_by_name,at:l.counted_at,n:l.entries};}); stLoadPending(id); }
   stCurrentId=id;
   const camOk=('BarcodeDetector' in window);
   let head='';
   if(open){ head=`<div class="banner info">${svg(I.stocktake,17)}<div><b>Blind count.</b> Enter what you physically count — the on-hand figure is hidden so the count stays honest. Scan with a USB scanner or your camera, or search below. Progress saves as you go.</div></div>
     <div style="display:flex;gap:8px;margin-bottom:12px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="st-scan" placeholder="Scan barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam">${svg(I.box,16)} Camera</button>`:''}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><button class="btn sm" id="st-hist">${svg(I.audit||I.receipt,14)} Count history</button></div>
     <div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px"><span id="st-prog-txt">0 of 0 counted</span><span id="st-prog-pct" class="tnum">0%</span></div><div style="height:7px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div id="st-prog-bar" style="height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .2s"></div></div></div>`;
   } else if(editable){ head=`<div class="banner warn">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="search" style="max-width:none;margin-bottom:12px">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div>`; }
-  const canDel=open?can('stocktake.do'):(ROLE==='super_admin'&&!amend);
+  const canDel=!HELPER&&(open?can('stocktake.do'):(ROLE==='super_admin'&&!amend));
   let foot=`<button class="btn" data-close>Close</button>`;
   if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)} Delete</button>`;
-  if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
+  if(!open&&!editable) foot+=`<button class="btn" id="st-hist2">Count history</button>`;
+  if(open&&HELPER) foot+=`<button class="btn primary" id="st-save">${svg(I.check,16)} Done for now</button>`;
+  else if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
   else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
   else if(st.status==='completed'&&ROLE==='super_admin') foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
   slideover(st.code,loc(st.location_id).name,`${head}<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd></dl></div><div id="stList">${renderStRows(st,editable,'')}</div>`,foot);
@@ -3270,14 +3291,28 @@ function openStock(id,amend){
     if(scan){ scan.oninput=()=>renderStList(st); scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const code=scan.value.trim();if(!code)return;const hit=stFindLine(st,code);if(!hit&&!/^\d{6,}$/.test(code))return;scan.value='';stScanCode(st,code,{onDone:()=>{renderStList(st);const sc=document.getElementById('st-scan');if(sc)sc.focus();}});renderStList(st);}}; if(open)setTimeout(()=>scan.focus(),60); }
     bindStInputs(); if(open)updateStProgress();
     const cam=document.getElementById('st-cam'); if(cam)cam.onclick=()=>openScanner(st);
-    const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>saveStProgress(st,true);
+    const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>{saveStProgress(st,true);if(HELPER)setTimeout(()=>{if(!stPending.length)closeOverlay();},600);};
     const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
     const am=document.getElementById('st-amend-save'); if(am)am.onclick=()=>saveAmend(st);
+    if(open&&!amend){ stSyncUi(); if(stPending.length)stFlush(); stPoll(true); }   // pull everyone's latest counts, then keep them live
   } else {
     const amb=document.getElementById('st-amend'); if(amb)amb.onclick=()=>openStock(id,true);
   }
+  const hi=document.getElementById('st-hist')||document.getElementById('st-hist2'); if(hi)hi.onclick=()=>openStHistory(st);
 }
-function reviewStocktake(st){
+async function reviewStocktake(st){
+  if(HELPER)return toast('Your Admin finalises the count',true);
+  if(!stAmending&&!window._stLegacy){
+    // make sure everything typed on this phone has reached the server, then use the SERVER's counts —
+    // which include everyone else's entries — for the review and the finalise
+    toast('Collecting everyone’s counts…');
+    await stFlush();
+    if(stPending.length)return toast(`${stPending.length} count(s) on this device haven’t reached the server yet — check the connection and try again`,true);
+    const{data,error}=await sb.from('stocktake_lines').select('id,counted_qty,area,aisle,expiry,splits,counted_by_name,counted_at,entries,updated_at').eq('stocktake_id',st.id);
+    if(error)return toast('Could not load the latest counts: '+error.message,true);
+    (data||[]).forEach(r=>{stApplyLine(r,true);if(r.counted_qty==null){stCounts[r.id]='';}});
+    st=S.stocktakes.find(x=>x.id===st.id)||st;
+  }
   const counted=stCountsArray();
   if(!counted.length)return toast('Enter at least one count',true);
   const total=(st.lines||[]).length, doneN=counted.length, uncounted=total-doneN;
@@ -3293,13 +3328,17 @@ function reviewStocktake(st){
     if(zero&&zero.checked){(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});}
     if(isHub(st.location_id)){const miss=counts.filter(c=>{const cnt=+c.counted;return cnt>0&&(!(stArea[c.line]||'').trim()||!(stAisle[c.line]||'').trim());});if(miss.length)return toast('Central Warehouse: enter a storage area and aisle # for every counted item ('+miss.length+' missing)',true);}
     persistStLocations(st);
-    await callRpc('finalize_stocktake',{p_id:st.id,p_counts:counts},'Stock take submitted',{location_id:st.location_id});
+    {const{error:fe}=await sb.rpc('finalize_stocktake',{p_id:st.id,p_counts:counts});
+     if(fe)return toast(fe.message||'Submit failed',true);
+     clearTimeout(stPollT);closeOverlay();toast('Stock take submitted');await refreshOps([st.location_id]);}
     if(isHub(st.location_id)){for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;try{await sb.rpc('bin_reset',{p_loc:st.location_id,p_item:l.item_id,p_area:stArea[c.line]||'',p_aisle:stAisle[c.line]||'',p_qty:Math.max(0,+c.counted||0)});}catch(e){console.error('bin_reset',e);}}await loadBins();}
     // Backfill / update expiry: a counted line with best-before date(s) sets that item's batches.
     let didExp=false;for(const c of counts){const l=(st.lines||[]).find(x=>x.id===c.line);if(!l)continue;
       if(stSplit[c.line]&&stSplit[c.line].length){await batchesSet(st.location_id,l.item_id,stSplit[c.line]);didExp=true;}
       else{const exp=stExp[c.line];if(exp){try{await sb.rpc('batch_reset',{p_loc:st.location_id,p_item:l.item_id,p_qty:Math.max(0,+c.counted||0),p_expiry:exp});}catch(e){console.error('batch_reset',e);}didExp=true;}}}
     if(didExp)await loadBatches();
+    try{await sb.rpc('st_log_finalise',{p_id:st.id});}catch(e){}
+    try{localStorage.removeItem(stQKey(st.id));}catch(e){}stPending=[];clearTimeout(stPollT);
     renderView();
   };
 }
@@ -3312,17 +3351,24 @@ function renderStRows(st,editable,filter){
   return lines.map(l=>{const it=item(l.item_id);
     if(editable){const c=stCounts[l.id];const hubS=isHub(st.location_id);const ist='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
       const areaCtl=hubS?`<select data-starea="${l.id}" style="flex:1;${ist}"><option value="">— area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="location" style="flex:1;${ist}">`;
-      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}">${(stSplit[l.id]&&stSplit[l.id].length)?`<span style="font-size:12px;color:var(--muted)">${stSplit[l.id].length} best-before dates</span>`:`<input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional)" style="${ist}">`}<button class="btn sm" data-stsplit="${l.id}" style="padding:4px 8px;font-size:12px">${(stSplit[l.id]&&stSplit[l.id].length)?'Edit dates':'+ dates'}</button></div></div>`;}
+      return `<div class="recv-row" style="grid-template-columns:1fr 96px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div><div class="st-who" data-stwho="${l.id}">${stWhoHtml(l.id)}</div></div><div><div class="cap">Counted (pkts)</div><input type="number" min="0" inputmode="numeric" value="${c==null?'':c}" data-c="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div><div style="grid-column:1 / -1;display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;align-items:center">${areaCtl}<input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="aisle #" style="width:84px;${ist}">${(stSplit[l.id]&&stSplit[l.id].length)?`<span style="font-size:12px;color:var(--muted)">${stSplit[l.id].length} best-before dates</span>`:`<input type="date" data-sexp="${l.id}" value="${esc(stExp[l.id]||'')}" title="Best before (optional)" style="${ist}">`}<button class="btn sm" data-stsplit="${l.id}" style="padding:4px 8px;font-size:12px">${(stSplit[l.id]&&stSplit[l.id].length)?'Edit dates':'+ dates'}</button></div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
 }
 function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="st-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
-function bindStInputs(){document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};inp.onchange=()=>saveStProgress({id:stCurrentId},false);});
-  document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();});
-  document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();});
-  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;});
-  document.querySelectorAll('#stList [data-stsplit]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stsplit;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=(st&&st.lines||[]).find(x=>x.id===lid);openBatchSplit('Best-before dates'+(l?' — '+item(l.item_id).name:''),null,stSplit[lid]||(stExp[lid]?[{qty:(+stCounts[lid]||''),exp:stExp[lid]}]:null),rows=>{stSplit[lid]=rows;stCounts[lid]=rows.reduce((s,r)=>s+r.qty,0);renderStList(st);saveStProgress({id:stCurrentId},false);});});}
+function bindStInputs(){
+  const live=!stAmending&&!window._stLegacy;   // amending a finalised count keeps the old "save all" behaviour
+  document.querySelectorAll('#stList [data-c]').forEach(inp=>{inp.oninput=e=>{stCounts[e.target.dataset.c]=e.target.value===''?'':Math.max(0,+e.target.value);updateStProgress();};
+    inp.onchange=e=>{const lid=e.target.dataset.c;if(!live)return saveStProgress({id:stCurrentId},false);
+      if(e.target.value===''){stQueue({line:lid,mode:'clear'});return;}
+      stQueue({line:lid,mode:'set',qty:Math.max(0,+e.target.value||0),area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stSplit[lid]&&stSplit[lid].length?null:(stExp[lid]||null)});};});
+  const det=lid=>{if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null});};
+  document.querySelectorAll('#stList [data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();det(e.target.dataset.starea);});
+  document.querySelectorAll('#stList [data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();det(e.target.dataset.saisle);});
+  document.querySelectorAll('#stList [data-sexp]').forEach(inp=>inp.onchange=e=>{stExp[e.target.dataset.sexp]=e.target.value;det(e.target.dataset.sexp);});
+  document.querySelectorAll('#stList [data-stsplit]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stsplit;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=(st&&st.lines||[]).find(x=>x.id===lid);openBatchSplit('Best-before dates'+(l?' — '+item(l.item_id).name:''),null,stSplit[lid]||(stExp[lid]?[{qty:(+stCounts[lid]||''),exp:stExp[lid]}]:null),rows=>{stSplit[lid]=rows;stCounts[lid]=rows.reduce((s,r)=>s+r.qty,0);renderStList(st);
+    if(live)stQueue({line:lid,mode:'set',qty:stCounts[lid],area:stArea[lid]||'',aisle:stAisle[lid]||'',splits:rows.filter(r=>r.qty>0&&r.exp).map(r=>({qty:+r.qty,exp:r.exp}))});else saveStProgress({id:stCurrentId},false);});});}
 /* ---- stock take scanning: one scan = one entry (quantity, location, best-before) ---- */
 let stScanLast={code:'',t:0}, stScanOpen=false;
 function stFindLine(st,code){const cl=String(code||'').trim().toLowerCase();if(!cl)return null;return (st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;})||null;}
@@ -3386,7 +3432,10 @@ function openScanEntry(st,line,opts){
       stCounts[line.id]=q;stSplit[line.id]=null;stExp[line.id]=e||'';
     }
     if(a)stArea[line.id]=a;if(b)stAisle[line.id]=b;
-    saveStProgress(st,false);updateStProgress();
+    // the server does the adding, so two people counting the same item in different places can't overwrite each other
+    if(!stAmending&&!window._stLegacy)stQueue({line:line.id,mode:(mode==='add'&&cur!=null)?'add':'set',qty:q,area:a,aisle:b,expiry:e||null});
+    else saveStProgress(st,false);
+    updateStProgress();
     toast(it.name+': counted '+stCounts[line.id]+' packet'+(stCounts[line.id]===1?'':'s'));
     close(true);
   };
@@ -3394,7 +3443,122 @@ function openScanEntry(st,line,opts){
   host.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.tagName!=='SELECT'){ev.preventDefault();save();}if(ev.key==='Escape'){ev.preventDefault();close(false);}});
   setTimeout(()=>{const f=per?$('se-box'):$('se-pk');if(f)f.focus();},60);
 }
-function saveStProgress(st,announce){const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce){if(st&&st.lines)persistStLocations(st);toast(error?('Save failed: '+error.message):'Progress saved',!!error);}};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
+function saveStProgress(st,announce){
+  // counts are saved line by line as they're entered (migration 54); "Save" just makes sure nothing is still waiting
+  if(!window._stLegacy){ stFlush().then(()=>{ if(announce){ if(st&&st.lines)persistStLocations(st); toast(stPending.length?`${stPending.length} count(s) still waiting for the connection — they’ll send automatically`:'All counts are saved',!!stPending.length);} }); return; }
+  const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce){if(st&&st.lines)persistStLocations(st);toast(error?('Save failed: '+error.message):'Progress saved',!!error);}};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
+
+/* ---------- group counting: every entry goes straight to the database, others' counts appear live ---------- */
+let stPending=[],stFlushing=false,stPollT=null,stLastSeen=null,stWho={},stSyncErr='';
+const stQKey=id=>'st-pending-'+id;
+function stDevice(){const u=navigator.userAgent||'';return (/iPhone/.test(u)?'iPhone':/iPad/.test(u)?'iPad':/Android/.test(u)?'Android':/Windows/.test(u)?'Windows PC':/Mac/.test(u)?'Mac':'Browser')+' · '+(window.innerWidth||0)+'px';}
+function stLoadPending(id){try{stPending=JSON.parse(localStorage.getItem(stQKey(id))||'[]')||[];}catch(e){stPending=[];}}
+function stSavePending(){try{if(stCurrentId)localStorage.setItem(stQKey(stCurrentId),JSON.stringify(stPending));}catch(e){}}
+function stSyncUi(){const el=document.getElementById('st-sync');if(!el)return;const n=stPending.length;
+  el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All counts saved · live'}`;}
+/* one count entry for one line: mode add | set | clear | details */
+function stQueue(op){if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
+async function stFlush(){
+  if(stFlushing||window._stLegacy)return;stFlushing=true;stSyncUi();
+  while(stPending.length){const op=stPending[0];
+    const{data,error}=await sb.rpc('st_record_count',{p_line:op.line,p_mode:op.mode,p_qty:op.qty==null?null:Math.max(0,Math.round(+op.qty)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_splits:op.splits||null,p_device:stDevice()});
+    if(error){
+      const m=error.message||'';
+      if(/st_record_count|does not exist|schema cache/i.test(m)){window._stLegacy=true;stPending=[];stSavePending();stFlushing=false;stSyncErr='';saveStProgress({id:stCurrentId},false);toast('Run 54_stocktake_team.sql in Supabase to turn on safe group counting',true);return;}
+      if(/finalised|not counting|not found|Bad mode/i.test(m)){toast(m,true);stPending.shift();stSavePending();continue;}
+      op.tries=(op.tries||0)+1;stSyncErr=m;stSyncUi();stFlushing=false;
+      setTimeout(stFlush,Math.min(30000,1500*op.tries));return;           // offline or a hiccup: keep it and retry
+    }
+    stPending.shift();stSavePending();stSyncErr='';stApplyLine(data,true);
+  }
+  stFlushing=false;stSyncUi();
+}
+window.addEventListener('online',()=>{if(stPending.length)stFlush();});
+/* bring one line up to date from the database and refresh it on screen without redrawing the list */
+function stApplyLine(r,mine){
+  if(!r||!r.id)return;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===r.id);
+  if(l)Object.assign(l,{counted_qty:r.counted_qty,area:r.area,aisle:r.aisle,expiry:r.expiry,splits:r.splits,counted_by_name:r.counted_by_name,counted_at:r.counted_at,entries:r.entries});
+  const changed=String(stCounts[r.id]??'')!==String(r.counted_qty??'');
+  stCounts[r.id]=r.counted_qty==null?'':r.counted_qty;
+  if(r.area)stArea[r.id]=r.area;if(r.aisle)stAisle[r.id]=r.aisle;
+  if(Array.isArray(r.splits)&&r.splits.length){stSplit[r.id]=r.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[r.id]='';}
+  else{stSplit[r.id]=null;if(r.expiry)stExp[r.id]=String(r.expiry).slice(0,10);}
+  stWho[r.id]={name:r.counted_by_name,at:r.counted_at,n:r.entries};
+  const inp=document.querySelector(`#stList [data-c="${r.id}"]`);if(inp&&document.activeElement!==inp)inp.value=stCounts[r.id];
+  const ar=document.querySelector(`#stList [data-starea="${r.id}"]`);if(ar&&document.activeElement!==ar&&r.area)ar.value=r.area;
+  const ai=document.querySelector(`#stList [data-saisle="${r.id}"]`);if(ai&&document.activeElement!==ai&&r.aisle)ai.value=r.aisle;
+  const ex=document.querySelector(`#stList [data-sexp="${r.id}"]`);if(ex&&document.activeElement!==ex&&r.expiry)ex.value=String(r.expiry).slice(0,10);
+  const who=document.querySelector(`#stList [data-stwho="${r.id}"]`);if(who)who.innerHTML=stWhoHtml(r.id);
+  if(!mine&&changed&&inp){const row=inp.closest('.recv-row');if(row){row.classList.remove('st-flash');void row.offsetWidth;row.classList.add('st-flash');}}
+  updateStProgress();
+}
+function stWhoHtml(id){const w=stWho[id];if(!w||!w.name)return '';const m=w.at?Math.max(0,Math.round((Date.now()-new Date(w.at))/60000)):null;
+  return `Last counted by <b>${esc(w.name)}</b>${m==null?'':m<1?' · just now':m<60?` · ${m} min ago`:` · ${fmtDT(w.at)}`}${w.n>1?` · ${w.n} entries`:''}`;}
+async function stPoll(full){
+  clearTimeout(stPollT);
+  if(!stCurrentId||!document.getElementById('stList')||window._stLegacy)return;
+  try{
+    let q=sb.from('stocktake_lines').select('id,counted_qty,area,aisle,expiry,splits,counted_by_name,counted_at,entries,updated_at').eq('stocktake_id',stCurrentId);
+    if(stLastSeen&&!full)q=q.gt('updated_at',stLastSeen);
+    const{data,error}=await q;
+    if(!error){(data||[]).forEach(r=>{if(r.updated_at&&(!stLastSeen||r.updated_at>stLastSeen))stLastSeen=r.updated_at;if(stPending.some(p=>p.line===r.id))return;stApplyLine(r,false);});}
+    else if(/column|does not exist/i.test(error.message||'')){window._stLegacy=true;return;}
+    const{data:s}=await sb.from('stocktakes').select('status').eq('id',stCurrentId).maybeSingle();
+    if(s&&s.status!=='open'&&stEditable&&!stAmending){toast('This stock take has just been finalised by someone else',true);closeOverlay();refreshOps([]);return;}
+  }catch(e){}
+  stPollT=setTimeout(()=>stPoll(false),5000);
+}
+let stAmending=false;
+/* Count history: who counted what, when, where */
+async function openStHistory(st){
+  const{data,error}=await sb.from('stocktake_count_log').select('*').eq('stocktake_id',st.id).order('ts',{ascending:false}).limit(3000);
+  if(error)return toast(/does not exist|schema/i.test(error.message)?'Run 54_stocktake_team.sql in Supabase to record count history':error.message,true);
+  const rows=data||[];const who={};rows.forEach(r=>{if(!['add','set'].includes(r.action))return;const k=r.actor_name||'Unknown';const w=who[k]=who[k]||{n:0,items:new Set(),last:r.ts,helper:r.is_helper};w.n++;w.items.add(r.item_id);});
+  const act={add:'Added to count',set:'Set count',clear:'Cleared',details:'Location / date',finalise:'Finalised'};
+  let filt='';
+  const body=()=>{const L=rows.filter(r=>!filt||r.actor_name===filt);return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:12px">${Object.entries(who).map(([n,w])=>`<div class="tile"><div class="lbl">${esc(n)}${w.helper?' · helper':''}</div><div class="val tnum" style="font-size:20px">${w.items.size} item${w.items.size===1?'':'s'}</div><div class="meta">${w.n} entr${w.n===1?'y':'ies'} · last ${fmtDT(w.last)}</div></div>`).join('')||'<div style="color:var(--muted)">No counts yet.</div>'}</div>
+    <div class="toolbar"><select class="filter" id="sth-who"><option value="">Everyone</option>${Object.keys(who).map(n=>`<option${n===filt?' selected':''}>${esc(n)}</option>`).join('')}</select><div class="spacer"></div><button class="btn sm" id="sth-csv">Export CSV</button></div>
+    <div class="tablewrap" style="max-height:56vh;overflow:auto"><table><thead><tr><th>When</th><th>Who</th><th>Item</th><th>What</th><th class="num">Entered</th><th class="num">Before → after</th><th>Area / aisle</th><th>Best before</th></tr></thead><tbody>${L.map(r=>{const it=r.item_id?item(r.item_id):{name:'—',sku:''};return `<tr><td style="white-space:nowrap;font-size:12.5px">${fmtDT(r.ts)}</td><td>${esc(r.actor_name||'—')}${r.is_helper?' <span class="tag">helper</span>':''}<div style="font-size:11px;color:var(--muted)">${esc(r.device||'')}</div></td><td>${r.item_id?`<span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}`:'—'}</td><td>${act[r.action]||esc(r.action)}</td><td class="num tnum">${r.qty==null?'':r.qty}</td><td class="num tnum">${r.action==='finalise'?`${r.qty||0} people`:`${r.before_qty==null?'—':r.before_qty} → <b>${r.after_qty==null?'—':r.after_qty}</b>`}</td><td style="font-size:12.5px">${esc([r.area,r.aisle].filter(Boolean).join(' · ')||'—')}</td><td style="font-size:12.5px">${r.splits&&r.splits.length?r.splits.map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join('<br>'):r.expiry?fmtDate(r.expiry):'—'}</td></tr>`;}).join('')||'<tr><td colspan="8" style="color:var(--muted)">Nothing yet.</td></tr>'}</tbody></table></div>`;};
+  modal('Count history — '+st.code,loc(st.location_id).name+' · who counted what, when and where',`<div id="sth-body">${body()}</div>`,`<button class="btn" id="sth-back">Back to the count</button>`,'full form');
+  const bind=()=>{const s=document.getElementById('sth-who');if(s)s.onchange=e=>{filt=e.target.value;document.getElementById('sth-body').innerHTML=body();bind();};
+    const c=document.getElementById('sth-csv');if(c)c.onclick=()=>downloadCSV(`count-history_${st.code}_${today()}.csv`,['When','Who','Helper','Device','Product code','Item','Action','Entered','Before','After','Area','Aisle','Best before'],rows.filter(r=>!filt||r.actor_name===filt).map(r=>{const it=r.item_id?item(r.item_id):{};return[r.ts,r.actor_name||'',r.is_helper?'yes':'',r.device||'',it.sku||'',it.name||'',r.action,r.qty??'',r.before_qty??'',r.after_qty??'',r.area||'',r.aisle||'',r.splits&&r.splits.length?r.splits.map(s=>s.qty+'@'+s.exp).join('; '):(r.expiry||'')];}));};
+  bind();document.getElementById('sth-back').onclick=()=>openStock(st.id);
+}
+/* ---------- stock-take helpers (people not in Square who only count) ---------- */
+async function openStHelpers(){
+  modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-body"><div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add helper</button>`,'full form');
+  document.getElementById('sh-add').onclick=()=>stHelperForm();
+  const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'list'}});
+  const box=document.getElementById('sh-body');if(!box)return;
+  if(error||(data&&data.error)){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${esc((data&&data.error)||await fnErr(error))}. Make sure <b>54_stocktake_team.sql</b> is run and the <b>stocktake-helpers</b> function is deployed.</div></div>`;return;}
+  const hs=data.helpers||[];const now=Date.now();
+  box.innerHTML=`<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Helpers sign in with their own email and password (they get an email to set it). They see <b>only the open stock takes</b> of their centre — no stock figures, prices, transfers or reports — and can’t start, finalise or delete a count. Access ends automatically on the last day you choose. Everything they count is in each stock take’s <b>Count history</b>.</div></div>
+    ${hs.length?`<div class="tablewrap"><table><thead><tr><th>Helper</th><th>Centre</th><th>Access until</th><th>Status</th><th>Last count</th><th></th></tr></thead><tbody>${hs.map(h=>{const exp=h.expires_at?new Date(h.expires_at):null;const live=h.active!==false&&(!exp||exp>now);return `<tr><td><b>${esc(h.full_name||'')}</b><div style="font-size:12px;color:var(--muted)">${esc(h.email||'')}${h.helper_note?' · '+esc(h.helper_note):''}</div></td><td>${esc(loc(h.home_centre).name)}</td><td style="white-space:nowrap">${exp?fmtDate(exp):'—'}</td><td>${live?'<span class="pill p-done">Active</span>':`<span class="pill p-cancel">${h.active===false?'Removed':'Ended'}</span>`}</td><td style="font-size:12.5px;white-space:nowrap">${h.last_count?fmtDT(h.last_count)+` · ${h.entries} entr${h.entries===1?'y':'ies'}`:'—'}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-shext="${h.id}">${live?'Extend':'Restore'}</button> ${live?`<button class="btn sm" data-shmail="${h.id}">Resend email</button> <button class="btn sm" data-shrm="${h.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button>`:''}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users||I.stocktake,30)}<div>No helpers yet. Click <b>Add helper</b>.</div></div>`}`;
+  const app_url=location.origin+location.pathname.replace(/[^/]*$/,'');
+  box.querySelectorAll('[data-shext]').forEach(b=>b.onclick=()=>{const h=hs.find(x=>x.id===b.dataset.shext);const d=new Date(Date.now()+7*864e5);let until=slYmdSafe(d);
+    stackConfirm('Access until',h.full_name,`<div class="field"><label>Last day ${esc(h.full_name)} can count</label><input type="date" id="shx-d" value="${until}" min="${slYmdSafe(new Date())}"></div>`,{okLabel:'Save',onOk:async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'extend',id:h.id,until}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Access updated');openStHelpers();}});
+    const di=document.getElementById('shx-d');if(di)di.onchange=e=>{until=e.target.value;};});
+  box.querySelectorAll('[data-shmail]').forEach(b=>b.onclick=async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'resend',id:b.dataset.shmail,app_url}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Password email sent');});
+  box.querySelectorAll('[data-shrm]').forEach(b=>b.onclick=()=>{const h=hs.find(x=>x.id===b.dataset.shrm);stackConfirm('Remove helper',h.full_name,`<div>Remove <b>${esc(h.full_name)}</b>’s access now? They are signed out straight away. Their counts stay in the history.</div>`,{okLabel:'Remove',danger:true,onOk:async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'remove',id:h.id}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Helper removed');openStHelpers();}});});
+}
+function slYmdSafe(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function stHelperForm(){
+  const cs=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.filter(l=>l.active!==false)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  const d7=slYmdSafe(new Date(Date.now()+7*864e5)),max=slYmdSafe(new Date(Date.now()+90*864e5));
+  modal('Add stock-take helper','For people who are not in the Square team',`<div class="grid2"><div class="field"><label>Full name *</label><input id="shf-name" autocomplete="off"></div><div class="field"><label>Email *</label><input id="shf-email" type="email" autocomplete="off" placeholder="they’ll get a link to set a password"></div></div>
+    <div class="grid2"><div class="field"><label>Centre *</label><select id="shf-loc">${cs.map(l=>`<option value="${l.id}"${l.id===HOME?' selected':''}>${esc(l.name)}</option>`).join('')}</select></div><div class="field"><label>Can count until (last day) *</label><input id="shf-until" type="date" value="${d7}" min="${slYmdSafe(new Date())}" max="${max}"></div></div>
+    <div class="field"><label>Note</label><input id="shf-note" placeholder="e.g. volunteer for the October count"></div>
+    <div class="banner info">${svg(I.lock,17)}<div>They can only count the open stock takes at this centre. Access ends automatically at the end of the last day (Sydney time). You can extend or remove it any time.</div></div>`,
+    `<button class="btn" id="shf-back">Back</button><button class="btn primary" id="shf-go">${svg(I.check,16)} Add helper &amp; send email</button>`);
+  document.getElementById('shf-back').onclick=openStHelpers;
+  document.getElementById('shf-go').onclick=async e=>{const b=e.currentTarget;
+    const name=document.getElementById('shf-name').value.trim(),email=document.getElementById('shf-email').value.trim(),location_id=document.getElementById('shf-loc').value,until=document.getElementById('shf-until').value,note=document.getElementById('shf-note').value.trim();
+    if(!name||!email)return toast('Enter their name and email',true);
+    b.disabled=true;const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'add',name,email,location_id,until,note,app_url:location.origin+location.pathname.replace(/[^/]*$/,'')}});b.disabled=false;
+    if(error||(data&&data.error))return toast((data&&data.error)||await fnErr(error),true);
+    toast(data.emailed?`${name} added — they’ve been emailed a link to set their password`:`${name} added, but the email didn’t send (${data.email_error||'unknown'}) — use Resend email`,!data.emailed);
+    openStHelpers();};
+}
 async function openScanner(st){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
   window._scanReturn=()=>openStock(st.id);
@@ -4098,7 +4262,7 @@ function vUsers(v){
   v.innerHTML=`<div class="banner info">${svg(I.info,17)}<div>Assign each person a role and their centres.</div></div>
     <div class="toolbar">${nOff?`<label style="display:flex;gap:7px;align-items:center;font-size:13px"><input type="checkbox" id="usr-off" ${usrShowOff?'checked':''}> Show ${nOff} removed user${nOff===1?'':'s'}</label>`:''}<div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn primary" data-act="sync-team">${svg(I.sync,16)} Sync team from Square</button>`:''}</div>
     <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">${svg(I.info,13)} People removed from (or made inactive in) the Square team lose access at the next team sync (every night, or click <b>Sync team from Square</b>). Their history is kept.</div>
-    <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th>${ROLE==='super_admin'?'<th>Access</th>':''}</tr></thead><tbody>${uList.map(u=>`<tr style="${u.active===false?'opacity:.55':''}"><td style="font-weight:600">${esc(u.full_name||'—')}${u.active===false?`<div><span class="pill p-cancel">Removed</span> <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(u.deactivated_reason||'')}${u.deactivated_at?' · '+fmtDate(u.deactivated_at):''}</span></div>`:''}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
+    <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th>${ROLE==='super_admin'?'<th>Access</th>':''}</tr></thead><tbody>${uList.map(u=>`<tr style="${u.active===false?'opacity:.55':''}"><td style="font-weight:600">${esc(u.full_name||'—')}${u.access_scope==='stocktake'?` <span class="tag" title="Can only count stock${u.expires_at?' until '+fmtDate(u.expires_at):''} — manage from Stock Take → Stock-take helpers">Stock-take helper${u.expires_at?' · until '+fmtDate(u.expires_at):''}</span>`:''}${u.active===false?`<div><span class="pill p-cancel">Removed</span> <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(u.deactivated_reason||'')}${u.deactivated_at?' · '+fmtDate(u.deactivated_at):''}</span></div>`:''}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
       <td>${centresCell(u)}</td>${ROLE==='super_admin'?`<td style="white-space:nowrap">${u.role==='super_admin'?'<span class="tag">Always</span>':u.active===false?`<button class="btn sm" data-uon="${u.id}">Reinstate</button>`:`<button class="btn sm" data-uoff="${u.id}" style="color:var(--crit);border-color:var(--crit)">Remove access</button>`}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
   const uo=document.getElementById('usr-off');if(uo)uo.onchange=e=>{usrShowOff=e.target.checked;renderView();};
