@@ -3835,7 +3835,7 @@ async function openStHistory(st){
   const{data,error}=await sb.from('stocktake_count_log').select('*').eq('stocktake_id',st.id).order('ts',{ascending:false}).limit(3000);
   if(error)return toast(/does not exist|schema/i.test(error.message)?'Run 54_stocktake_team.sql in Supabase to record count history':error.message,true);
   const rows=data||[];const who={};rows.forEach(r=>{if(!['add','set'].includes(r.action))return;const k=r.actor_name||'Unknown';const w=who[k]=who[k]||{n:0,items:new Set(),last:r.ts,helper:r.is_helper};w.n++;w.items.add(r.item_id);});
-  const act={add:'Added to count',set:'Set count',clear:'Cleared',details:'Location / date',finalise:'Finalised',amend:'<b>Amended</b> (stock change)'};
+  const act={add:'Added to count',set:'Set count',clear:'Cleared',details:'Location / date',finalise:'Finalised',amend:'<b>Amended</b> (stock change)',deleted:'<b style="color:var(--crit)">Deleted</b>'};
   let filt='';
   const body=()=>{const L=rows.filter(r=>!filt||r.actor_name===filt);return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:12px">${Object.entries(who).map(([n,w])=>`<div class="tile"><div class="lbl">${esc(n)}${w.helper?' · helper':''}</div><div class="val tnum" style="font-size:20px">${w.items.size} item${w.items.size===1?'':'s'}</div><div class="meta">${w.n} entr${w.n===1?'y':'ies'} · last ${fmtDT(w.last)}</div></div>`).join('')||'<div style="color:var(--muted)">No counts yet.</div>'}</div>
     <div class="toolbar"><select class="filter" id="sth-who"><option value="">Everyone</option>${Object.keys(who).map(n=>`<option${n===filt?' selected':''}>${esc(n)}</option>`).join('')}</select><div class="spacer"></div><button class="btn sm" id="sth-csv">Export CSV</button></div>
@@ -3843,7 +3843,7 @@ async function openStHistory(st){
   modal('Count history — '+st.code,loc(st.location_id).name+' · who counted what, when and where',`<div id="sth-body">${body()}</div>`,`<button class="btn" id="sth-back">Back to the count</button>`,'full form');
   const bind=()=>{const s=document.getElementById('sth-who');if(s)s.onchange=e=>{filt=e.target.value;document.getElementById('sth-body').innerHTML=body();bind();};
     const c=document.getElementById('sth-csv');if(c)c.onclick=()=>downloadCSV(`count-history_${st.code}_${today()}.csv`,['When','Who','Helper','Device','Product code','Item','Action','Entered','Before','After','Area','Aisle','Best before'],rows.filter(r=>!filt||r.actor_name===filt).map(r=>{const it=r.item_id?item(r.item_id):{};return[r.ts,r.actor_name||'',r.is_helper?'yes':'',r.device||'',it.sku||'',it.name||'',r.action,r.qty??'',r.before_qty??'',r.after_qty??'',r.area||'',r.aisle||'',r.splits&&r.splits.length?r.splits.map(s=>s.qty+'@'+s.exp).join('; '):(r.expiry||'')];}));};
-  bind();document.getElementById('sth-back').onclick=()=>openStock(st.id);
+  bind();document.getElementById('sth-back').onclick=()=>{if(S.stocktakes.find(x=>x.id===st.id))openStock(st.id);else if(st._archived)openUndoDeletedStocktakes();else closeOverlay();};
 }
 /* Supabase returns at most 1000 rows per request, so read in pages. mk() must return a fresh, ordered query. */
 async function sbAll(mk){let out=[],from=0;for(let i=0;i<60;i++){const{data,error}=await mk().range(from,from+999);if(error)return{error,data:out};out=out.concat(data||[]);if(!data||data.length<1000)break;from+=1000;}return{data:out,error:null};}
@@ -4079,7 +4079,15 @@ async function openUndoDeletedStocktakes(){
   const L=data||[];
   box.innerHTML=`<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Before this update, deleting a submitted stock take only removed the record — the stock it set, its best-before dates and what it sent to Square stayed. <b>Reverse</b> takes those stock changes back off today’s stock (sales since are kept), removes the best-before dates the count created, and sends Square a correction. Each one can only be reversed once.</div></div>
     ${L.length?`<div class="tablewrap"><table class="no-cards"><thead><tr><th>Stock take</th><th>Centre</th><th class="num">Items changed</th><th>When</th><th></th></tr></thead><tbody>${L.map((r,i)=>`<tr><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(loc(r.location_id).name)}</td><td class="num tnum">${r.items}</td><td style="font-size:12.5px;white-space:nowrap">${fmtDT(r.first_ts)}${r.last_ts&&r.last_ts!==r.first_ts?' – '+fmtDT(r.last_ts):''}</td><td style="text-align:right"><button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-udl="${i}">Reverse</button></td></tr>`).join('')}</tbody></table></div>`
-      :`<div class="card empty">${svg(I.check,30)}<div>Nothing to undo — every deleted stock take has been reversed.</div></div>`}`;
+      :`<div class="card empty">${svg(I.check,30)}<div>Nothing to undo — every deleted stock take has been reversed.</div></div>`}
+    <h3 style="font-size:14px;margin:18px 0 8px">Deleted counts (kept for the audit)</h3><div id="udl-arch"><div style="color:var(--muted);font-size:13px">Loading…</div></div>`;
+  (async()=>{const ab=document.getElementById('udl-arch');if(!ab)return;
+    const{data:ar,error:ae}=await sb.from('stocktake_archive').select('id,code,location_id,status,started_at,completed_at,deleted_at,deleted_name,reason,reversed,items_changed').order('deleted_at',{ascending:false}).limit(200);
+    if(ae){ab.innerHTML=`<div style="color:var(--muted);font-size:13px">${/does not exist|schema/i.test(ae.message)?'Run 62_full_change_log.sql to keep deleted counts for the audit.':esc(ae.message)}</div>`;return;}
+    const A=ar||[];
+    ab.innerHTML=A.length?`<div class="tablewrap"><table class="no-cards"><thead><tr><th>Stock take</th><th>Centre</th><th>Was</th><th>Deleted</th><th>By</th><th>Reason</th><th></th></tr></thead><tbody>${A.map((a,i)=>`<tr><td class="mono"><b>${esc(a.code||'')}</b></td><td>${esc(loc(a.location_id).name)}</td><td style="font-size:12.5px">${a.status==='open'?'Open (not submitted)':'Submitted'}${a.reversed?` · reversed (${a.items_changed||0} item(s))`:''}</td><td style="font-size:12.5px;white-space:nowrap">${fmtDT(a.deleted_at)}</td><td>${esc(a.deleted_name||'—')}</td><td style="font-size:12.5px">${esc(a.reason||'—')}</td><td style="text-align:right"><button class="btn sm" data-udh="${i}">Count history</button></td></tr>`).join('')}</tbody></table></div>`
+      :`<div style="color:var(--muted);font-size:13px">No deleted counts since this was switched on.</div>`;
+    ab.querySelectorAll('[data-udh]').forEach(b=>b.onclick=()=>{const a=A[+b.dataset.udh];openStHistory({id:a.id,code:a.code+' (deleted)',location_id:a.location_id,_archived:true});});})();
   box.querySelectorAll('[data-udl]').forEach(b=>b.onclick=()=>{const r=L[+b.dataset.udl];let reason='';
     stackConfirm('Reverse '+r.code,loc(r.location_id).name,`<div style="margin-bottom:10px">Take back the stock changes ${esc(r.code)} made to <b>${r.items}</b> item(s) at ${esc(loc(r.location_id).name)} and remove the best-before dates it created? Square gets a correction.</div><div class="field"><label>Reason</label><input id="udl-r" placeholder="e.g. test count deleted"></div>`,
       {okLabel:'Reverse',danger:true,onOk:async()=>{const{data:n,error:e}=await sb.rpc('reverse_deleted_stocktake',{p_code:r.code,p_loc:r.location_id,p_reason:reason||null});
@@ -4553,6 +4561,24 @@ const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfe
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null,ihRange='12m';
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
+/* who changed this item's best-before dates, warehouse bins or store location, when and why (migration 62) */
+const CHG_CAUSE={receive_transfer:'Transfer received',reverse_transfer:'Transfer reversed',pick_transfer:'Transfer picked',bin_pick_fifo:'Picked from bin',bin_receive:'Put into bin',bin_reset:'Stock take (bin)',
+  batch_add:'Best-before added',batch_reset:'Stock take (best-before)',batch_purge:'Old dates cleared',finalize_stocktake:'Stock take finalised',reverse_and_delete_stocktake:'Stock take deleted & reversed',reverse_deleted_stocktake:'Deleted stock take reversed',
+  reverse_order:'Order reversed',reverse_receipt:'Receipt reversed',receive_order:'Order received',post_receipt:'Receipt posted',create_credit_note:'Credit note',void_credit_note:'Credit note voided',
+  set_item_locations:'Location set',amend_stocktake:'Stock take amended',reverse_adjustment:'Write-off reversed','square / system':'Square / system',direct:'Direct change'};
+async function loadItemChanges(itemId){
+  const el=document.getElementById('ih-chg');if(!el)return;
+  let q=sb.from('data_change_log').select('*').eq('item_id',itemId).order('ts',{ascending:false}).limit(500);
+  if(scoped()&&MYLOCS.length)q=q.in('location_id',MYLOCS);
+  const{data,error}=await q;
+  if(error){el.innerHTML=`<div style="color:var(--faint);font-size:13px">${/does not exist|schema/i.test(error.message)?'Run 62_full_change_log.sql in Supabase to record these changes.':esc(error.message)}</div>`;return;}
+  const W={best_before:'Best-before',bin:'Warehouse bin',location:'Store location'};
+  const fmt=(w,o)=>!o?'—':w==='best_before'?`${o.qty} × ${fmtDate(o.best_before)}`:w==='bin'?`${esc(o.area||'—')}${o.aisle?' · '+esc(o.aisle):''} (${o.qty})`:`${esc(o.area||'—')}${o.aisle?' · '+esc(o.aisle):''}`;
+  const rows=data||[];
+  el.innerHTML=rows.length?`<div class="tablewrap"><table class="no-cards"><thead><tr><th>When</th><th>Centre</th><th>What</th><th>Before → after</th><th>Why</th><th>Who</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="white-space:nowrap;font-size:12.5px">${fmtDT(r.ts)}</td><td>${esc(loc(r.location_id).code||'')}</td><td style="font-size:12.5px">${W[r.what]||esc(r.what)} <span style="color:var(--muted)">${esc(r.op)}</span></td><td style="font-size:12.5px">${fmt(r.what,r.before)} → <b>${fmt(r.what,r.after)}</b></td><td style="font-size:12.5px">${esc(CHG_CAUSE[r.cause]||r.cause||'—')}${r.ref?` <span class="mono" style="color:var(--muted)">${esc(r.ref)}</span>`:''}</td><td style="font-size:12.5px">${esc(r.actor_name||(r.actor?'—':'System'))}</td></tr>`).join('')}</tbody></table></div>
+    <div style="margin-top:6px"><button class="btn sm" id="ih-chgcsv">Export CSV</button></div>`:`<div style="color:var(--faint);font-size:13px">No changes recorded yet.</div>`;
+  const b=document.getElementById('ih-chgcsv');if(b)b.onclick=()=>downloadCSV(`item-changes_${today()}.csv`,['When','Centre','What','Change','Before','After','Why','Reference','Who'],rows.map(r=>[r.ts,loc(r.location_id).name||'',W[r.what]||r.what,r.op,r.before?JSON.stringify(r.before):'',r.after?JSON.stringify(r.after):'',CHG_CAUSE[r.cause]||r.cause||'',r.ref||'',r.actor_name||(r.actor?'':'System')]));
+}
 async function fetchItemLedger(itemId){let qy=sb.from('stock_ledger').select('*').eq('item_id',itemId).order('ts',{ascending:false}).limit(2000);if(ihRange==='12m'){const s=new Date();s.setMonth(s.getMonth()-12);qy=qy.gte('ts',s.toISOString());}if(scoped()&&MYLOCS.length)qy=qy.in('location_id',MYLOCS);const{data,error}=await qy;if(error)throw error;return data||[];}
 async function renderItemHistory(itemId){
   const el=document.getElementById('ih-list');if(!el)return;
@@ -4579,7 +4605,8 @@ function openItem(id){
       <select class="filter" id="ih-range" style="height:32px;padding:4px 8px"><option value="12m">Last 12 months</option><option value="all">All time</option></select>
       <select class="filter" id="ih-kind" style="height:32px;padding:4px 8px">${kinds.map(k=>`<option value="${k}">${k==='all'?'All movements':esc(lkind(k).l)}</option>`).join('')}</select>
       <button class="btn sm" id="ih-csv">${svg(I.receipt,14)} CSV</button></div>
-    <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>`;
+    <div id="ih-list"><div style="color:var(--faint);font-size:13px">Loading history…</div></div>
+    <details id="ih-chgw" style="margin-top:18px"><summary style="cursor:pointer;font-weight:700;font-size:13px">Best-before, bin &amp; location changes</summary><div id="ih-chg" style="margin-top:8px"><div style="color:var(--faint);font-size:13px">Loading…</div></div></details>`;
   const foot=`<button class="btn" data-close>Close</button>`
     +`<button class="btn" id="it-loc">${svg(I.location,15)} Set location</button>`
     +`<button class="btn" id="it-label">${svg(I.receipt,15)} Shelf label</button>`
@@ -4593,6 +4620,7 @@ function openItem(id){
   const ppcSave=document.getElementById('it-ppc-save');if(ppcSave)ppcSave.onclick=async()=>{const n=parseInt(document.getElementById('it-ppc').value,10);if(!(n>0))return toast('Enter packets per carton (a whole number)',true);const{error}=await sb.rpc('update_items_cost_carton',{p_rows:[{item:id,ppc:n}]});if(error)return toast(error.message||'Save failed — did you run 28_cost_carton.sql?',true);const itx=S.items.find(x=>x.id===id);if(itx)itx.pack_per_carton=n;toast('Saved — quantities now show in boxes');renderView();};
   const bt=document.getElementById('it-transfer');if(bt)bt.onclick=()=>newTransfer(id);
   const bsq=document.getElementById('it-sqchk');if(bsq)bsq.onclick=()=>openSquareCompare(id);
+  const chw=document.getElementById('ih-chgw');if(chw)chw.addEventListener('toggle',()=>{if(chw.open&&!chw.dataset.loaded){chw.dataset.loaded='1';loadItemChanges(id);}});
   const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
   const bd=document.getElementById('it-dmg');if(bd)bd.onclick=()=>openDamageRequest(id);
   const bl2=document.getElementById('it-loc');if(bl2)bl2.onclick=()=>openSetLocation(id);
