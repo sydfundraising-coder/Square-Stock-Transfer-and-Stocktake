@@ -910,7 +910,7 @@ async function reloadStockFor(locs){
   rows.forEach(r=>{const k=r.location_id+'__'+r.item_id;S.stock[k]=r.on_hand;if(r.store_area||r.aisle)S.bin[k]={area:r.store_area||'',aisle:r.aisle||''};});
   recomputeItemTotals();
 }
-async function refreshOps(locs){ await loadOps(); await reloadStockFor(locs); await loadBins(); await loadBatches(); await loadStockStatusData(); renderNav(); renderSq(); renderView(); }
+async function refreshOps(locs){ sqKick(); await loadOps(); await reloadStockFor(locs); await loadBins(); await loadBatches(); await loadStockStatusData(); renderNav(); renderSq(); renderView(); }
 
 /* ---------- auth ---------- */
 const PW_RECOVERY=/(^|[#&?])type=recovery(&|$)/.test(location.hash+'&'+location.search);
@@ -951,6 +951,7 @@ async function startApp(){
   await loadAll();
   // if scoped but no home centre set, warn
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
+  if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); }
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
 }
 function renderRoleChip(prof){
@@ -981,7 +982,7 @@ const NAV=[
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
   {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
   {id:'audit',label:'Audit Log',icon:I.audit,group:'Admin',need:'audit.view'},
-  {id:'settings',label:'Square Sync',icon:I.settings,group:'Admin',need:'*'},
+  {id:'settings',label:'Square Sync',icon:I.settings,group:'Admin',need:'*',badge:()=>{const s=S.sqStatus||{};return (+s.failed||0)+(+s.stuck||0);}},
 ];
 const MOBILE=['dashboard','transfers','orders','stocktake'];
 let route='dashboard';
@@ -3723,7 +3724,7 @@ function importCostCarton(){
   };
 }
 /* ---- per-item stock ledger (history) ---- */
-const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
+const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},transit_loss:{l:'Lost in transit',c:'var(--crit)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null,ihRange='12m';
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -3739,7 +3740,7 @@ async function renderItemHistory(itemId){
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
   const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)}</td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
-  const kinds=['all','sale','transfer_in','transfer_out','purchase','stocktake','damage','expire','write_off','found','correction','return','reversal'];
+  const kinds=['all','sale','transfer_in','transfer_out','transit_loss','purchase','stocktake','damage','expire','write_off','found','correction','return','reversal'];
   const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
   const isApprover=['national_admin','super_admin'].includes(ROLE);
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
@@ -5393,7 +5394,8 @@ function openConsignment(id){
 function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
-    <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks). Transfers, receipts and stock takes are pushed <b>back</b> to Square as they happen, so both stay in step.</div></div>
+    <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks + every 10 minutes). Every stock change made in the app is queued and sent <b>back</b> to Square within about 2 minutes, retried automatically until it succeeds, and recorded in the sync log below.</div></div>
+    ${(ROLE==='super_admin'||ROLE==='national_admin')?`<div id="sq-health" style="margin-bottom:16px"><div class="card empty">${svg(I.sync,26)}<div>Loading sync health…</div></div></div>`:''}
     ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update sales history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
     <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” pulls 12 months of Square sales for Centre Insights and the 2-month transfer recommendations. “Update sales history” adds Square POS sales/waste/returns to each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
     ${ROLE==='super_admin'?`<div class="card pad" style="margin-top:16px"><div class="sq-title" style="font-size:15px">${svg(I.receipt,18)} Backups</div>
@@ -5401,11 +5403,79 @@ function vSettings(v){
       <div id="bk-status" style="font-size:13px;margin-bottom:12px;color:var(--muted)">Loading…</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="bk-now">${svg(I.check,16)} Back up now</button><button class="btn" id="bk-dl">${svg(I.box,16)} Download latest (JSON)</button></div>
       <div id="bk-list" style="margin-top:14px"></div></div>`:''}`;
+  if(ROLE==='super_admin'||ROLE==='national_admin')renderSyncHealth();
   if(ROLE==='super_admin'){
     const bn=document.getElementById('bk-now');if(bn)bn.onclick=runBackupNow;
     const bd=document.getElementById('bk-dl');if(bd)bd.onclick=()=>downloadBackup();
     loadBackupList();
   }
+}
+/* ---------- Square sync health: push queue + sync log (migration 53) ---------- */
+let slogFilter={dir:'all',status:'all',kind:'all',days:'7',q:''},sqQueueShow='open',sqHealthTimer=null;
+const SQ_KIND={stock:'Stock',reconcile:'Full reconcile',catalog:'Catalogue & stock',range:'Centre range',delete:'Delete items',sales:'Sales data',perf:'Sales report',team:'Team',cash:'Cash sales'};
+const SQ_ST={ok:['OK','p-done'],partial:['Partly failed','p-req'],failed:['Failed','p-cancel'],info:['Info','p-draft']};
+async function loadSqStatus(){
+  if(!(ROLE==='super_admin'||ROLE==='national_admin'))return;
+  try{const{data,error}=await sb.rpc('sq_status');if(!error&&data){S.sqStatus=data;renderNav();renderSq();}}catch(e){}
+}
+function sqKick(){clearTimeout(window._sqKickT);window._sqKickT=setTimeout(()=>{sb.functions.invoke('square-push',{body:{mode:'queue'}}).then(()=>{if(route==='settings')renderSyncHealth();loadSqStatus();},()=>{});},1500);}
+async function renderSyncHealth(){
+  const box=document.getElementById('sq-health');if(!box)return;
+  const since=new Date(Date.now()-(+slogFilter.days||7)*864e5).toISOString();
+  const qStatuses=sqQueueShow==='open'?['pending','processing','failed']:['pending','processing','failed','done','skipped'];
+  const[st,qu,lg]=await Promise.all([
+    sb.rpc('sq_status'),
+    sb.from('square_push_queue').select('*').in('status',qStatuses).order('created_at',{ascending:false}).limit(500),
+    (()=>{let q=sb.from('square_sync_log').select('*').gte('ts',since).order('ts',{ascending:false}).limit(1000);
+      if(slogFilter.dir!=='all')q=q.eq('direction',slogFilter.dir);if(slogFilter.status!=='all')q=slogFilter.status==='problems'?q.in('status',['failed','partial']):q.eq('status',slogFilter.status);if(slogFilter.kind!=='all')q=q.eq('kind',slogFilter.kind);return q;})()
+  ]);
+  if(!document.getElementById('sq-health'))return;
+  if(st.error||qu.error||lg.error){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Sync health isn’t set up yet — run <b>53_square_sync_log.sql</b> in Supabase and redeploy the Square functions.</div></div>`;return;}
+  const s=st.data||{};S.sqStatus=s;renderNav();renderSq();
+  const queue=qu.data||[];const failedQ=queue.filter(r=>r.status==='failed');
+  const q=slogFilter.q.trim().toLowerCase();
+  const logs=(lg.data||[]).filter(r=>!q||[r.message,r.fn,r.kind,r.location_id?loc(r.location_id).name:''].some(x=>String(x||'').toLowerCase().includes(q)));
+  const ago=ts=>{if(!ts)return 'never';const m=Math.round((Date.now()-new Date(ts))/60000);return m<1?'just now':m<60?m+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' days ago';};
+  const healthy=!s.failed&&!s.stuck;
+  window._slogRows=logs;
+  box.innerHTML=`<div class="card pad">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div class="sq-title" style="font-size:15px;margin:0">${svg(I.check,18)} Sync health</div>
+      <span class="pill ${healthy?'p-done':'p-cancel'}">${healthy?'All changes reaching Square':'Needs attention'}</span><div style="flex:1"></div>
+      <button class="btn sm" id="sqh-refresh">${svg(I.sync,14)} Refresh</button>${ROLE==='super_admin'?`<button class="btn sm primary" id="sqh-send">Send waiting changes now</button>`:''}</div>
+    <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin:0 0 14px">
+      <div class="tile ${s.pending?'accent':''}"><div class="lbl">Waiting to send</div><div class="val tnum">${s.pending||0}</div><div class="meta">${s.stuck?`<b style="color:var(--crit)">${s.stuck} waiting over 1 hour</b>`:'sent within ~2 minutes'}</div></div>
+      <div class="tile ${s.failed?'crit':''}"><div class="lbl">Failed (needs you)</div><div class="val tnum" style="${s.failed?'color:var(--crit)':''}">${s.failed||0}</div><div class="meta">after 8 automatic tries</div></div>
+      <div class="tile"><div class="lbl">Last push to Square</div><div class="val" style="font-size:16px">${ago(s.last_push_ok)}</div><div class="meta">${s.last_push_ok?fmtDT(s.last_push_ok):''}</div></div>
+      <div class="tile"><div class="lbl">Last pull from Square</div><div class="val" style="font-size:16px">${ago(s.last_pull_ok)}</div><div class="meta">${s.last_pull_ok?fmtDT(s.last_pull_ok):'runs every 10 minutes'}</div></div>
+      <div class="tile ${s.errors_24h?'crit':''}"><div class="lbl">Problems · 24 h</div><div class="val tnum">${s.errors_24h||0}</div><div class="meta">failed or partly failed runs</div></div>
+    </div>
+    <div class="section-head" style="margin-top:4px"><h2 style="font-size:15px">Changes waiting for Square</h2><small>Created automatically for every stock change in the app</small></div>
+    <div class="toolbar" style="margin-bottom:8px"><select class="filter" id="sqq-show"><option value="open">Waiting &amp; failed</option><option value="all">Include sent (last 500)</option></select><div class="spacer"></div>
+      ${ROLE==='super_admin'&&failedQ.length?`<button class="btn sm" id="sqq-retry-all">Retry all ${failedQ.length} failed</button><button class="btn sm" id="sqq-dismiss" style="color:var(--crit);border-color:var(--crit)">Dismiss selected…</button>`:''}</div>
+    ${queue.length?`<div class="tablewrap" style="max-height:340px;overflow:auto"><table><thead><tr>${ROLE==='super_admin'?'<th></th>':''}<th>Since</th><th>Item</th><th>Centre</th><th class="num">Change</th><th>Status</th><th class="num">Tries</th><th>Next try / result</th><th>Last error</th>${ROLE==='super_admin'?'<th></th>':''}</tr></thead><tbody>${queue.map(r=>{const it=item(r.item_id);const stp={pending:['Waiting','p-req'],processing:['Sending','p-transit'],failed:['Failed','p-cancel'],done:['Sent','p-done'],skipped:['Dismissed','p-draft']}[r.status]||[r.status,'p-draft'];
+      return `<tr>${ROLE==='super_admin'?`<td>${r.status==='failed'||r.status==='pending'?`<input type="checkbox" data-sqsel="${r.id}">`:''}</td>`:''}<td style="white-space:nowrap;font-size:12px;color:var(--muted)">${fmtDT(r.created_at)}</td><td><b>${esc(it.name)}</b><div style="font-size:11px;color:var(--faint)">${esc(it.sku||'')} · ${esc(r.reason||'')}</div></td><td>${esc(loc(r.location_id).name)}</td><td class="num tnum">${r.absolute?'<span title="Stock-take count — sent as the counted figure">count</span>':(r.delta>0?'+':'')+r.delta}</td><td><span class="pill ${stp[1]}">${stp[0]}</span></td><td class="num tnum">${r.attempts}</td><td style="font-size:12px;white-space:nowrap">${r.status==='done'?`Square ${r.square_before!=null?Math.round(r.square_before)+' → ':''}${r.pushed_qty!=null?Math.round(r.pushed_qty):''}`:r.status==='pending'?ago(r.next_at).replace(' ago','').replace('just now','now'):''}</td><td style="font-size:12px;color:var(--crit);max-width:260px">${esc(r.last_error||'')}</td>${ROLE==='super_admin'?`<td>${r.status==='failed'?`<button class="btn sm" data-sqretry="${r.id}">Retry</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`:`<div class="banner info" style="margin:0">${svg(I.check,17)}<div>Nothing waiting — every change made in the app has reached Square.</div></div>`}
+    <div class="section-head" style="margin-top:18px"><h2 style="font-size:15px">Sync log</h2><small>Every push to and pull from Square</small></div>
+    <div class="toolbar" style="margin-bottom:8px;flex-wrap:wrap">
+      <select class="filter" id="sl-dir"><option value="all">Push &amp; pull</option><option value="push">Pushes to Square</option><option value="pull">Pulls from Square</option><option value="webhook">Webhook</option></select>
+      <select class="filter" id="sl-st"><option value="all">All results</option><option value="problems">Problems only</option><option value="ok">OK</option><option value="failed">Failed</option><option value="partial">Partly failed</option></select>
+      <select class="filter" id="sl-kind"><option value="all">All kinds</option>${Object.entries(SQ_KIND).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>
+      <select class="filter" id="sl-days"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option></select>
+      <div class="search">${svg(I.search,16)}<input id="sl-q" placeholder="Search message, centre…" value="${esc(slogFilter.q)}"></div><div class="spacer"></div><button class="btn sm" id="sl-csv">Export CSV</button></div>
+    ${logs.length?`<div class="tablewrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>When</th><th>Direction</th><th>What</th><th>Centre</th><th class="num">Items</th><th>Result</th><th>Details</th></tr></thead><tbody>${logs.map(r=>{const sp=SQ_ST[r.status]||[r.status,'p-draft'];return `<tr><td style="white-space:nowrap;font-size:12px;color:var(--muted)">${fmtDT(r.ts)}</td><td>${r.direction==='push'?'→ Square':r.direction==='pull'?'← Square':r.direction==='webhook'?'← Webhook':esc(r.direction)}</td><td>${esc(SQ_KIND[r.kind]||r.kind)}<div style="font-size:11px;color:var(--faint)">${esc(r.fn||'')}${r.duration_ms!=null?' · '+(r.duration_ms/1000).toFixed(1)+'s':''}</div></td><td style="font-size:12.5px">${r.location_id?esc(loc(r.location_id).name):'—'}</td><td class="num tnum">${r.items||''}</td><td><span class="pill ${sp[1]}">${sp[0]}</span></td><td style="font-size:12.5px;max-width:420px">${esc(r.message||'')}</td></tr>`;}).join('')}</tbody></table></div>`:`<div style="color:var(--faint);font-size:13px;padding:8px 0">No log entries for this filter.</div>`}
+  </div>`;
+  const $=id=>document.getElementById(id);
+  $('sqh-refresh').onclick=renderSyncHealth;
+  if($('sqh-send'))$('sqh-send').onclick=async()=>{toast('Sending waiting changes to Square…');const{data,error}=await sb.functions.invoke('square-push',{body:{mode:'queue'}});if(error)toast('Send failed: '+await fnErr(error),true);else toast(data&&data.processed?`${data.sent||0} sent${data.failed?' · '+data.failed+' failed (will retry)':''}`:'Nothing was waiting');renderSyncHealth();};
+  const qs=$('sqq-show');qs.value=sqQueueShow;qs.onchange=e=>{sqQueueShow=e.target.value;renderSyncHealth();};
+  [['sl-dir','dir'],['sl-st','status'],['sl-kind','kind'],['sl-days','days']].forEach(([id,k])=>{const el=$(id);el.value=slogFilter[k];el.onchange=e=>{slogFilter[k]=e.target.value;renderSyncHealth();};});
+  $('sl-q').onchange=e=>{slogFilter.q=e.target.value;renderSyncHealth();};
+  $('sl-csv').onclick=()=>downloadCSV('square-sync-log_'+today()+'.csv',['When','Direction','Kind','Function','Centre','Items','OK','Failed','Result','Message','Seconds'],(window._slogRows||[]).map(r=>[r.ts,r.direction,SQ_KIND[r.kind]||r.kind,r.fn||'',r.location_id?loc(r.location_id).name:'',r.items||0,r.ok||0,r.failed||0,(SQ_ST[r.status]||[r.status])[0],r.message||'',r.duration_ms!=null?(r.duration_ms/1000).toFixed(1):'']));
+  box.querySelectorAll('[data-sqretry]').forEach(b=>b.onclick=async()=>{const{error}=await sb.rpc('sq_retry',{p_ids:[+b.dataset.sqretry]});if(error)return toast(error.message,true);toast('Queued for retry');sqKick();renderSyncHealth();});
+  if($('sqq-retry-all'))$('sqq-retry-all').onclick=async()=>{const{data,error}=await sb.rpc('sq_retry',{p_ids:null});if(error)return toast(error.message,true);toast((data||0)+' queued for retry');sqKick();renderSyncHealth();};
+  if($('sqq-dismiss'))$('sqq-dismiss').onclick=()=>{const ids=[...box.querySelectorAll('[data-sqsel]:checked')].map(c=>+c.dataset.sqsel);if(!ids.length)return toast('Tick the entries to dismiss',true);
+    let why='';stackConfirm('Dismiss changes',ids.length+' entr'+(ids.length===1?'y':'ies'),`<div>Stop trying to send <b>${ids.length}</b> change${ids.length===1?'':'s'} to Square? Square will keep its own figure, and the next pull will bring that figure into the app.</div><div class="field" style="margin-top:10px"><label>Reason *</label><input id="sqd-why" placeholder="e.g. item no longer sold at this centre"></div>`,{okLabel:'Dismiss',danger:true,onOk:async()=>{if(!why.trim())return toast('Enter a reason — nothing was dismissed',true);const{data,error}=await sb.rpc('sq_dismiss',{p_ids:ids,p_note:why});if(error)return toast(error.message,true);toast((data||0)+' dismissed');renderSyncHealth();}});
+    const wi=document.getElementById('sqd-why');if(wi)wi.oninput=e=>{why=e.target.value;};};
+  clearTimeout(sqHealthTimer);sqHealthTimer=setTimeout(()=>{if(route==='settings'&&document.getElementById('sq-health'))renderSyncHealth();},60000);
 }
 async function loadBackupList(){
   const el=document.getElementById('bk-list'),st=document.getElementById('bk-status');if(!el)return;
@@ -5425,7 +5495,7 @@ async function downloadBackup(id){
   downloadJSON('shayona-backup_'+String(data.created_at||today()).slice(0,10)+'.json',{created_at:data.created_at,data:data.snapshot});
   toast('Backup downloaded');
 }
-function renderSq(){document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ok"></span> ${S.items.length} items · ${S.locations.length} sites${_heavyLoading?' · <span style="color:var(--warn)">loading stock…</span>':''}</div>`;}
+function renderSq(){const s=S.sqStatus||{},bad=(+s.failed||0)+(+s.stuck||0);document.getElementById('sqStatus').innerHTML=`<div class="sq-title">${svg(I.sync,13)} Square</div><div class="sq-row"><span class="dot ${bad?'':'ok'}" style="${bad?'background:var(--crit)':''}"></span> ${S.items.length} items · ${S.locations.length} sites${_heavyLoading?' · <span style="color:var(--warn)">loading stock…</span>':''}</div>${bad?`<div class="sq-row" style="color:var(--crit);font-weight:600;cursor:pointer" data-route="settings">${bad} change${bad===1?'':'s'} not reaching Square</div>`:(+s.pending?`<div class="sq-row">${s.pending} change${+s.pending===1?'':'s'} being sent…</div>`:'')}`;}
 async function runSync(){
   toast('Syncing with Square…');
   try{const{data,error}=await sb.functions.invoke('square-sync');if(error)throw error;if(data&&data.error){toast(data.error,true);return;}console.log('sync result',data);logEvent(`Square full sync — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock, ${data.categoriesLoaded||0} categories, ${data.createdLocations||0} new location(s)`);toast(`Synced — ${data.itemsUpserted||0} items, ${data.stockUpserted||0} stock · categories: ${data.categoriesLoaded||0} loaded, ${data.itemsCategorised||0} tagged, ${data.itemsUncategorised||0} uncategorised`);refresh();}
@@ -5615,7 +5685,7 @@ async function runVelocity(){
     toast('Sales updated — '+items+' item lines from '+orders+' orders');refresh();
   }catch(e){toast('Failed: '+(e.message||e),true);}
 }
-async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0;for(const l of S.locations){if(!l.square_location_id)continue;try{await sb.functions.invoke('square-push',{body:{location_id:l.id}});n++;}catch(e){}}logEvent('Pushed all stock to Square ('+n+' locations)');toast('Pushed '+n+' location(s) to Square');}
+async function pushAll(){if(!window.confirm('Push ALL system stock to Square? This overwrites Square’s counts with this system’s for every location. Use only for a full reconcile.'))return;toast('Pushing stock to Square…');let n=0,bad=0;for(const l of S.locations){if(!l.square_location_id)continue;try{const{data,error}=await sb.functions.invoke('square-push',{body:{mode:'reconcile',location_id:l.id}});if(error||(data&&data.error))bad++;else n++;}catch(e){bad++;}}logEvent('Pushed all stock to Square ('+n+' locations'+(bad?', '+bad+' failed':'')+')');toast('Pushed '+n+' location(s) to Square'+(bad?' · '+bad+' failed — see Square Sync → Sync log':''),!!bad);if(route==='settings')renderSyncHealth();}
 /* fire-and-forget system-event log; tolerant of the function not existing yet */
 function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(p&&typeof p.then==='function')p.then(()=>{},()=>{});}catch(e){}}
 
