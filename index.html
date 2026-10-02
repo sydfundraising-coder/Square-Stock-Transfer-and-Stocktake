@@ -1671,7 +1671,7 @@ function vLabels(v){
   if(!v._lblResize){v._lblResize=true;window.addEventListener('resize',()=>{if(route==='labels')lblScale();});}
 }
 function lblFiltered(){const q=LBL.q.trim().toLowerCase();return S.items.filter(i=>i.active!==false&&(LBL.cat==='all'||i.category===LBL.cat)&&(!q||(i.name||'').toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q)||String(i.barcode||'').includes(q))).sort((a,b)=>(a.name||'').localeCompare(b.name||''));}
-function lblItems(){const el=document.getElementById('lbl-items');if(!el)return;const list=lblFiltered();
+function lblItems(){const el=document.getElementById('lbl-items');if(!el)return;const list=lblFiltered();const _st=el.scrollTop,_ct=(document.querySelector('.content')||{}).scrollTop;requestAnimationFrame(()=>{el.scrollTop=_st;const c=document.querySelector('.content');if(c&&_ct!=null)c.scrollTop=_ct;});
   el.innerHTML=list.length?list.slice(0,300).map(it=>{const inQ=LBL.lines.some(l=>l.id===it.id);return `<div class="lbl-it"><div class="lbl-it-t"><div class="nm"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div><div class="mono sub">${it.price?money(it.price):''}</div></div><button class="btn sm${inQ?'':' primary'}" data-lbadd="${it.id}">${inQ?`${svg(I.plus,13)} 1 more`:`${svg(I.plus,13)} Add`}</button></div>`;}).join('')+(list.length>300?`<div class="hint" style="padding:8px">Showing 300 of ${list.length}. Narrow the search to see more.</div>`:''):`<div class="empty" style="padding:26px">${svg(I.search,26)}<div>No items match.</div></div>`;
   el.querySelectorAll('[data-lbadd]').forEach(b=>b.onclick=()=>{lblAdd(b.dataset.lbadd,1);lblItems();lblQueue();lblPreview();});}
 function lblQueue(){const el=document.getElementById('lbl-queue');if(!el)return;const n=lblTotal();
@@ -3557,8 +3557,16 @@ function ccList(tab){
   return L;
 }
 const ccTabBar=counts=>`<div class="rep-tabs no-print" style="margin:0 0 10px;flex-wrap:wrap">${CC_TABS.map(t=>`<button class="rep-tab ${ccTab===t[0]?'active':''}" data-cct="${t[0]}">${t[1]} ${counts?`<span class="tag">${counts[t[0]]}</span>`:''}</button>`).join('')}<button class="rep-tab ${ccTab==='range'?'active':''}" data-cct="range">${svg(I.location,14)} Centre range</button></div>`;
+/* when a list has to be redrawn (filter change, after an update) put every scrolling box back where it was */
+function keepScroll(root){
+  if(!root)return;const boxes=[];
+  const pb=root.closest('.panel-body,.content');if(pb)boxes.push([()=>pb,pb.scrollTop]);
+  root.querySelectorAll('.tablewrap,.lbl-items,.lines-scroll').forEach((el,i)=>{const sel=i;boxes.push([()=>root.querySelectorAll('.tablewrap,.lbl-items,.lines-scroll')[sel],el.scrollTop]);});
+  requestAnimationFrame(()=>boxes.forEach(([get,top])=>{const el=get();if(el&&top)el.scrollTop=top;}));
+}
 function renderCleanup(){
   const body=document.getElementById('cc-body');if(!body)return;
+  keepScroll(body);
   if(ccTab==='range')return renderRange(body);
   ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display=ccTab==='nocode'?'none':'';});   // the code/barcode list is information only
   const L=ccList(ccTab);const tab=CC_TABS.find(t=>t[0]===ccTab);const restore=ccTab==='hidden';
@@ -3573,7 +3581,7 @@ function renderCleanup(){
   body.querySelectorAll('[data-cct]').forEach(b=>b.onclick=()=>{ccTab=b.dataset.cct;ccSel=new Set();renderCleanup();});
   const qi=document.getElementById('cc-q');qi.oninput=e=>{ccQ=e.target.value;const pos=e.target.selectionStart;renderCleanup();const n=document.getElementById('cc-q');n.focus();n.setSelectionRange(pos,pos);};
   const all=document.getElementById('cc-all');all.checked=L.length>0&&L.every(r=>ccSel.has(r.item_id));
-  all.onchange=e=>{L.forEach(r=>e.target.checked?ccSel.add(r.item_id):ccSel.delete(r.item_id));renderCleanup();};
+  all.onchange=e=>{const on=e.target.checked;L.forEach(r=>on?ccSel.add(r.item_id):ccSel.delete(r.item_id));body.querySelectorAll('[data-ccs]').forEach(c=>c.checked=on);ccBtn();};
   body.querySelectorAll('[data-ccs]').forEach(c=>c.onchange=e=>{e.target.checked?ccSel.add(c.dataset.ccs):ccSel.delete(c.dataset.ccs);ccBtn();});
   const csv=document.getElementById('cc-csv');if(csv)csv.onclick=()=>downloadCSV(`catalogue-cleanup_${ccTab}_${today()}.csv`,['Product code','Barcode','Missing','Item','Category','Centres selling','On hand (packets)','Stock value','Sold 12 months','Sold 6 months','Last sale','Open transfers/orders','Hidden'],L.map(r=>[r.sku||'',ccItem(r).barcode||'',missLbl(ccItem(r)),r.name,r.category||'',r.centres_listed,r.on_hand,(+r.stock_value||0).toFixed(2),r.sold_365,r.sold_180,r.last_sale||'',r.open_refs,r.hidden?'yes':'']));
   ccBtn();
@@ -3685,6 +3693,7 @@ function rgSummary(cs){
     ${tn?`<div style="font-size:12px;color:var(--muted);margin:-8px 0 12px">${svg(I.info,13)} “Sold/stocked” uses each centre’s stock on hand now and its Square sales in the last 12 months. Items created in Square in the last 90 days are never suggested for disabling.</div>`:''}`;
 }
 function renderRange(body){
+  keepScroll(body);
   rgLoadWin();
   ['cc-go','cc-del'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display='none';});
   const cs=rgCentres();
@@ -3720,8 +3729,12 @@ function renderRange(body){
   document.getElementById('rg-cat').onchange=e=>{rgCat=e.target.value;renderRange(body);};
   document.getElementById('rg-q').oninput=e=>{rgQ=e.target.value;const p=e.target.selectionStart;renderRange(body);const x=document.getElementById('rg-q');x.focus();x.setSelectionRange(p,p);};
   const all=document.getElementById('rg-all');all.checked=L.length>0&&L.every(i=>rgSel.has(i.id));
-  all.onchange=e=>{L.forEach(i=>e.target.checked?rgSel.add(i.id):rgSel.delete(i.id));renderRange(body);};
-  body.querySelectorAll('[data-rgs]').forEach(c=>c.onchange=e=>{e.target.checked?rgSel.add(c.dataset.rgs):rgSel.delete(c.dataset.rgs);renderRange(body);});
+  all.onchange=e=>{const on=e.target.checked;L.forEach(i=>on?rgSel.add(i.id):rgSel.delete(i.id));body.querySelectorAll('[data-rgs]').forEach(c=>c.checked=on);rgSync();};
+  // ticking an item only updates the buttons — the list is NOT redrawn, so you stay where you are
+  const rgSync=()=>{const n=rgSel.size,on=document.getElementById('rg-on'),off=document.getElementById('rg-off'),ck=document.getElementById('rg-check');
+    if(on){on.disabled=!n;on.textContent=`Enable ${n||''} at ${cName}`;}if(off){off.disabled=!n;off.textContent=`Disable ${n||''} at ${cName}`;}if(ck)ck.disabled=!n;
+    const a=document.getElementById('rg-all');if(a)a.checked=L.length>0&&L.every(i=>rgSel.has(i.id));};
+  body.querySelectorAll('[data-rgs]').forEach(c=>c.onchange=e=>{e.target.checked?rgSel.add(c.dataset.rgs):rgSel.delete(c.dataset.rgs);rgSync();});
   body.querySelectorAll('[data-rgt]').forEach(b=>b.onclick=()=>rgConfirm([b.dataset.rgt],b.dataset.on==='1'));
   body.querySelectorAll('[data-rgi]').forEach(b=>b.onclick=()=>rgInspect([b.dataset.rgi]));
   const ck=document.getElementById('rg-check');if(ck)ck.onclick=()=>{const ids=[...rgSel].slice(0,50);if(!ids.length)return toast('Tick up to 50 items to check',true);rgInspect(ids);};
@@ -5887,7 +5900,7 @@ function toggleSidebar(f){document.getElementById('sidebar').classList.toggle('o
     const i=list.indexOf(e.target);if(i>-1&&list[i+1]){e.preventDefault();list[i+1].focus();try{list[i+1].select();}catch(_){}}
   });
   // 5. Keep the field you are typing in visible above the phone keyboard
-  document.addEventListener('focusin',e=>{if(!isPhone()||!e.target.matches('input,select,textarea'))return;setTimeout(()=>{try{e.target.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}},280);});
+  document.addEventListener('focusin',e=>{if(!isPhone()||!e.target.matches('input:not([type=checkbox]):not([type=radio]):not([type=button]),textarea'))return;setTimeout(()=>{try{e.target.scrollIntoView({block:'center',behavior:'smooth'});}catch(_){}},280);});
   // select-all when tapping a quantity so it can be typed over
   document.addEventListener('focusin',e=>{if(e.target.matches&&e.target.matches('input[type=number]')){setTimeout(()=>{try{e.target.select();}catch(_){}},0);}});
   // 6. Stop accidental double taps on the main action button submitting twice
