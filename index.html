@@ -757,7 +757,7 @@
     <div class="brand" id="loginBrand" style="padding:0 0 18px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Portal</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div>
     <div id="signinPane">
     <h2>Sign in</h2>
-    <div class="sq-note"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>Use only the email address you use to log in to Square.</b> Other email addresses will not work, including with Google.</div></div>
+    <div class="sq-note"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><b>Use only the email address you use to log in to Square.</b> Other email addresses will not work, including with Google. <span style="font-weight:500">Stock-take helpers: use the email your Admin added you with.</span></div></div>
     <p id="loginMsg">Sign in with your Square email and your password.</p>
     <div class="field"><label for="email">Email (your Square login)</label><input id="email" type="email" placeholder="you@company.com" autocomplete="username"></div>
     <div class="field"><label for="password">Password</label><div class="pw-wrap"><input id="password" type="password" autocomplete="current-password" placeholder="Your password"><button type="button" class="pw-eye" data-pweye="password" aria-label="Show password">Show</button></div></div>
@@ -1201,14 +1201,30 @@ let pwRecovering=false;
 async function boot(){
   if(!initClient()){ showLogin('Configuration needed: open index.html and set your Supabase URL and anon key at the top, then redeploy.'); return; }
   sb.auth.onAuthStateChange((ev)=>{ if(ev==='PASSWORD_RECOVERY'){ pwRecovering=true; showSetPassword(); } });
+  // password link in the new format (…/?token_hash=…&type=recovery): only used when the person taps Continue,
+  // so email scanners (e.g. Outlook / Microsoft Defender) that open links to check them can't use it up first
+  {const qp=new URLSearchParams(location.search);const th=qp.get('token_hash'),tt=qp.get('type');
+   if(th&&tt){ showLogin(); showLinkContinue(th,tt); return; }}
   const{data:{session}}=await sb.auth.getSession();
   if(session&&PW_RECOVERY){ pwRecovering=true; showSetPassword(session.user&&session.user.email); return; }
   if(session){ window.__appStarted=true; return startApp(); }
   // surface any sign-in error (e.g. an email that isn't in the Square team)
   const p=new URLSearchParams((location.hash.replace(/^#/,''))+'&'+(location.search.replace(/^\?/,'')));
-  const err=p.get('error_description');
-  showLogin(err?decodeURIComponent(err).replace(/\+/g,' '):undefined);
+  let err=p.get('error_description');if(err)err=decodeURIComponent(err).replace(/\+/g,' ');
+  if(err&&(/invalid or has expired|otp_expired/i.test(err)||p.get('error_code')==='otp_expired'))err=LINK_USED_MSG;
+  showLogin(err||undefined);
+  if(err)history.replaceState(null,'',location.pathname);
   sb.auth.onAuthStateChange((ev,s)=>{ if(s&&ev==='SIGNED_IN'&&!pwRecovering&&!window.__appStarted){ window.__appStarted=true; startApp(); } });
+}
+const LINK_USED_MSG='This password link has already been used or has expired. Links work once — some email apps (like Outlook) open links automatically to check them, which can use it up. Type your email below and tap “Email me a link” for a new one, then open it straight away.';
+function showLinkContinue(th,tt){
+  const m=document.getElementById('loginMsg');m.style.color='';
+  m.innerHTML=`<div style="margin:4px 0 10px;font-size:14px;color:var(--ink)">You opened your password link. Tap below to continue.</div><button type="button" class="btn primary" id="lnkGo" style="width:100%;min-height:46px;justify-content:center">Continue to set my password</button>`;
+  document.getElementById('lnkGo').onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking the link…';
+    const{data,error}=await sb.auth.verifyOtp({token_hash:th,type:tt});
+    history.replaceState(null,'',location.pathname);
+    if(error){m.innerHTML='';loginMsg(/expired|invalid|used/i.test(error.message||'')?LINK_USED_MSG:error.message,'err');return;}
+    pwRecovering=true;showSetPassword(data&&data.user&&data.user.email);};
 }
 function showLogin(msg){
   document.getElementById('app').hidden=true;
@@ -6825,7 +6841,7 @@ document.getElementById('pwReset').onclick=async()=>{
   const{error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   btn.disabled=false;
   if(error){loginMsg(error.message,'err');return;}
-  loginMsg('If this email is in the Square team, a link to set your password is on its way. Open it on this device.','ok');
+  loginMsg('If this email has access, a link to set your password is on its way. Open the newest email straight away (older links stop working).','ok');
 };
 ['email','password'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('pwSignIn').click();}));
 function showSetPassword(email){
