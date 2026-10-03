@@ -642,6 +642,11 @@
     .stl-det .btn{height:42px}
   }
   /* stock-take reports */
+  .bi-tbl td{vertical-align:top}
+  .bi-c{padding:2px 0;font-size:13px;line-height:1.35}
+  .bi-c+.bi-c{border-top:1px dashed var(--border);margin-top:3px;padding-top:4px}
+  .bi-q{display:inline-block;min-width:28px;margin:0 6px;padding:0 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);font-weight:700;text-align:center}
+  .bi-m{font-size:11.5px;color:var(--muted)}
   .sr-item{border:1px solid var(--border);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--surface)}
   .sr-item>.sr-h{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 74px 90px;gap:8px;align-items:center;padding:10px 14px;cursor:pointer}
   .sr-item>.sr-h .n{font-weight:600;font-size:13.5px;min-width:0}
@@ -1211,7 +1216,7 @@ async function boot(){
   // surface any sign-in error (e.g. an email that isn't in the Square team)
   const p=new URLSearchParams((location.hash.replace(/^#/,''))+'&'+(location.search.replace(/^\?/,'')));
   let err=p.get('error_description');if(err)err=decodeURIComponent(err).replace(/\+/g,' ');
-  if(err&&(/invalid or has expired|otp_expired/i.test(err)||p.get('error_code')==='otp_expired'))err=LINK_USED_MSG;
+  if(err&&(/invalid or has expired|otp_expired/i.test(err)||p.get('error_code')==='otp_expired'))err=LINK_USED_MSG+' [old-style link · '+(p.get('error_code')||'expired')+']';
   showLogin(err||undefined);
   if(err)history.replaceState(null,'',location.pathname);
   sb.auth.onAuthStateChange((ev,s)=>{ if(s&&ev==='SIGNED_IN'&&!pwRecovering&&!window.__appStarted){ window.__appStarted=true; startApp(); } });
@@ -1223,7 +1228,10 @@ function showLinkContinue(th,tt){
   document.getElementById('lnkGo').onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking the link…';
     const{data,error}=await sb.auth.verifyOtp({token_hash:th,type:tt});
     history.replaceState(null,'',location.pathname);
-    if(error){m.innerHTML='';loginMsg(/expired|invalid|used/i.test(error.message||'')?LINK_USED_MSG:error.message,'err');return;}
+    if(error){
+      // a double tap may already have signed in with this link — then just carry on
+      try{const{data:{session}}=await sb.auth.getSession();if(session){pwRecovering=true;showSetPassword(session.user&&session.user.email);return;}}catch(_){}
+      m.innerHTML='';loginMsg((/expired|invalid|used/i.test(error.message||'')?LINK_USED_MSG:error.message)+' [new link · '+(error.message||'error')+']','err');return;}
     pwRecovering=true;showSetPassword(data&&data.user&&data.user.email);};
 }
 function showLogin(msg){
@@ -3369,10 +3377,11 @@ function vStock(v){
     :`<div class="banner info">${svg(I.stocktake,17)}<div><b>You can count while trading.</b> Each item’s variance is measured against the system stock at the moment it was counted, so anything sold (or received) before you finalise is kept — not lost. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+
     (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+`
     <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
-    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${(st.lines||[]).length}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
   const ub=document.getElementById('st-undo');if(ub)ub.onclick=openUndoDeletedStocktakes;
+  v.querySelectorAll('[data-stprog]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=S.stocktakes.find(x=>x.id===b.dataset.stprog);if(s)openStProgressReport(s);});
 }
 function newStock(){
   const cats=['(all categories)',...new Set(S.items.map(i=>i.category).filter(Boolean))];
@@ -3451,7 +3460,7 @@ function openStock(id,amend){
   if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)}<span class="hide-sm"> Delete</span></button>`;
   if(!open&&!editable) foot+=`<button class="btn" id="st-hist2">Count history</button>`;
   if(!HELPER&&['super_admin','national_admin'].includes(ROLE)&&stFlagCount(st.id)) foot+=`<button class="btn" id="st-flags2" style="color:var(--warn);border-color:var(--warn)">${svg(I.alert,16)} ${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</button>`;
-  if(!open&&!editable&&ROLE==='super_admin') foot+=`<button class="btn" id="st-var">${svg(I.chart||I.stocktake,16)} Variance report</button>`;
+  if(!open&&!editable&&['super_admin','national_admin'].includes(ROLE)&&!HELPER) foot+=`<button class="btn" id="st-var">${svg(I.chart||I.stocktake,16)} Variance report</button>`;
   if(open&&HELPER) foot+=`<button class="btn primary" id="st-save">${svg(I.check,16)} Done for now</button>`;
   else if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
   else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
@@ -3916,7 +3925,70 @@ async function stLoadReportData(stId,lineCols){
     all(()=>sb.from('stocktake_count_log').select('id,ts,actor,actor_name,is_helper,action,qty,before_qty,after_qty,line_id,item_id,area,aisle,expiry,splits,device').eq('stocktake_id',stId).order('id',{ascending:true}))]);
   return {error:a.error,lines:a.data||[],logs:b.error?[]:(b.data||[]),noLog:!!b.error};
 }
+/* ---------- "By item & counter": one row per item, who counted it underneath (not one line per entry) ---------- */
+// replay each line's entries in order: "add" adds to that person, "set" replaces the whole count, "clear" empties it
+function stCountersByLine(logs){
+  const M={};
+  (logs||[]).forEach(r=>{if(!r.line_id||!['add','set','clear','details'].includes(r.action))return;
+    const L=M[r.line_id]=M[r.line_id]||{order:[],by:{}};const k=r.actor||r.actor_name||'?';
+    const p=L.by[k]=L.by[k]||{name:r.actor_name||'Unknown',helper:!!r.is_helper,qty:0,entries:0,places:new Set(),dates:new Set(),last:r.ts};
+    if(!L.order.includes(k))L.order.push(k);
+    if(r.action==='clear'){Object.values(L.by).forEach(x=>x.qty=0);return;}
+    if(r.action==='set'){Object.values(L.by).forEach(x=>x.qty=0);p.qty=+r.qty||0;}
+    else if(r.action==='add')p.qty+=(+r.qty||0);
+    if(r.action!=='details')p.entries++;
+    const pl=[r.area,r.aisle?'Aisle '+r.aisle:''].filter(Boolean).join(' · ');if(pl)p.places.add(pl);
+    if(Array.isArray(r.splits)&&r.splits.length)r.splits.forEach(s=>s.exp&&p.dates.add(String(s.exp).slice(0,10)));else if(r.expiry)p.dates.add(String(r.expiry).slice(0,10));
+    p.last=r.ts;});
+  const out={};Object.entries(M).forEach(([lid,L])=>{out[lid]=L.order.map(k=>L.by[k]).filter(p=>p.entries>0);});
+  return out;
+}
+function stByItemRows(D,withVar,completed){
+  const CB=stCountersByLine(D.logs);
+  return D.lines.map(l=>{const it=item(l.item_id);const cnt=l.counted_qty==null?null:+l.counted_qty;
+    let counters=CB[l.id]||[];if(!counters.length&&cnt!=null&&l.counted_by_name)counters=[{name:l.counted_by_name,helper:false,qty:cnt,entries:l.entries||1,places:new Set([[l.area,l.aisle?'Aisle '+l.aisle:''].filter(Boolean).join(' · ')].filter(Boolean)),dates:new Set(l.expiry?[String(l.expiry).slice(0,10)]:[]),last:l.counted_at}];
+    let sys=null,v=null,val=0;
+    if(withVar&&cnt!=null){
+      // finalised: the system figure the count was measured against; open: system stock when the item was counted, else today's stock
+      sys=completed?(+l.system_qty||0):(l.sys_at_count!=null?+l.sys_at_count:onHand(STC_LOC,l.item_id));
+      v=cnt-sys;val=v*(+it.unit_cost||0);}
+    const dates=(Array.isArray(l.splits)&&l.splits.length)?l.splits.map(s=>s.qty+' × '+fmtDate(s.exp)).join(', '):(l.expiry?fmtDate(l.expiry):(l.no_expiry?'No date':''));
+    return {l,it,cnt,sys,v,val,counters,dates};});
+}
+let STC_LOC=null;   // centre of the report being shown (for today's stock look-ups)
+function stByItemView(el,rows,opts){
+  opts=opts||{};let q='',f=opts.showVar?'var':'counted',sort=opts.showVar?'val':'name';
+  const sum=(a,fn)=>a.reduce((s,r)=>s+fn(r),0);
+  const cn=rows.filter(r=>r.cnt!=null),va=cn.filter(r=>r.v),sh=va.filter(r=>r.v<0),ov=va.filter(r=>r.v>0);
+  const ctr=r=>r.counters.length?r.counters.map(c=>`<div class="bi-c"><b>${esc(c.name)}</b>${c.helper?' <span class="tag">helper</span>':''} <span class="tnum bi-q">${c.qty}</span><span class="bi-m">${c.places.size?esc([...c.places].join(', ')):''}${c.dates.size?(c.places.size?' · ':'')+'BB '+[...c.dates].sort().map(d=>fmtDate(d)).join(', '):''}${c.entries>1?` · ${c.entries} entries`:''}</span></div>`).join(''):`<span class="bi-m">${r.cnt==null?'Not counted yet':'—'}</span>`;
+  const draw=()=>{let L=rows.slice();const ql=q.toLowerCase();
+    if(f==='counted')L=L.filter(r=>r.cnt!=null);else if(f==='todo')L=L.filter(r=>r.cnt==null);else if(f==='var')L=L.filter(r=>r.v);else if(f==='multi')L=L.filter(r=>r.counters.length>1);
+    if(ql)L=L.filter(r=>String(r.it.name).toLowerCase().includes(ql)||String(r.it.sku||'').toLowerCase().includes(ql)||r.counters.some(c=>c.name.toLowerCase().includes(ql)));
+    L.sort(sort==='val'?(a,b)=>Math.abs(b.val)-Math.abs(a.val)||String(a.it.name).localeCompare(String(b.it.name)):(a,b)=>String(a.it.name).localeCompare(String(b.it.name)));
+    const lab={counted:'Counted',var:'With variance',multi:'Counted by 2+ people',todo:'Not counted',all:'All items'};
+    const n={counted:cn.length,var:va.length,multi:rows.filter(r=>r.counters.length>1).length,todo:rows.length-cn.length,all:rows.length};
+    el.innerHTML=(opts.showVar?`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:12px">
+        <div class="tile"><div class="lbl">Counted so far</div><div class="val tnum">${cn.length} <span style="font-size:14px;color:var(--muted)">of ${rows.length}</span></div><div class="meta">${va.length} with a variance</div></div>
+        <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${sum(sh,r=>r.v)}</div><div class="meta">${money(sum(sh,r=>r.val))} · ${sh.length} item(s)</div></div>
+        <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${sum(ov,r=>r.v)}</div><div class="meta">${money(sum(ov,r=>r.val))} · ${ov.length} item(s)</div></div>
+        <div class="tile"><div class="lbl">Net variance</div><div class="val tnum">${money(sum(va,r=>r.val))}</div><div class="meta">gross ${money(sum(va,r=>Math.abs(r.val)))}</div></div></div>
+      ${opts.live?`<div class="banner info" style="margin-bottom:10px">${svg(I.info,17)}<div>Live, before finalising. Variance = counted − system stock <b>when each item was counted</b> (or today’s stock for items counted before trading-safe counts were switched on). Counters don’t see this — the count stays blind.</div></div>`:''}`:'')+
+      `<div class="st-chips" data-bif style="margin-bottom:8px">${Object.keys(lab).filter(k=>opts.showVar||k!=='var').map(k=>`<button type="button" class="st-chip${f===k?' on':''}" data-bf="${k}">${lab[k]}<b>${n[k]}</b></button>`).join('')}</div>
+      <div class="toolbar" style="margin-bottom:8px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input data-biq placeholder="Search item, code or counter" value="${esc(q)}" autocomplete="off"></div>${opts.showVar?`<select class="filter" data-bis><option value="val"${sort==='val'?' selected':''}>Biggest $ variance</option><option value="name"${sort==='name'?' selected':''}>Item name</option></select>`:''}<button class="btn sm" data-bicsv>Export CSV</button></div>
+      ${L.length?`<div class="tablewrap"><table class="no-cards bi-tbl"><thead><tr><th>Item</th><th class="num">Counted</th>${opts.showVar?'<th class="num">System</th><th class="num">Variance</th><th class="num">Value</th>':''}<th>Counted by (qty · where · best before)</th></tr></thead><tbody>${L.slice(0,1500).map(r=>`<tr><td><span class="icode">${esc(r.it.sku||'')}</span>${esc(r.it.name)}${r.dates?`<div class="bi-m">BB ${esc(r.dates)}</div>`:''}</td><td class="num tnum"><b>${r.cnt==null?'—':r.cnt}</b></td>${opts.showVar?`<td class="num tnum">${r.sys==null?'—':r.sys}</td><td class="num tnum" style="font-weight:700;color:${r.v==null?'var(--faint)':r.v<0?'var(--crit)':r.v>0?'var(--transit)':'var(--good)'}">${r.v==null?'—':r.v>0?'+'+r.v:r.v}</td><td class="num tnum">${r.v?money(r.val):'—'}</td>`:''}<td>${ctr(r)}</td></tr>`).join('')}</tbody></table></div>${L.length>1500?'<div class="bi-m">Showing the first 1,500 — narrow the filter or export CSV.</div>':''}`
+        :`<div class="card empty"><div>${f==='var'?'No variances so far.':'Nothing matches.'}</div></div>`}`;
+    el.querySelector('[data-bif]').onclick=e=>{const b=e.target.closest('[data-bf]');if(!b)return;f=b.dataset.bf;draw();};
+    const qi=el.querySelector('[data-biq]');qi.oninput=e=>{q=e.target.value;const p=qi.selectionStart;draw();const n2=el.querySelector('[data-biq]');n2.focus();try{n2.setSelectionRange(p,p);}catch(_){}};
+    const ss=el.querySelector('[data-bis]');if(ss)ss.onchange=e=>{sort=e.target.value;draw();};
+    el.querySelector('[data-bicsv]').onclick=()=>{const out=[];rows.forEach(r=>{const base=[r.it.sku||'',r.it.name,r.cnt==null?'':r.cnt].concat(opts.showVar?[r.sys==null?'':r.sys,r.v==null?'':r.v,r.v?r.val.toFixed(2):'']:[]);
+        if(!r.counters.length)out.push(base.concat(['','','','','','']));
+        r.counters.forEach(c=>out.push(base.concat([c.name,c.helper?'yes':'',c.qty,[...c.places].join('; '),[...c.dates].sort().join('; '),c.entries])));});
+      downloadCSV(`count-by-item_${opts.code||''}_${today()}.csv`,['Product code','Item','Counted'].concat(opts.showVar?['System','Variance','Variance $']:[]).concat(['Counted by','Helper','Their qty','Where','Best before','Entries']),out);};
+  };
+  draw();
+}
 async function openStProgressReport(st){
+  STC_LOC=st.location_id;
   modal('Count progress — '+st.code,loc(st.location_id).name+' · who has counted what so far',`<div id="spr-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
     `<button class="btn" id="spr-back">Back to the count</button><button class="btn" id="spr-csv">Export CSV</button><button class="btn primary" id="spr-ref">Refresh</button>`,'full form');
   let D=null;
@@ -3935,7 +4007,10 @@ async function openStProgressReport(st){
     const A={};L.forEach(l=>{const k=(l.area||'').trim()||'No location yet';const a=A[k]=A[k]||{t:0,d:0};a.t++;if(l.counted_qty!=null)a.d++;});
     const areas=Object.entries(A).sort((a,b)=>a[0]==='No location yet'?1:b[0]==='No location yet'?-1:a[0].localeCompare(b[0]));
     const todo=L.filter(l=>l.counted_qty==null).map(l=>item(l.item_id)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-    box.innerHTML=`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:14px">
+    D.people=people;D.todo=todo;
+    const tabs=`<div class="st-chips" id="spr-tabs" style="margin-bottom:12px"><button type="button" class="st-chip${tab==='sum'?' on':''}" data-sprt="sum">Summary</button><button type="button" class="st-chip${tab==='item'?' on':''}" data-sprt="item">By item &amp; counter</button>${canVar?`<button type="button" class="st-chip${tab==='var'?' on':''}" data-sprt="var">Variance so far</button>`:''}</div>`;
+    if(tab!=='sum'){box.innerHTML=tabs+`<div id="spr-bi"></div>`;stByItemView(document.getElementById('spr-bi'),stByItemRows(D,tab==='var'),{showVar:tab==='var',live:true,code:st.code});bindTabs();return;}
+    box.innerHTML=tabs+`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:14px">
         <div class="tile"><div class="lbl">Items counted</div><div class="val tnum">${done.length} <span style="font-size:14px;color:var(--muted)">of ${total}</span></div><div class="sr-bar"><div style="width:${pct}%"></div></div><div class="meta">${pct}% done · ${total-done.length} to go</div></div>
         <div class="tile"><div class="lbl">Packets counted</div><div class="val tnum">${pk.toLocaleString()}</div><div class="meta">across all locations</div></div>
         <div class="tile"><div class="lbl">People counting</div><div class="val tnum">${people.length}</div><div class="meta">${people.filter(p=>p.helper).length} helper(s)</div></div>
@@ -3947,8 +4022,15 @@ async function openStProgressReport(st){
       <details${todo.length&&todo.length<=60?' open':''}><summary style="cursor:pointer;font-weight:700;font-size:14px;margin-bottom:8px">Still to count (${todo.length})</summary>
         ${todo.length?`<div class="card pad" style="columns:2 260px;column-gap:24px;font-size:13px">${todo.map(it=>`<div style="break-inside:avoid;padding:3px 0"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>`).join('')}</div>`:`<div class="banner info">${svg(I.check,17)}<div>Every item has been counted.</div></div>`}</details>
       ${D.noLog?`<div style="font-size:12px;color:var(--muted);margin-top:10px">Run 54_stocktake_team.sql for per-entry figures.</div>`:''}`;
-    D.people=people;D.todo=todo;};
-  const load=async()=>{D=await stLoadReportData(st.id,'id,item_id,counted_qty,area,aisle,counted_by,counted_by_name,counted_at,entries');draw();};
+    bindTabs();};
+  // Super / National Admin also see the variance while the count is still open (counters never do — it's a blind count)
+  const canVar=!HELPER&&['super_admin','national_admin'].includes(ROLE);let tab='sum';
+  const bindTabs=()=>{const t=document.getElementById('spr-tabs');if(t)t.onclick=e=>{const b=e.target.closest('[data-sprt]');if(!b)return;tab=b.dataset.sprt;draw();};};
+  const load=async()=>{
+    const base='id,item_id,counted_qty,area,aisle,counted_by,counted_by_name,counted_at,entries,expiry,splits';
+    D=await stLoadReportData(st.id,canVar?base+',system_qty,sys_at_count,sys_at_count_at':base);
+    if(D.error&&canVar&&/sys_at_count|column/i.test(D.error.message||''))D=await stLoadReportData(st.id,base+',system_qty');
+    draw();};
   document.getElementById('spr-back').onclick=()=>openStock(st.id);
   document.getElementById('spr-ref').onclick=load;
   document.getElementById('spr-csv').onclick=()=>{if(!D||!D.people)return;
@@ -3958,7 +4040,7 @@ async function openStProgressReport(st){
 }
 /* ---------- post stock-take variance report (Super Admin): each item with its counters underneath ---------- */
 async function openStVarianceReport(st){
-  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  if(!['super_admin','national_admin'].includes(ROLE)||HELPER)return toast('Super Admin / National Admin only',true);
   modal('Variance report — '+st.code,loc(st.location_id).name+' · finalised '+fmtDT(st.completed_at),`<div id="svr-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
     `<button class="btn" id="svr-back">Back</button><button class="btn" id="svr-csv">Export CSV</button><button class="btn" id="svr-print">Print</button>`,'full form');
   let D=await stLoadReportData(st.id,'id,item_id,system_qty,counted_qty,area,aisle,expiry,splits,counted_by,counted_by_name,counted_at,entries,moved_during,final_qty,sys_at_count_at');
@@ -3997,9 +4079,17 @@ async function openStVarianceReport(st){
       <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${sum(ov,r=>r.v)}</div><div class="meta">${money2(sum(ov,r=>r.val))} · ${ov.length} item(s)</div></div>
       <div class="tile"><div class="lbl">Net variance</div><div class="val tnum">${money2(sum(vars,r=>r.val))}</div><div class="meta">gross ${money2(sum(vars,r=>Math.abs(r.val)))} · at unit cost</div></div></div>
     ${Object.keys(C).length?`<h3 style="font-size:14px;margin:4px 0 8px">By counter</h3><div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Counter</th><th class="num">Items counted</th><th class="num">With variance</th><th class="num">Variance rate</th><th class="num">Variance value (gross)</th></tr></thead><tbody>${Object.entries(C).sort((a,b)=>b[1].val-a[1].val).map(([n,c])=>`<tr class="clickable" data-svc="${esc(n)}"><td><b>${esc(n)}</b>${c.helper?' <span class="tag">helper</span>':''}</td><td class="num tnum">${c.n}</td><td class="num tnum">${c.v}</td><td class="num tnum">${c.n?Math.round(c.v/c.n*100):0}%</td><td class="num tnum">${money2(c.val)}</td></tr>`).join('')}</tbody></table></div>`:''}
+    <div class="seg no-print" id="svr-view" style="display:flex;gap:6px;margin:6px 0 12px"><button type="button" class="btn sm primary" data-svv="ent">Variance with every entry</button><button type="button" class="btn sm" data-svv="item">By item &amp; counter</button></div>
+    <div id="svr-entries">
     <div class="st-chips" id="svr-chips" style="margin-bottom:8px">${chips()}</div>
     <div class="toolbar" style="margin-bottom:10px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="svr-q" placeholder="Search item, code or counter" autocomplete="off"></div><select class="filter" id="svr-sort"><option value="val">Biggest $ variance</option><option value="units">Biggest unit variance</option><option value="name">Item name</option></select><button class="btn sm" id="svr-exp">Expand all</button></div>
-    <div id="svr-list">${list()}</div>`;
+    <div id="svr-list">${list()}</div></div>
+    <div id="svr-byitem" hidden></div>`;
+  STC_LOC=st.location_id;
+  document.getElementById('svr-view').onclick=e=>{const b=e.target.closest('[data-svv]');if(!b)return;const it=b.dataset.svv==='item';
+    document.querySelectorAll('#svr-view [data-svv]').forEach(x=>x.classList.toggle('primary',x===b));
+    document.getElementById('svr-entries').hidden=it;const bi=document.getElementById('svr-byitem');bi.hidden=!it;
+    if(it&&!bi.dataset.done){bi.dataset.done='1';stByItemView(bi,stByItemRows(D,true,true),{showVar:true,code:st.code});}};
   const redraw=()=>{document.getElementById('svr-list').innerHTML=list();document.getElementById('svr-chips').innerHTML=chips();};
   document.getElementById('svr-chips').onclick=e=>{const b=e.target.closest('[data-svf]');if(!b)return;filt=b.dataset.svf;redraw();};
   document.getElementById('svr-q').oninput=e=>{q=e.target.value;redraw();};
