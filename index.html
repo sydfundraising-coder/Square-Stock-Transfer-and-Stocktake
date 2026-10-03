@@ -546,7 +546,7 @@
   .capw{display:contents}
   /* stock-take helpers only ever see Stock Take */
   .is-helper .mobile-tabs .mtab:not([data-route="stocktake"]){display:none}
-  .is-helper .sq-status,.is-helper .help-btn{display:none}
+  .is-helper .sq-status{display:none}
   .st-who{font-size:12px;color:var(--muted);margin-top:2px}
   .st-who b{color:var(--accent-ink)}
   .st-sync{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
@@ -1909,8 +1909,179 @@ HELP.topics.push(
  {id:'hs4',section:'Sales',title:'Customer statements',intro:'Monthly statements are generated automatically on the last working day (Mon–Fri) of each month for every customer with activity or a balance.',steps:['Click <b>Generate statement</b> to make a custom one: pick the customer and period (or a quick period).','Click any statement to view it, <b>Download PDF</b>, <b>Email</b> it or delete it.','<b>Generate monthly now</b> makes or refreshes a month’s statements; <b>Email unsent</b> sends every unsent statement in the list to the customer’s saved email.'],tip:'Public holidays are not skipped when working out the last working day.',warn:'',ctx:['route:sales'],roles:['national_admin']},
  {id:'hs5',section:'Sales',title:'Ageing and transactions',intro:'<b>Ageing</b> shows what each customer owes split into Current, 1–30, 31–60, 61–90 and 90+ days past the due date.',steps:['Change <b>Balances as at</b> to see ageing on an earlier date. Export to CSV or Excel.','Click a customer to open <b>Transactions</b>, which lists invoices and payments with a running balance.','In Transactions, search by invoice number, reference or amount and filter by date or type.'],tip:'',warn:'',ctx:['route:sales'],roles:['national_admin']}
 );
+/* ---- Help updated (Oct 2026): group stock takes with own counts, helpers, best-before rules, trading-safe counts,
+        reports, reversals, Square checks and the audit trail. Replaces older topics by id and adds new ones. ---- */
+(function(){
+  const ALL=['user','admin','national_admin'],ADM=['admin','national_admin'],NAT=['national_admin'];
+  const T=(id,section,title,intro,steps,tip,warn,ctx,roles)=>({id,section,title,intro,steps,tip:tip||'',warn:warn||'',ctx,roles});
+  const upd=[
+    T('h0','Getting started','Sign in','Open <b>stock.shayona.com.au</b> and sign in with your email and <b>password</b>.',[
+      'Staff: use <b>only the email address you use to log in to Square</b>. Stock-take helpers: use the email your Admin added you with.',
+      'Type your password (tap <b>Show</b> to check it) and tap <b>Sign in</b>.',
+      'First time, or forgot your password? Type your email, then tap <b>Email me a link to set it</b>. Open the <b>newest</b> email from “Shayona Stock Control System”.',
+      'Bookmark the page, or on a phone use Share → <b>Add to Home Screen</b> so it opens like an app.'],
+      'If the page says the link was already used or has expired, request a new one and open it straight away. Email apps like Outlook sometimes open links to check them, which can use them up.','',['login'],ALL),
+    T('h1','Getting started','Set your password the first time','Tap <b>Set my password</b> in the email. The app opens with a <b>Continue to set my password</b> button.',[
+      'Tap <b>Continue to set my password</b>.',
+      'Type a new password: at least <b>10 characters</b>, with letters and numbers, then type it again.',
+      'Tap <b>Save password and continue</b>. You are signed in.',
+      'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
+      'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('h6','Getting started','Using the app on a phone','Every screen works on a phone: lists become cards and buttons are large.',[
+      'The bottom bar has the main pages; <b>More</b> (or ☰ at top left) opens the full menu.',
+      'In a stock take the top bar shrinks while you scroll and hides while you type a count, so the item stays in view.',
+      'Camera scanning works on iPhone and Android — allow camera access the first time.'],'','',['route:dashboard'],ALL),
+    T('h16','Stock transfers','Receive a transfer when it arrives','Open the transfer and tap <b>Receive stock</b>. Record what actually arrived.',[
+      'For each item enter the <b>boxes received</b>, <b>store area</b>, <b>aisle</b> and <b>best-before</b>. Use <b>+ Add location / best-before</b> to split a line.',
+      'Best-before is required and <b>can’t be in the past</b>; check the date on the pack.',
+      'Tap <b>Confirm receipt</b>. Stock is added and sent to Square as “Stock received”. Anything short is recorded as lost in transit.'],
+      'Not finished? <b>Save &amp; finish later</b> keeps your entries.','',['modal:receive-transfer'],['user','admin']),
+    T('h20','Purchase orders','Receive a purchase order','Record what arrived for each line: boxes, <b>store area</b>, <b>aisle #</b>, <b>best-before</b> and the <b>cost per packet</b>.',[
+      'Best-before is required and <b>can’t be in the past</b>.',
+      'Split a line across areas or dates with <b>+ Add location / best-before</b>.',
+      'Tap <b>Confirm receipt</b>. Stock and average cost update and Square shows “Stock received”.'],
+      'Big order? Use <b>Download template</b> / <b>Upload filled</b>.','',['modal:receive-order'],['user','admin']),
+    T('h22','Goods receipts','Record a supplier delivery','For a delivery without a purchase order.',[
+      'Enter the supplier and their invoice / reference number.',
+      'For each item enter quantity, unit cost and <b>best-before</b> (required, not in the past). Tap <b>+</b> for more than one date.',
+      'Tap <b>Post receipt</b>.'],'','',['modal:newreceipt'],['user']),
+    T('h23','Stock takes','The Stock Take page','Open and past counts are listed here.',[
+      'Open counts show live progress, e.g. <b>18 / 109 · 17% counted</b>. Tap a count to join in.',
+      'Admins and above: <b>Start stock take</b>, <b>Stock-take helpers</b>. National / Super Admin: <b>Progress &amp; variance</b> on each open count.',
+      'Super Admin: <b>Spot check (by movement)</b>, <b>Undo a deleted count</b>, and the banner for <b>typed best-before dates to check</b>.'],'','',['route:stocktake'],ALL),
+    T('h24','Stock takes','Start a stock take','On <b>Stock Take</b>, tap <b>Start stock take</b> (Admin and above).',[
+      'Choose the <b>centre</b> and <b>scope</b> (all categories or one), then <b>Start counting</b>.',
+      'Tell everyone counting — staff and helpers — to open it. Many people can count at once.',
+      'You can count while the shop is open (see “Counting while trading”).'],'','',['modal:newstock'],['admin','national_admin']),
+    T('h25','Stock takes','Count the stock (your own count)','Each person enters <b>only what they counted</b>. The item’s <b>Total</b> adds everyone’s counts together automatically. Counts are blind — the system figure is hidden.',[
+      'Scan a barcode (USB scanner or <b>Camera</b>) or search, or tap <b>Add my count</b> on the item.',
+      'Enter <b>boxes and loose packets</b>, the <b>best-before</b> (pick from the list, “Other date — type it…”, or tick <b>No date on pack</b>) and, if you like, the <b>location / aisle</b> (required at the Central Warehouse). Tap <b>Save my count</b>.',
+      'Your line appears under the item: “You · 12 · Front shop · BB 2 Nov 2026”. Other people’s counts show too, but you can’t change them.',
+      'Counted the same item somewhere else or with another date? Tap <b>Add another count</b> — each spot/date is kept separately. <b>+1 box</b> adds a box to your latest count.',
+      'Made a mistake? Tap <b>Edit</b> on your own line to change or remove it.',
+      'Everything saves straight away (“All saved · live”). With no signal, counts wait on the phone and send automatically.'],
+      'Count all spots of the same item close together, especially while the shop is open.','',['panel:stocktake','scan'],ALL),
+    T('hx1','Stock takes','A spot stock take was started for my centre','A Super Admin can start a <b>spot check</b> (code CC-…) for a few items, chosen by how fast they sell.',[
+      'Open <b>Stock Take</b> and tap the CC- count.',
+      'Count each listed item with <b>Add my count</b>, exactly like a full stock take.',
+      'An Admin finalises it when all items are counted.'],'It is a blind count: count what is on the shelf.','',['route:stocktake','panel:stocktake'],ALL),
+    T('h27','Damage and expiry','Report damaged or expired stock','On <b>Damage / Expiry</b>, tap <b>Report damage/expired</b> (or use the button on an item).',[
+      'Choose the item, centre and type (<b>Damaged</b> or <b>Expired</b>), the quantity and a reason.',
+      'For <b>Expired</b>, choose <b>which best-before</b> from the dates the system holds for that item at the centre. You can’t report more than it holds for that date; a date that hasn’t passed yet needs a reason.',
+      'Tap <b>Submit request</b>. The quantity is reserved until a National or Super Admin decides.'],
+      'Once approved, stock is removed and Square shows “Damage” or “Spoilage / waste”.','',['modal:newadj'],['user','admin']),
+    T('h51','Everyday centre tasks','Stock takes','Run counts for your centre with as many people as you need.',[
+      'Tap <b>Start stock take</b>, choose the centre and scope.',
+      'Add <b>stock-take helpers</b> if people outside the Square team are helping.',
+      'Watch <b>Progress</b> (Summary, By item &amp; counter). <b>Fix</b> any wrong count on the item.',
+      'When done, tap <b>Finalise</b> and check the review screen.'],'','',['route:stocktake'],['admin']),
+    T('h35','Checking stock and sales','Item details','Tap any product for cost, price, pack size, stock, storage and history.',[
+      '<b>History</b> lists every stock movement (sales, transfers, counts, write-offs, reversals).',
+      '<b>Best-before, bin &amp; location changes</b> (below the history) shows who changed dates, warehouse bins or store location, when and why.',
+      'National / Super Admin: <b>Check with Square</b> compares the app and Square for this item.'],'','',['panel:item'],['user','admin']),
+    T('h62','Approvals','Approve damage and expiry write-offs','Pending requests from every centre, with value.',[
+      'Check the best-before chosen for expired stock.',
+      '<b>Approve</b> removes the stock and sends it to Square; <b>Reject</b> releases the reserved quantity.',
+      'A Super Admin can <b>Reverse</b> an approved write-off later — the stock goes back and it shows “Reversed”.'],'','',['route:adjustments'],NAT)
+  ];
+  const add=[
+    T('hst1','Stock takes','Several people counting at once','Any number of people can count the same stock take on their own phones.',[
+      'Everyone opens the same count. Each person adds <b>their own counts</b>; nobody can overwrite anyone else.',
+      'Each item shows a <b>Total</b> and, underneath, one line per count: who, how many, where and best-before.',
+      'Changes from other people appear within a few seconds (the card flashes).',
+      'Filters: <b>All</b>, <b>To count</b>, <b>Counted</b>, <b>My counts</b>, <b>Needs date</b>.'],
+      'Split the shop between people (e.g. by aisle) to avoid counting the same shelf twice.','',['panel:stocktake','route:stocktake'],ALL),
+    T('hst3','Stock takes','Best-before rules','Every counted item needs a best-before date.',[
+      'Pick a date already on the system, choose <b>Other date — type it…</b>, or tick <b>No date on pack</b> for non-dated items.',
+      'Dates <b>can’t be in the past</b> and need a 4-digit year (e.g. 2027).',
+      'A typed date that isn’t on the system list is flagged for the Super Admin to check.',
+      'Expired packs found on the shelf: don’t count them — report them under <b>Damage / Expiry</b>.'],'','',['panel:stocktake','scan'],ALL),
+    T('hst4','Stock takes','Counting while the shop is open','You don’t have to close to count.',[
+      'When you save a count, the system remembers the stock figure at that moment.',
+      'Anything sold (or received) after you counted is kept: final stock = counted − sold since.',
+      'Example: 10 counted at 10:00, 2 sold at 11:30, finalised at 14:00 → final stock 8.'],
+      'Count every spot of an item close together.','',['panel:stocktake','modal:newstock'],ALL),
+    T('hst5','Stock takes','Progress and count history','Tap <b>Progress</b> or <b>History</b> at the top of the count.',[
+      '<b>Summary</b>: items counted, people counting, by counter, by location and what is still to count.',
+      '<b>By item &amp; counter</b>: one row per item with each person’s quantity, where and best-before. Export to CSV.',
+      '<b>History</b>: every entry — who, when, device, what changed (before → after). Export to CSV.'],'','',['panel:stocktake'],ALL),
+    T('hst6','Stock takes','Finalise a stock take','Admins and above. Tap <b>Finalise</b> when counting is done.',[
+      'The review shows <b>System at count</b>, <b>Counted</b>, <b>Variance</b>, <b>Sold / moved since</b> and <b>Final stock</b>.',
+      'Tick “treat not-counted as 0” only for a full count; otherwise those items keep their stock.',
+      'You can’t finalise while any counted item has no best-before — use the <b>Needs date</b> filter.',
+      'Tap <b>Submit count</b>. Stock, best-before dates (sales during the count come off the earliest date first) and warehouse bins update; Square gets “Stock take count (+/−)”.'],
+      'Only a Super Admin can change a submitted count.','',['panel:stocktake'],ADM),
+    T('hst7','Stock takes','Add stock-take helpers (people not in Square)','Let volunteers or extra staff count without a Square login. Admins (own centres), National and Super Admin.',[
+      'On <b>Stock Take</b>, tap <b>Stock-take helpers</b> → <b>Add helper</b>.',
+      'Enter <b>full name</b>, <b>email</b>, <b>centre</b> and the <b>last day</b> they can count (up to 90 days), plus a note if you like. Tap <b>Add helper &amp; send email</b>.',
+      'They get an email “Set your password” with the sign-in address <b>stock.shayona.com.au</b>.',
+      'Helpers see <b>only the open stock takes at their centre</b>. They can’t see stock figures, prices or reports, and can’t start, finalise or delete counts.',
+      'Use <b>Extend</b>, <b>Resend email</b> or <b>Remove</b> on the helpers list. Access ends automatically after the last day.'],
+      'Everything a helper counts is in the stock take’s History, marked “helper”.','',['route:stocktake','panel:stocktake'],ADM),
+    T('hst8','Stock takes','For helpers: getting started','You’ve been added to help with a stock take.',[
+      'Open the email “Set your password”, tap <b>Set my password</b>, then <b>Continue to set my password</b>, and choose a password.',
+      'Sign in at <b>stock.shayona.com.au</b> with that email and password.',
+      'Open the stock take, then scan or search each item and tap <b>Add my count</b>.',
+      'Enter what <b>you</b> counted, the best-before and the location if asked. Tap <b>Done for now</b> when you finish.'],
+      'If the email link says it was already used, tap “Email me a link to set it” on the sign-in page and open the newest email.','',['route:stocktake','panel:stocktake','login'],['user']),
+    T('hst9','Stock takes','Fix or remove someone’s count','Admins and above can correct a wrong count.',[
+      'On the item, tap <b>Fix</b> on that person’s line.',
+      'Change the quantity, date or location, or tap <b>Remove</b>.',
+      'The change is recorded in History with your name.'],'','',['panel:stocktake'],ADM),
+    T('hst10','Stock takes','Progress & variance so far','National and Super Admin can see the variance before a count is finalised.',[
+      'On the Stock Take list tap <b>Progress &amp; variance</b>, or <b>Progress</b> inside the count.',
+      '<b>Variance so far</b>: counted, short, over and net $, with each item’s system figure, variance and who counted it.',
+      'Counters never see this — the count stays blind.'],'','',['route:stocktake','panel:stocktake'],NAT),
+    T('hst11','Stock takes','Typed best-before dates to check','When a counter types a date that isn’t on the system list for that item, it is flagged.',[
+      'On <b>Stock Take</b>, tap <b>Review dates</b> on the banner (also shown on the finalised count and in the Variance report).',
+      'Check the pack or ask the counter. Tick the ones checked and tap <b>Mark selected as checked</b> (add a note).',
+      'Export to CSV if needed.'],'','',['route:stocktake'],NAT),
+    T('hst12','Stock takes','Variance report (finalised counts)','Open a finalised count and tap <b>Variance report</b>.',[
+      'Tiles: items counted, short, over, net variance in $.',
+      '<b>By counter</b>: how many items each person counted and their variance rate.',
+      'Switch between <b>Variance with every entry</b> and <b>By item &amp; counter</b>. Filter, search, Print or export to CSV.'],'','',['panel:stocktake'],NAT),
+    T('hst13','Stock takes','Change or undo a submitted count (Super Admin)','',[
+      '<b>Amend counts</b>: the difference (new − old) is applied to today’s stock, so sales since are kept. Square shows “Stock take amendment”.',
+      '<b>Reverse &amp; delete</b>: undoes every stock change the count made, restores best-before dates, corrects Square, and keeps its history in <b>Deleted counts</b>.',
+      '<b>Undo a deleted count</b>: reverse counts deleted before this existed, or clear best-before dates they left behind.'],
+      'Record numbers (ST-, TR-, PO-…) are never reused.','',['route:stocktake','panel:stocktake'],NAT),
+    T('hrv1','Corrections','Reversals undo everything','Super Admin only. A reversal books the exact opposite of what the transaction did — at every centre involved.',[
+      '<b>Transfer</b>: stock at both centres, the receiver’s best-before dates and warehouse bins.',
+      '<b>Supplier receipt / order</b>: stock, best-before dates, bins and the average cost.',
+      '<b>Damage / expired write-off</b>: stock put back (status “Reversed”).',
+      'Square shows “Reversal (+/−)”. The original and the reversal both stay in the history.'],'','',['route:transfers','route:receipts','route:orders','route:adjustments'],NAT),
+    T('hsq1','Square','Check with Square','On any item, tap <b>Check with Square</b> (National / Super Admin).',[
+      'Compares the app with Square’s <b>On hand</b>, <b>Committed</b> and <b>Available</b> at every centre.',
+      '<b>Committed</b> = units held by Square orders that were never completed. Square shows Available = On hand − Committed. The list “What is holding the committed stock” gives the order ids — complete or cancel them in Square.',
+      'Shows Square’s recent history and every push the app sent. <b>Set Square to the app’s figure</b> fixes a difference.'],'','',['panel:item'],NAT),
+    T('hsq2','Square','How app changes reach Square','Every stock change in the app is queued and sent to Square automatically, labelled the way Square shows it.',[
+      'Labels: Stock received, Restock return, Damage, Spoilage / waste, Loss, Transfer to another centre, Wholesale invoice, Stock take count, Stock take amendment, Reversal, Stock Control correction.',
+      'Failed sends retry by themselves. Super Admin: <b>Square Sync</b> shows the log and lets you <b>Retry</b> or <b>Dismiss</b>.'],'','',['route:settings','route:dashboard'],NAT),
+    T('hau1','Corrections','Where to find who did what','Everything that changes stock, dates, bins or money is recorded.',[
+      '<b>Audit Log</b>: every action, including reversals and their reasons.',
+      '<b>Item → History</b>: every stock movement; <b>Best-before, bin &amp; location changes</b> below it.',
+      '<b>Stock take → History</b>: every count entry, kept even if the stock take is deleted.'],'','',['route:audit','panel:item'],ADM)
+  ];
+  upd.forEach(t=>{const i=HELP.topics.findIndex(x=>x.id===t.id);if(i>=0)HELP.topics[i]=t;else HELP.topics.push(t);});
+  add.forEach(t=>{if(!HELP.topics.some(x=>x.id===t.id))HELP.topics.push(t);});
+  // keep the new stock-take topics together, right after the stock take page topic
+  const stIdx=HELP.topics.findIndex(x=>x.id==='h25');
+  ['hst1','hst3','hst4','hst5','hst6','hst7','hst8','hst9','hst10','hst11','hst12','hst13'].reverse().forEach(id=>{const i=HELP.topics.findIndex(x=>x.id===id);if(i>=0&&stIdx>=0){const [t]=HELP.topics.splice(i,1);HELP.topics.splice(HELP.topics.findIndex(x=>x.id==='h25')+1,0,t);}});
+  HELP.faq.push(
+    {q:'The password link says it was already used or has expired.',a:'Links work once and only the newest email works. On the sign-in page type your email, tap <b>Email me a link to set it</b>, then open the newest email straight away and tap <b>Continue to set my password</b>.',roles:ALL},
+    {q:'The count shows “Not saved yet” or “Saving…”.',a:'Your counts are kept on the phone and send automatically when the connection is back. If a count is refused, a message names the item and the reason.',roles:ALL},
+    {q:'It says the best-before is in the past.',a:'Best-before dates can’t be in the past on stock takes, transfers or receipts. Check the pack; if the stock has expired, report it under Damage / Expiry instead.',roles:ALL},
+    {q:'Someone else’s number is showing on the item I’m counting.',a:'That’s their own count. Tap <b>Add my count</b> and enter only what you counted — the total adds both together.',roles:ALL},
+    {q:'I can’t finalise the stock take.',a:'At least one counted item has no best-before. Use the <b>Needs date</b> filter, tap Edit/Fix on that count and add the date (or tick No date on pack).',roles:['admin','national_admin']},
+    {q:'A helper can’t sign in.',a:'Check their access hasn’t ended (Stock-take helpers list → Extend), then tap <b>Resend email</b>. They must use the email you added and open the newest email.',roles:['admin','national_admin']},
+    {q:'Square shows a negative Available figure.',a:'Square subtracts <b>Committed</b> stock (orders never completed). Open the item → <b>Check with Square</b> to see which orders hold it, then complete or cancel them in Square.',roles:['national_admin']},
+    {q:'The Camera button is missing or won’t open.',a:'Allow camera access for the site (iPhone: Settings → Safari → Camera → Allow). Reload the page. You can always type or use a USB scanner instead.',roles:ALL}
+  );
+})();
 function helpRole(){return ROLE==='super_admin'?'national_admin':(ROLE||'user');}
 function helpTopicsForRole(){
+  // stock-take helpers only see sign-in and stock-take help
+  if(typeof HELPER!=='undefined'&&HELPER)return HELP.topics.filter(t=>(t.section==='Stock takes'&&t.roles.includes('user'))||['h0','h1','h2','hst8'].includes(t.id));
   // each role sees its own guide first, then the everyday topics from the other guides it can also do
   const r=helpRole();const order=r==='national_admin'?['national_admin','admin','user']:r==='admin'?['admin','user']:['user'];
   const skip={admin:['Getting started','Transfer requests','Everyday centre tasks'],user:['Getting started']};
