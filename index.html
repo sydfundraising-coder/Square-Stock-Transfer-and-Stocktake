@@ -3398,11 +3398,18 @@ function vStock(v){
   const ub=document.getElementById('st-undo');if(ub)ub.onclick=openUndoDeletedStocktakes;
   // live "x / y counted" for open counts (the list's own copy of the lines isn't refreshed while people count)
   {const ids=[...v.querySelectorAll('[data-stpc]')].map(x=>x.dataset.stpc);
-   if(ids.length)sbAll(()=>sb.from('stocktake_lines').select('id,stocktake_id,counted_qty').in('stocktake_id',ids).order('id')).then(({data})=>{
-     const c={};(data||[]).forEach(r=>{const o=c[r.stocktake_id]=c[r.stocktake_id]||{d:0,t:0};o.t++;if(r.counted_qty!=null)o.d++;});
+   if(ids.length)Promise.all([
+       sbAll(()=>sb.from('stocktake_lines').select('id,stocktake_id,counted_qty').in('stocktake_id',ids).order('id')),
+       sbAll(()=>sb.from('stocktake_entries').select('line_id').in('stocktake_id',ids).is('deleted_at',null).order('id')).catch(()=>({data:[]}))])
+     .then(([{data,error},en])=>{
+     if(error){console.error('stock take progress',error);return;}
+     const has=new Set(((en&&en.data)||[]).map(e=>e.line_id));   // an item counts as counted once anyone has entered a count for it
+     const c={};(data||[]).forEach(r=>{const o=c[r.stocktake_id]=c[r.stocktake_id]||{d:0,t:0};o.t++;if(r.counted_qty!=null||has.has(r.id))o.d++;});
      v.querySelectorAll('[data-stpc]').forEach(x=>{const o=c[x.dataset.stpc];if(!o)return;x.innerHTML=`${o.d} / ${o.t}<div style="font-size:11px;color:var(--muted)">${o.t?Math.round(o.d/o.t*100):0}% counted</div>`;});
      (S.stocktakes||[]).forEach(s=>{if(!c[s.id])return;const byId={};(data||[]).forEach(r=>{if(r.stocktake_id===s.id)byId[r.id]=r.counted_qty;});(s.lines||[]).forEach(l=>{if(l.id in byId)l.counted_qty=byId[l.id];});});
-   }).catch(()=>{});}
+   }).catch(e=>console.error('stock take progress',e));}
+  // keep the list current while counts come in (every 30 s while this page is open, and when you come back to the tab)
+  clearTimeout(window._stListT);if(v.querySelector('[data-stpc]'))window._stListT=setTimeout(()=>{if(route==='stocktake'&&!document.querySelector('.scrim'))renderView();},30000);
   v.querySelectorAll('[data-stprog]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=S.stocktakes.find(x=>x.id===b.dataset.stprog);if(s)openStProgressReport(s);});
 }
 function newStock(){
