@@ -598,6 +598,20 @@
   .stl-f .stl-dates{height:38px;display:flex;align-items:center;font-size:13px;color:var(--ink);font-weight:600}
   .stl-det .btn{height:38px;white-space:nowrap}
   .stl.st-flash{animation:stflash 1.4s ease}
+  /* count entries: each person's own count under the item */
+  .stn-tot{flex:none;text-align:right;min-width:64px}
+  .stn-tot .n{font-size:24px;font-weight:800;line-height:1.1}
+  .stl.done .stn-tot .n{color:var(--good)}
+  .stn-list{margin-top:8px;border-top:1px dashed var(--border);padding-top:6px}
+  .stn-e{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 0;font-size:13px}
+  .stn-e+.stn-e{border-top:1px dotted var(--border)}
+  .stn-e.me .stn-who{color:var(--accent-ink)}
+  .stn-who{font-weight:700;min-width:44px}
+  .stn-e .bi-q{margin:0 2px}
+  .stn-ed{margin-left:auto;border:0;background:none;color:var(--accent-ink);font-weight:700;font-size:12.5px;text-decoration:underline;cursor:pointer;padding:4px 2px}
+  .stn-act{display:flex;gap:8px;margin-top:10px}
+  .stn-act .btn{min-height:42px}
+  .stn-act .btn.primary{flex:1;justify-content:center}
   .stl-det.nh{grid-template-columns:minmax(0,340px)}
   .stl-det.nh2{grid-template-columns:minmax(0,1.4fr) minmax(0,.7fr);border-top:0;padding-top:0;margin-top:8px;max-width:520px}
   .stl-addloc{display:inline-flex;align-items:center;gap:5px;margin-top:8px;border:0;background:none;padding:2px 0;color:var(--accent-ink);font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
@@ -3377,10 +3391,17 @@ function vStock(v){
     :`<div class="banner info">${svg(I.stocktake,17)}<div><b>You can count while trading.</b> Each item’s variance is measured against the system stock at the moment it was counted, so anything sold (or received) before you finalise is kept — not lost. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+
     (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+`
     <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
-    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
   const ub=document.getElementById('st-undo');if(ub)ub.onclick=openUndoDeletedStocktakes;
+  // live "x / y counted" for open counts (the list's own copy of the lines isn't refreshed while people count)
+  {const ids=[...v.querySelectorAll('[data-stpc]')].map(x=>x.dataset.stpc);
+   if(ids.length)sbAll(()=>sb.from('stocktake_lines').select('id,stocktake_id,counted_qty').in('stocktake_id',ids).order('id')).then(({data})=>{
+     const c={};(data||[]).forEach(r=>{const o=c[r.stocktake_id]=c[r.stocktake_id]||{d:0,t:0};o.t++;if(r.counted_qty!=null)o.d++;});
+     v.querySelectorAll('[data-stpc]').forEach(x=>{const o=c[x.dataset.stpc];if(!o)return;x.innerHTML=`${o.d} / ${o.t}<div style="font-size:11px;color:var(--muted)">${o.t?Math.round(o.d/o.t*100):0}% counted</div>`;});
+     (S.stocktakes||[]).forEach(s=>{if(!c[s.id])return;const byId={};(data||[]).forEach(r=>{if(r.stocktake_id===s.id)byId[r.id]=r.counted_qty;});(s.lines||[]).forEach(l=>{if(l.id in byId)l.counted_qty=byId[l.id];});});
+   }).catch(()=>{});}
   v.querySelectorAll('[data-stprog]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=S.stocktakes.find(x=>x.id===b.dataset.stprog);if(s)openStProgressReport(s);});
 }
 function newStock(){
@@ -3438,7 +3459,7 @@ function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;stAmending=!!amend;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={};stKnown={};stOther={};stLocOpen={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={};stKnown={};stOther={};stLocOpen={};stEnt={};stEntSeen=null;STE=!!window._steKnown; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
       if(Array.isArray(l.splits)&&l.splits.length){stSplit[l.id]=l.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[l.id]='';}else stExp[l.id]=(l.expiry?String(l.expiry).slice(0,10):'')||(open?'':((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry))||'';   // open counts: the counter picks the date from the list — no silent pre-fill
       stNoExp[l.id]=!!l.no_expiry;if(l.no_expiry)stExp[l.id]='';
       stSig[l.id]=stLineSig(l);
@@ -3476,7 +3497,7 @@ function openStock(id,amend){
     const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>{saveStProgress(st,true);if(HELPER)setTimeout(()=>{if(!stPending.length)closeOverlay();},600);};
     const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
     const am=document.getElementById('st-amend-save'); if(am)am.onclick=()=>saveAmend(st);
-    if(open&&!amend){ stSyncUi(); if(stPending.length)stFlush(); stPoll(true); loadStKnown(st); }   // pull everyone's latest counts, then keep them live
+    if(open&&!amend){ stSyncUi(); if(stPending.length)stFlush(); stPoll(true); loadStKnown(st); loadStEntries(st).then(()=>{if(STE&&!stEntSeen)stEntSeen=new Date(Date.now()-60000).toISOString();}); }   // pull everyone's latest counts, then keep them live
   } else {
     const amb=document.getElementById('st-amend'); if(amb)amb.onclick=()=>openStock(id,true);
   }
@@ -3486,6 +3507,114 @@ function openStock(id,amend){
   const vr=document.getElementById('st-var'); if(vr)vr.onclick=()=>openStVarianceReport(st);
   const f2=document.getElementById('st-flags2'); if(f2)f2.onclick=()=>openStDateFlags(st.id);
   const ch=document.getElementById('st-chips'); if(ch){ ch.onclick=e=>{const b=e.target.closest('[data-stf]');if(!b)return;stFilt=b.dataset.stf;renderStList(st);const pb=document.querySelector('.panel.stp .panel-body');if(pb)pb.scrollTop=0;}; stChips(st); }
+}
+/* ======================================================================================
+   COUNT ENTRIES (migration 64): every person records only what THEY counted, with its own
+   location / aisle / best-before. The item's total is the sum, worked out in the database.
+   ====================================================================================== */
+let STE=false, stEnt={}, stEntSeen=null;
+const validBB=d=>{if(!d)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;const y=+d.slice(0,4);return y>=2000&&y<=2100;};
+const stMe=()=>ME&&ME.id;
+function stEntTotal(lid){return (stEnt[lid]||[]).reduce((s,e)=>s+(+e.qty||0),0);}
+function stEntSync(lid){   // keep the line figures the rest of the screen uses in step with the entries
+  const E=stEnt[lid]||[];stCounts[lid]=E.length?stEntTotal(lid):'';
+}
+function stEntUpsert(e){if(!e||!e.line_id)return;const a=(stEnt[e.line_id]=(stEnt[e.line_id]||[]).filter(x=>x.id!==e.id));if(!e.deleted_at)a.push(e);a.sort((x,y)=>String(x.created_at||'').localeCompare(String(y.created_at||'')));stEntSync(e.line_id);}
+async function loadStEntries(st){
+  const{data,error}=await sbAll(()=>sb.from('stocktake_entries').select('*').eq('stocktake_id',st.id).is('deleted_at',null).order('id'));
+  if(error){STE=false;window._steKnown=false;if(document.getElementById('stList'))renderStList(st);return;}   // 64 not run yet: keep the older single-count screen
+  STE=true;window._steKnown=true;stEnt={};stEntSeen=null;
+  (data||[]).forEach(e=>{(stEnt[e.line_id]=stEnt[e.line_id]||[]).push(e);if(!stEntSeen||e.updated_at>stEntSeen)stEntSeen=e.updated_at;});
+  Object.values(stEnt).forEach(a=>a.sort((x,y)=>String(x.created_at||'').localeCompare(String(y.created_at||''))));
+  (st.lines||[]).forEach(l=>stEntSync(l.id));
+  if(stCurrentId===st.id&&document.getElementById('stList'))renderStList(st);
+}
+function stEntWhere(e){return [e.area,e.aisle?'Aisle '+e.aisle:''].filter(Boolean).join(' · ');}
+function stEntBB(e){return e.no_expiry?'No date':e.expiry?'BB '+fmtDate(e.expiry):'<b style="color:var(--warn)">no best-before</b>';}
+function stCardNew(st,l,it){
+  const E=stEnt[l.id]||[],done=E.length>0,tot=stEntTotal(l.id),per=hasPpc(it)?ppc(it):0,me=stMe();
+  const needs=E.some(e=>(+e.qty||0)>0&&!e.expiry&&!e.no_expiry);
+  const people=[...new Set(E.map(e=>e.counter===me?'you':(e.counter_name||'someone')))];
+  return `<div class="stl stn${done?' done':''}${needs?' needdate':''}" data-stl="${l.id}">
+    <div class="stl-top"><div class="stl-name"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}
+        <div class="st-who">${done?`Counted by ${people.map(esc).join(', ')}`:'Not counted yet'}</div></div>
+      <div class="stn-tot"><div class="cap">Total</div><div class="n tnum">${done?tot:'–'}</div>${per&&done?`<div class="stl-unit">${boxDec(tot,it)} bx</div>`:''}</div></div>
+    ${E.length?`<div class="stn-list">${E.map(e=>{const mine=e.counter===me;return `<div class="stn-e${mine?' me':''}"><span class="stn-who">${mine?'You':esc(e.counter_name||'—')}</span><span class="bi-q">${e.qty}</span><span class="bi-m">${[stEntWhere(e),stEntBB(e)].filter(Boolean).join(' · ')}${e._pending?' · saving…':''}</span>${mine||stCanEditAny()?`<button type="button" class="lnk stn-ed" data-steed="${e.id}">${mine?'Edit':'Fix'}</button>`:''}</div>`;}).join('')}</div>`:''}
+    <div class="stn-act"><button type="button" class="btn primary" data-stadd="${l.id}">${svg(I.plus,16)} ${E.some(e=>e.counter===me)?'Add another count':'Add my count'}</button>${per?`<button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per}) to your latest count of this item">+1 box</button>`:''}</div>
+    <div class="stl-need">A count has no best-before — tap Edit and enter the date, or tick “No date on pack”.</div></div>`;
+}
+const stCanEditAny=()=>!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
+/* add or edit ONE person's count */
+function openStEntryPanel(st,line,entry,opts){
+  opts=opts||{};stScanOpen=true;
+  const it=item(line.item_id),per=hasPpc(it)?ppc(it):0,hub=isHub(st.location_id),me=stMe();
+  const mineLast=(stEnt[line.id]||[]).filter(e=>e.counter===me).slice(-1)[0];
+  const e0=entry||{qty:'',area:(mineLast&&mineLast.area)||stArea[line.id]||'',aisle:(mineLast&&mineLast.aisle)||stAisle[line.id]||'',expiry:'',no_expiry:false};
+  const q0=entry?+entry.qty:(opts.boxes&&per?opts.boxes*per:null);
+  const kn=stKnown[line.id]||[],exp=e0.expiry?String(e0.expiry).slice(0,10):'',typed=!!(exp&&kn.length&&!kn.includes(exp));
+  const others=(stEnt[line.id]||[]).filter(x=>!entry||x.id!==entry.id);
+  const areaCtl=hub?`<select id="se-area"><option value="">— select area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===e0.area?' selected':''}>${esc(a)}</option>`).join('')}</select>`
+                   :`<input id="se-area" list="se-areas" value="${esc(e0.area||'')}" placeholder="e.g. Front shop" autocomplete="off"><datalist id="se-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;
+  const host=document.createElement('div');host.className='scan-entry-host';
+  host.innerHTML=`<div class="modal scan-entry" role="dialog" aria-modal="true" aria-labelledby="se-title">
+    <div class="panel-head"><div><h2 id="se-title">${esc(it.name)}</h2><div class="sub mono">${esc(it.sku||'')}${it.barcode?' · '+esc(it.barcode):''}</div></div><button class="x" id="se-x" aria-label="Cancel">${svg(I.x,20)}</button></div>
+    <div class="panel-body">
+      <div class="se-cur">${entry?(entry.counter===me?'Change <b>your</b> count':'Fix <b>'+esc(entry.counter_name||'')+'</b>’s count'):'Enter <b>only what you counted</b> here'}${others.length?` · others so far: ${others.map(o=>`${o.counter===me?'you':esc(o.counter_name||'—')} ${o.qty}`).join(', ')} (total ${stEntTotal(line.id)})`:''}</div>
+      <div class="se-qty">${per?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><div class="se-step"><button type="button" class="btn" data-sestep="se-box:-1" aria-label="One box less">−</button><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?Math.floor(q0/per)||'':''}"><button type="button" class="btn" data-sestep="se-box:1" aria-label="One more box">+</button></div></div>`:''}
+        <div class="field"><label for="se-pk">${per?'Loose packets':'Packets'}</label><div class="se-step"><button type="button" class="btn" data-sestep="se-pk:-1" aria-label="One packet less">−</button><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?(per?(q0%per)||'':q0):''}"><button type="button" class="btn" data-sestep="se-pk:1" aria-label="One more packet">+</button></div></div></div>
+      <div class="se-total" id="se-total"></div>
+      <div class="field"><label for="${kn.length?'se-exps':'se-exp'}">Best before *</label>
+        ${kn.length?`<select id="se-exps"${e0.no_expiry?' disabled':''}><option value="">Choose date…</option>${kn.map(d=>`<option value="${d}"${d===exp&&!typed?' selected':''}>${fmtDate(d)}</option>`).join('')}<option value="__other"${typed?' selected':''}>Other date — type it…</option></select>`:''}
+        <input id="se-exp" type="date" min="2000-01-01" max="2100-12-31" value="${esc(e0.no_expiry?'':(kn.length?(typed?exp:''):exp))}"${e0.no_expiry?' disabled':''} style="${kn.length?'margin-top:6px;':''}${kn.length&&!typed?'display:none;':''}">
+        <div class="stl-typed" id="se-typed" style="display:none">${svg(I.alert,12)} Typed date — not on the system list. The Super Admin will check it.</div>
+        <label class="stl-nd" style="font-size:13px;margin-top:8px"><input type="checkbox" id="se-nd"${e0.no_expiry?' checked':''}> No date on pack (non-dated item)</label></div>
+      ${hub?'':`<details id="se-locw"${(e0.area||e0.aisle)?' open':''} style="margin-top:4px"><summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent-ink)">Location / aisle (optional)</summary>`}
+      <div class="grid2" style="margin-top:8px"><div class="field"><label for="se-area">Location / store area${hub?' *':''}</label>${areaCtl}</div>
+        <div class="field"><label for="se-aisle">Aisle #${hub?' *':''}</label><input id="se-aisle" list="se-aisles" value="${esc(e0.aisle||'')}" placeholder="e.g. 3" autocomplete="off"><datalist id="se-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist></div></div>
+      ${hub?'':'</details>'}
+      <div class="se-err" id="se-err" hidden></div>
+    </div>
+    <div class="panel-foot">${entry?`<button class="btn" id="se-del" style="color:var(--crit);border-color:var(--crit);margin-right:auto">Remove</button>`:''}<button class="btn" id="se-cancel">Cancel</button><button class="btn primary" id="se-save">${svg(I.check,16)} ${entry?'Save':'Save my count'}</button></div></div>`;
+  document.body.appendChild(host);
+  const $=id=>host.querySelector('#'+id);
+  const qty=()=>{const b=per?Math.max(0,parseInt($('se-box').value,10)||0):0;const k=Math.max(0,parseInt($('se-pk').value,10)||0);return b*per+k;};
+  const upd=()=>{const q=qty();$('se-total').innerHTML=`Your count here: <b>${q}</b> packet${q===1?'':'s'}${per?` (${boxDec(q,it)} bx)`:''}`;};
+  host.querySelectorAll('input').forEach(i=>i.addEventListener('input',upd));upd();
+  host.querySelectorAll('[data-sestep]').forEach(b=>b.onclick=()=>{const[id,d]=b.dataset.sestep.split(':');const el=$(id);if(!el)return;el.value=Math.max(0,(parseInt(el.value,10)||0)+(+d));upd();});
+  const expVal=()=>{const s=$('se-exps');if(s&&s.value!=='__other')return s.value;return $('se-exp').value;};
+  const typedUi=()=>{const v=expVal();$('se-typed').style.display=(v&&kn.length&&!kn.includes(v))?'':'none';};
+  {const nd=$('se-nd'),ex=$('se-exp'),sx=$('se-exps');
+   nd.onchange=()=>{ex.disabled=nd.checked;if(sx)sx.disabled=nd.checked;if(nd.checked){ex.value='';if(sx)sx.value='';}typedUi();};
+   if(sx)sx.onchange=()=>{const o=sx.value==='__other';ex.style.display=o?'':'none';if(o){ex.focus();try{ex.showPicker&&ex.showPicker();}catch(_){}}typedUi();};
+   ex.addEventListener('change',typedUi);typedUi();}
+  let closed=false;
+  const close=saved=>{if(closed)return;closed=true;host.remove();stScanOpen=false;stScanLast.t=Date.now();if(opts.onDone)opts.onDone(saved);};
+  const err=m=>{$('se-err').hidden=false;$('se-err').textContent=m;};
+  const save=()=>{
+    for(const id of ['se-box','se-pk']){const el=$(id);if(el&&String(el.value).trim().length>=6&&(+el.value>99999||stFindLine(st,el.value.trim()))){el.value='';upd();return err('That looked like a barcode, not a quantity. Type the quantity.');}}
+    const q=qty(),nd=$('se-nd').checked,ex=nd?'':expVal(),a=$('se-area').value.trim(),b=$('se-aisle').value.trim();
+    if($('se-pk').value===''&&(!per||$('se-box').value==='')&&!entry)return err('Enter the quantity you counted (0 if none here).');
+    if(ex&&!validBB(ex))return err('Check the best-before date — the year must be 4 digits (e.g. 2027).');
+    if(q>0&&!ex&&!nd)return err('Enter the best-before date, or tick “No date on pack”.');
+    if(hub&&q>0&&(!a||!b))return err('Central Warehouse: choose a store area and enter an aisle #.');
+    // same person, same date + place as one of their earlier counts of this item → add to it instead of a new line
+    let target=entry,newQty=q;
+    if(!entry){const same=(stEnt[line.id]||[]).find(x=>x.counter===me&&String(x.expiry||'').slice(0,10)===(ex||'')&&!!x.no_expiry===nd&&(x.area||'')===a&&(x.aisle||'')===b);
+      if(same){target=same;newQty=(+same.qty||0)+q;}}
+    const id=target?target.id:(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16);}));
+    const rec={...(target||{}),id,line_id:line.id,stocktake_id:st.id,item_id:line.item_id,counter:target?target.counter:me,counter_name:target?target.counter_name:(ME&&(ME.user_metadata&&ME.user_metadata.full_name)||'You'),qty:newQty,area:a||null,aisle:b||null,expiry:ex||null,no_expiry:nd,created_at:target?target.created_at:new Date().toISOString(),_pending:true};
+    stEntUpsert(rec);if(a)stArea[line.id]=a;if(b)stAisle[line.id]=b;
+    stQueue({mode:'entry',line:line.id,id,qty:newQty,area:a,aisle:b,expiry:ex||null,noexp:nd});
+    stCardRefresh(line.id);updateStProgress();
+    toast(target&&!entry?`${it.name}: added ${q} to your earlier count here (now ${newQty})`:`${it.name}: your count ${newQty} saved · total ${stEntTotal(line.id)}`);
+    close(true);
+  };
+  $('se-save').onclick=save;$('se-cancel').onclick=()=>close(false);$('se-x').onclick=()=>close(false);
+  const del=$('se-del');if(del)del.onclick=()=>{if(!window.confirm('Remove this count of '+entry.qty+'?'))return;
+    stEnt[line.id]=(stEnt[line.id]||[]).filter(x=>x.id!==entry.id);stEntSync(line.id);
+    stQueue({mode:'entry_del',line:line.id,id:entry.id});stCardRefresh(line.id);updateStProgress();toast('Count removed');close(true);};
+  host.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.tagName!=='SELECT'&&ev.target.tagName!=='BUTTON'&&ev.target.tagName!=='SUMMARY'){ev.preventDefault();save();}if(ev.key==='Escape'){ev.preventDefault();close(false);}});
+  setTimeout(()=>{const f=per?$('se-box'):$('se-pk');if(f){f.focus();try{f.select();}catch(_){}}},60);
 }
 /* phones: shrink the top bar while scrolling, and hide the extras + footer while typing a count */
 function stPhoneLayout(){
@@ -3515,10 +3644,10 @@ function stBbCtl(lid){const kn=stKnown[lid]||[],v=stExp[lid]||'';
     (typed?`<div class="stl-typed">${svg(I.alert,12)} Typed date — not on the system list. The Super Admin will check it.</div>`:'');}
 function stLineSig(l){return JSON.stringify([l.counted_qty??null,l.area??null,l.aisle??null,l.expiry??null,l.splits??null,l.counted_by_name??null,l.counted_at??null,l.entries??0,!!l.no_expiry]);}
 /* best-before is mandatory: a counted item needs a date (or dates) or the "No date on pack" tick */
-function stNeedsDate(id){const v=stCounts[id];if(v===''||v==null||+v<=0)return false;if(stNoExp[id])return false;if(stSplit[id]&&stSplit[id].length)return false;return !stExp[id];}
+function stNeedsDate(id){if(STE&&!stAmending)return (stEnt[id]||[]).some(e=>(+e.qty||0)>0&&!e.expiry&&!e.no_expiry);const v=stCounts[id];if(v===''||v==null||+v<=0)return false;if(stNoExp[id])return false;if(stSplit[id]&&stSplit[id].length)return false;return !stExp[id];}
 function stLineCols(){return 'id,counted_qty,area,aisle,expiry,splits,counted_by,counted_by_name,counted_at,entries,updated_at'+(window._stNoNd?'':',no_expiry');}
-function stIsDone(id){const v=stCounts[id];return !(v===''||v==null);}
-function stIsMine(l){return stMine.has(l.id)||(ME&&l.counted_by===ME.id);}
+function stIsDone(id){if(STE&&!stAmending)return (stEnt[id]||[]).length>0;const v=stCounts[id];return !(v===''||v==null);}
+function stIsMine(l){if(STE&&!stAmending)return (stEnt[l.id]||[]).some(e=>e.counter===stMe());return stMine.has(l.id)||(ME&&l.counted_by===ME.id);}
 function stChips(st){const el=document.getElementById('st-chips');if(!el)return;const L=st.lines||[];
   const n={all:L.length,todo:L.filter(l=>!stIsDone(l.id)).length,done:L.filter(l=>stIsDone(l.id)).length,mine:L.filter(stIsMine).length,nodate:L.filter(l=>stNeedsDate(l.id)).length};
   const lab={all:'All',todo:'To count',done:'Counted',mine:'My counts',nodate:'Needs date'};
@@ -3635,6 +3764,7 @@ function renderStRows(st,editable,filter){
   else if(editable&&stFilt==='nodate')lines=lines.filter(l=>stNeedsDate(l.id));
   if(!lines.length)return `<div class="empty" style="padding:24px">${svg(editable&&stFilt==='todo'&&!q?I.check:I.search,30)}<div>${editable&&stFilt==='todo'&&!q?'Everything has been counted.':editable&&stFilt==='mine'&&!q?'You haven’t counted anything yet.':editable&&stFilt==='nodate'&&!q?'Every counted item has a best-before (or “No date on pack”).':'No items match.'}</div></div>`;
   return lines.map(l=>{const it=item(l.item_id);
+    if(editable&&STE&&!stAmending)return stCardNew(st,l,it);
     if(editable){const c=stCounts[l.id];const done=stIsDone(l.id);const hubS=isHub(st.location_id);const sp=stSplit[l.id]&&stSplit[l.id].length;const per=hasPpc(it)?ppc(it):0;
       const areaCtl=hubS?`<select data-starea="${l.id}"><option value="">Choose…</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`
                        :`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="e.g. Front shop" autocomplete="off">`;
@@ -3677,8 +3807,21 @@ function bindStInputs(root){
     inp.onchange=()=>{const t=bxTotal(lid);if(t==null)return;stCounts[lid]=t;if(!live)return saveStProgress({id:stCurrentId},false);
       if(t===''){stQueue({line:lid,mode:'clear'});return;}
       stQueue({line:lid,mode:'set',qty:t,area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stSplit[lid]&&stSplit[lid].length?null:(stExp[lid]||null)});};});
+  // own count entries: edit / fix
+  R.querySelectorAll('[data-steed]').forEach(b=>b.onclick=()=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);if(!st)return;let ent=null,ln=null;
+    for(const [lid,a] of Object.entries(stEnt)){const f=a.find(x=>x.id===b.dataset.steed);if(f){ent=f;ln=(st.lines||[]).find(x=>x.id===lid);break;}}
+    if(ent&&ln)openStEntryPanel(st,ln,ent,{onDone:s=>{if(s)stCardRefresh(ln.id);}});});
   // +1 box: adds one box on the server each tap, so several people can keep adding
   R.querySelectorAll('[data-stbox]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stbox;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===lid);if(!l)return;
+    if(STE&&!stAmending){   // add a box to YOUR latest count of this item (or start one)
+      const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;if(!per)return;
+      const mine=(stEnt[lid]||[]).filter(e=>e.counter===stMe()).sort((x,y)=>String(x.updated_at||x.created_at||'').localeCompare(String(y.updated_at||y.created_at||''))).slice(-1)[0];
+      if(!mine){openStEntryPanel(st,l,null,{boxes:1,onDone:s=>{if(s)stCardRefresh(lid);}});return;}
+      const nq=(+mine.qty||0)+per;stEntUpsert({...mine,qty:nq,updated_at:new Date().toISOString(),_pending:true});
+      stQueue({mode:'entry',line:lid,id:mine.id,qty:nq,area:mine.area||'',aisle:mine.aisle||'',expiry:mine.expiry?String(mine.expiry).slice(0,10):null,noexp:!!mine.no_expiry});
+      if(navigator.vibrate)navigator.vibrate(15);stCardRefresh(lid);updateStProgress();
+      const nc=document.querySelector(`#stList [data-stl="${lid}"]`);if(nc){nc.classList.remove('st-flash');void nc.offsetWidth;nc.classList.add('st-flash');}
+      toast(`${it.name}: your count +1 box → ${nq} (total ${stEntTotal(lid)})`);return;}
     const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;if(!per)return;
     if(isHub(st.location_id)&&(!(stArea[lid]||'').trim()||!(stAisle[lid]||'').trim())){toast('Central Warehouse: choose the location and aisle # first',true);const f=document.querySelector(`#stList [data-stl="${lid}"] [data-starea]`);if(f)f.focus();return;}
     if(stSplit[lid]&&stSplit[lid].length){toast('This item has several best-before dates — enter the boxes with their date',false);openScanEntry(st,l,{onDone:s=>{if(s)stCardRefresh(lid);}});return;}
@@ -3698,7 +3841,7 @@ function bindStInputs(root){
   R.querySelectorAll('[data-starea]').forEach(inp=>inp.onchange=e=>{stArea[e.target.dataset.starea]=e.target.value.trim();det(e.target.dataset.starea);});
   R.querySelectorAll('[data-saisle]').forEach(inp=>inp.onchange=e=>{stAisle[e.target.dataset.saisle]=e.target.value.trim();det(e.target.dataset.saisle);});
   R.querySelectorAll('[data-sexp]').forEach(inp=>{inp.oninput=e=>{stExp[e.target.dataset.sexp]=e.target.value;stCardMark(e.target.dataset.sexp);updateStProgress();};
-    inp.onchange=e=>{const lid=e.target.dataset.sexp;stExp[lid]=e.target.value;if(e.target.value)stNoExp[lid]=false;stCardMark(lid);updateStProgress();if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null,noexp:e.target.value?false:undefined});
+    inp.onchange=e=>{const lid=e.target.dataset.sexp;if(e.target.value&&!validBB(e.target.value))return;   /* half-typed year (e.g. 0202) — wait for all 4 digits */stExp[lid]=e.target.value;if(e.target.value)stNoExp[lid]=false;stCardMark(lid);updateStProgress();if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null,noexp:e.target.value?false:undefined});
       if((stKnown[lid]||[]).length&&e.target.value){stOther[lid]=!stIsTyped(lid)?false:stOther[lid];stCardRefresh(lid);}};});
   // other centres: open the location / aisle fields only when wanted
   R.querySelectorAll('[data-stloc]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stloc;stLocOpen[lid]=true;stCardRefresh(lid);
@@ -3728,6 +3871,7 @@ function stScanCode(st,code,opts){
   openScanEntry(st,line,opts);return true;
 }
 function openScanEntry(st,line,opts){
+  if(STE&&!stAmending)return openStEntryPanel(st,line,null,opts);   // each person records their own count
   opts=opts||{};stScanOpen=true;
   const it=item(line.item_id),per=hasPpc(it)?ppc(it):0,hub=isHub(st.location_id);
   const cur=(stCounts[line.id]===''||stCounts[line.id]==null)?null:+stCounts[line.id];
@@ -3819,10 +3963,23 @@ function stSavePending(){try{if(stCurrentId)localStorage.setItem(stQKey(stCurren
 function stSyncUi(){const el=document.getElementById('st-sync');if(!el)return;const n=stPending.length;
   el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All saved · live'}`;}
 /* one count entry for one line: mode add | set | clear | details */
-function stQueue(op){if(op&&op.line&&(op.mode==='add'||op.mode==='set'))stMine.add(op.line);if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
+function stQueue(op){if(op&&op.line&&(op.mode==='add'||op.mode==='set'||op.mode==='entry'))stMine.add(op.line);if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
 async function stFlush(){
   if(stFlushing||window._stLegacy)return;stFlushing=true;stSyncUi();
   while(stPending.length){const op=stPending[0];
+    if(op.mode==='entry'||op.mode==='entry_del'){   // one person's own count (migration 64)
+      const r=op.mode==='entry'
+        ?await sb.rpc('st_entry_save',{p_id:op.id,p_line:op.line,p_qty:Math.max(0,Math.round(+op.qty||0)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_no_expiry:!!op.noexp,p_device:stDevice()})
+        :await sb.rpc('st_entry_delete',{p_id:op.id});
+      if(r.error){const m=r.error.message||'';
+        if(/finalised|not counting|not found|your own|another item|was removed|best-before|Central Warehouse|quantity|year/i.test(m)){
+          toast(m,true);stPending.shift();stSavePending();const s=S.stocktakes.find(x=>x.id===stCurrentId);if(s)loadStEntries(s);continue;}
+        op.tries=(op.tries||0)+1;stSyncErr=m;stSyncUi();stFlushing=false;setTimeout(stFlush,Math.min(30000,1500*op.tries));return;}
+      stPending.shift();stSavePending();stSyncErr='';
+      const d=r.data||{};if(d.entry)stEntUpsert(d.entry);
+      if(!stPending.some(p=>p.line===op.line)){if(d.line)stApplyLine(d.line,true,true);stCardRefresh(op.line);}
+      continue;
+    }
     const prm={p_line:op.line,p_mode:op.mode,p_qty:op.qty==null?null:Math.max(0,Math.round(+op.qty)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_splits:op.splits||null,p_device:stDevice()};
     if(!window._stNoNd)prm.p_no_expiry=(op.noexp===true||op.noexp===false)?op.noexp:null;
     const{data,error}=await sb.rpc('st_record_count',prm);
@@ -3890,6 +4047,12 @@ async function stPoll(full){
   if(!stCurrentId||!document.getElementById('stList')||window._stLegacy)return;
   try{
     const sid=stCurrentId,since=(stLastSeen&&!full)?stLastSeen:null;
+    if(STE&&stEntSeen){   // everyone's own counts that changed since last look (incl. removed ones)
+      const{data:ce}=await sb.from('stocktake_entries').select('*').eq('stocktake_id',sid).gt('updated_at',stEntSeen).order('updated_at').limit(1000);
+      const touched=new Set();(ce||[]).forEach(e=>{if(e.updated_at>stEntSeen)stEntSeen=e.updated_at;if(stPending.some(p=>p.id===e.id))return;stEntUpsert(e);touched.add(e.line_id);});
+      touched.forEach(lid=>{const card=document.querySelector(`#stList [data-stl="${lid}"]`);if(card&&!card.contains(document.activeElement)&&!stScanOpen){stCardRefresh(lid);const nc=document.querySelector(`#stList [data-stl="${lid}"]`);if(nc){nc.classList.remove('st-flash');void nc.offsetWidth;nc.classList.add('st-flash');}}});
+      if(touched.size)updateStProgress();
+    }
     const{data,error}=await sbAll(()=>{let q=sb.from('stocktake_lines').select(stLineCols()).eq('stocktake_id',sid);if(since)q=q.gt('updated_at',since);return q.order('id');});
     if(!error){(data||[]).forEach(r=>{if(r.updated_at&&(!stLastSeen||r.updated_at>stLastSeen))stLastSeen=r.updated_at;if(stPending.some(p=>p.line===r.id))return;stApplyLine(r,false);});}
     else if(!window._stNoNd&&/no_expiry/i.test(error.message||'')){window._stNoNd=true;}   // 55 not run yet — next poll reads without it
@@ -3904,8 +4067,9 @@ let stAmending=false;
 async function openStHistory(st){
   const{data,error}=await sb.from('stocktake_count_log').select('*').eq('stocktake_id',st.id).order('ts',{ascending:false}).limit(3000);
   if(error)return toast(/does not exist|schema/i.test(error.message)?'Run 54_stocktake_team.sql in Supabase to record count history':error.message,true);
-  const rows=data||[];const who={};rows.forEach(r=>{if(!['add','set'].includes(r.action))return;const k=r.actor_name||'Unknown';const w=who[k]=who[k]||{n:0,items:new Set(),last:r.ts,helper:r.is_helper};w.n++;w.items.add(r.item_id);});
-  const act={add:'Added to count',set:'Set count',clear:'Cleared',details:'Location / date',finalise:'Finalised',amend:'<b>Amended</b> (stock change)',deleted:'<b style="color:var(--crit)">Deleted</b>'};
+  const rows=data||[];const who={};rows.forEach(r=>{if(!['add','set','entry_add','entry_edit'].includes(r.action))return;const k=r.actor_name||'Unknown';const w=who[k]=who[k]||{n:0,items:new Set(),last:r.ts,helper:r.is_helper};w.n++;w.items.add(r.item_id);});
+  const act={add:'Added to count',set:'Set count',clear:'Cleared',details:'Location / date',finalise:'Finalised',amend:'<b>Amended</b> (stock change)',deleted:'<b style="color:var(--crit)">Deleted</b>',
+    entry_add:'Counted',entry_edit:'Changed own count',entry_delete:'<span style="color:var(--crit)">Removed a count</span>'};
   let filt='';
   const body=()=>{const L=rows.filter(r=>!filt||r.actor_name===filt);return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:12px">${Object.entries(who).map(([n,w])=>`<div class="tile"><div class="lbl">${esc(n)}${w.helper?' · helper':''}</div><div class="val tnum" style="font-size:20px">${w.items.size} item${w.items.size===1?'':'s'}</div><div class="meta">${w.n} entr${w.n===1?'y':'ies'} · last ${fmtDT(w.last)}</div></div>`).join('')||'<div style="color:var(--muted)">No counts yet.</div>'}</div>
     <div class="toolbar"><select class="filter" id="sth-who"><option value="">Everyone</option>${Object.keys(who).map(n=>`<option${n===filt?' selected':''}>${esc(n)}</option>`).join('')}</select><div class="spacer"></div><button class="btn sm" id="sth-csv">Export CSV</button></div>
@@ -3920,10 +4084,11 @@ async function sbAll(mk){let out=[],from=0;for(let i=0;i<60;i++){const{data,erro
 /* ---------- live progress report: how much each person has counted ---------- */
 async function stLoadReportData(stId,lineCols){
   const all=sbAll;
-  const [a,b]=await Promise.all([
+  const [a,b,c]=await Promise.all([
     all(()=>sb.from('stocktake_lines').select(lineCols).eq('stocktake_id',stId).order('id')),
-    all(()=>sb.from('stocktake_count_log').select('id,ts,actor,actor_name,is_helper,action,qty,before_qty,after_qty,line_id,item_id,area,aisle,expiry,splits,device').eq('stocktake_id',stId).order('id',{ascending:true}))]);
-  return {error:a.error,lines:a.data||[],logs:b.error?[]:(b.data||[]),noLog:!!b.error};
+    all(()=>sb.from('stocktake_count_log').select('id,ts,actor,actor_name,is_helper,action,qty,before_qty,after_qty,line_id,item_id,area,aisle,expiry,splits,device').eq('stocktake_id',stId).order('id',{ascending:true})),
+    all(()=>sb.from('stocktake_entries').select('*').eq('stocktake_id',stId).is('deleted_at',null).order('id'))]);
+  return {error:a.error,lines:a.data||[],logs:b.error?[]:(b.data||[]),noLog:!!b.error,entries:c.error?null:(c.data||[])};
 }
 /* ---------- "By item & counter": one row per item, who counted it underneath (not one line per entry) ---------- */
 // replay each line's entries in order: "add" adds to that person, "set" replaces the whole count, "clear" empties it
@@ -3943,8 +4108,16 @@ function stCountersByLine(logs){
   const out={};Object.entries(M).forEach(([lid,L])=>{out[lid]=L.order.map(k=>L.by[k]).filter(p=>p.entries>0);});
   return out;
 }
+/* per item, per person — straight from the count entries (migration 64) */
+function stCountersFromEntries(entries){
+  const out={};(entries||[]).forEach(e=>{const L=out[e.line_id]=out[e.line_id]||{};const k=e.counter||e.counter_name||'?';
+    const p=L[k]=L[k]||{name:e.counter_name||'Unknown',helper:!!e.is_helper,qty:0,entries:0,places:new Set(),dates:new Set(),last:e.updated_at};
+    p.qty+=(+e.qty||0);p.entries++;const pl=[e.area,e.aisle?'Aisle '+e.aisle:''].filter(Boolean).join(' · ');if(pl)p.places.add(pl);
+    if(e.expiry)p.dates.add(String(e.expiry).slice(0,10));if(e.updated_at>p.last)p.last=e.updated_at;});
+  const r={};Object.entries(out).forEach(([lid,L])=>{r[lid]=Object.values(L);});return r;
+}
 function stByItemRows(D,withVar,completed){
-  const CB=stCountersByLine(D.logs);
+  const CB=(D.entries&&D.entries.length)?stCountersFromEntries(D.entries):stCountersByLine(D.logs);
   return D.lines.map(l=>{const it=item(l.item_id);const cnt=l.counted_qty==null?null:+l.counted_qty;
     let counters=CB[l.id]||[];if(!counters.length&&cnt!=null&&l.counted_by_name)counters=[{name:l.counted_by_name,helper:false,qty:cnt,entries:l.entries||1,places:new Set([[l.area,l.aisle?'Aisle '+l.aisle:''].filter(Boolean).join(' · ')].filter(Boolean)),dates:new Set(l.expiry?[String(l.expiry).slice(0,10)]:[]),last:l.counted_at}];
     let sys=null,v=null,val=0;
@@ -3997,8 +4170,10 @@ async function openStProgressReport(st){
     const L=D.lines,total=L.length,done=L.filter(l=>l.counted_qty!=null),pk=done.reduce((s,l)=>s+(+l.counted_qty||0),0),pct=total?Math.round(done.length/total*100):0;
     // per counter
     const P={};
-    const ent=D.logs.filter(r=>r.action==='add'||r.action==='set');
-    if(ent.length){ent.forEach(r=>{const k=r.actor||r.actor_name||'?';const p=P[k]=P[k]||{name:r.actor_name||'Unknown',helper:!!r.is_helper,me:!!(ME&&r.actor===ME.id),n:0,lines:new Set(),pk:0,first:r.ts,last:r.ts,cur:0};p.n++;p.lines.add(r.line_id);p.pk+=(+r.qty||0);p.last=r.ts;});}
+    const ent=D.logs.filter(r=>['add','set','entry_add','entry_edit'].includes(r.action));
+    if(D.entries&&D.entries.length){D.entries.forEach(e=>{const k=e.counter||e.counter_name||'?';const p=P[k]=P[k]||{name:e.counter_name||'Unknown',helper:!!e.is_helper,me:!!(ME&&e.counter===ME.id),n:0,lines:new Set(),pk:0,first:e.created_at,last:e.updated_at,cur:0};
+      p.n++;p.lines.add(e.line_id);p.pk+=(+e.qty||0);if(e.created_at<p.first)p.first=e.created_at;if(e.updated_at>p.last)p.last=e.updated_at;});}
+    else if(ent.length){ent.forEach(r=>{const k=r.actor||r.actor_name||'?';const p=P[k]=P[k]||{name:r.actor_name||'Unknown',helper:!!r.is_helper,me:!!(ME&&r.actor===ME.id),n:0,lines:new Set(),pk:0,first:r.ts,last:r.ts,cur:0};p.n++;p.lines.add(r.line_id);p.pk+=(+r.qty||0);p.last=r.ts;});}
     else{done.forEach(l=>{const k=l.counted_by||l.counted_by_name||'?';const p=P[k]=P[k]||{name:l.counted_by_name||'Unknown',helper:false,me:!!(ME&&l.counted_by===ME.id),n:0,lines:new Set(),pk:0,first:l.counted_at,last:l.counted_at,cur:0};p.n+=(l.entries||1);p.lines.add(l.id);p.pk+=(+l.counted_qty||0);if(l.counted_at>p.last)p.last=l.counted_at;if(l.counted_at<p.first)p.first=l.counted_at;});}
     done.forEach(l=>{const k=Object.keys(P).find(k=>k===l.counted_by)||Object.keys(P).find(k=>P[k].name===l.counted_by_name);if(k)P[k].cur++;});
     const people=Object.values(P).sort((a,b)=>b.lines.size-a.lines.size);const maxL=Math.max(1,...people.map(p=>p.lines.size));
@@ -4050,7 +4225,7 @@ async function openStVarianceReport(st){
   const byLine={};D.logs.forEach(r=>{if(!r.line_id)return;(byLine[r.line_id]=byLine[r.line_id]||[]).push(r);});
   const FL={};try{const{data:fl,error:fe}=await sb.from('stocktake_date_flags').select('line_id,entered,known,actor_name,reviewed_at').eq('stocktake_id',st.id);if(!fe)(fl||[]).forEach(f=>(FL[f.line_id]=FL[f.line_id]||[]).push(f));}catch(e){}
   const R=D.lines.map(l=>{const it=item(l.item_id);const sys=+l.system_qty||0;const cnt=l.counted_qty==null?null:+l.counted_qty;const v=cnt==null?null:cnt-sys;const cost=+it.unit_cost||0;
-    const ents=(byLine[l.id]||[]);const names=[...new Set(ents.filter(e=>e.action==='add'||e.action==='set').map(e=>e.actor_name||'Unknown'))];if(!names.length&&l.counted_by_name)names.push(l.counted_by_name);
+    const ents=(byLine[l.id]||[]);const names=[...new Set(ents.filter(e=>['add','set','entry_add','entry_edit'].includes(e.action)).map(e=>e.actor_name||'Unknown'))];if(!names.length&&l.counted_by_name)names.push(l.counted_by_name);
     return {l,it,sys,cnt,v,val:v==null?0:v*cost,cost,ents,names,flags:FL[l.id]||[],kind:cnt==null?'nc':v<0?'short':v>0?'over':'ok'};});
   const cnted=R.filter(r=>r.cnt!=null),vars=cnted.filter(r=>r.v!==0),sh=vars.filter(r=>r.v<0),ov=vars.filter(r=>r.v>0);
   const sum=(a,f)=>a.reduce((s,r)=>s+f(r),0);
@@ -4060,7 +4235,7 @@ async function openStVarianceReport(st){
   let filt='var',q='',sort='val',openAll=false;
   const money2=x=>money(x);
   const entHtml=r=>{const E=r.ents.filter(e=>e.action!=='finalise');if(!E.length)return `<div class="sr-ents"><div class="m" style="padding:6px 0">${r.cnt==null?'Not counted.':r.cnt===0&&!r.l.counted_by_name?'No count entered — set to 0 when the count was finalised (“treat not-counted as 0”).':'No entry detail recorded (counted before entry logging was switched on).'}</div></div>`;
-    const act={add:'Added',set:'Set to',clear:'Cleared',details:'Location / date',amend:'Amended — stock change'};
+    const act={add:'Added',set:'Set to',clear:'Cleared',details:'Location / date',amend:'Amended — stock change',entry_add:'Counted',entry_edit:'Changed own count to',entry_delete:'Removed a count of'};
     return `<div class="sr-ents">${E.map(e=>`<div class="sr-ent"><div><b>${esc(e.actor_name||'—')}</b>${e.is_helper?' <span class="tag">helper</span>':''}<div class="m" style="font-size:11px">${fmtDT(e.ts)}</div></div><div>${act[e.action]||esc(e.action)} ${e.qty!=null&&e.action!=='details'?`<b class="tnum">${e.qty}</b>`:''}<div class="m" style="font-size:11px">${esc(e.device||'')}</div></div><div class="tnum">${e.action==='details'?'':`${e.before_qty==null?'—':e.before_qty} → <b>${e.after_qty==null?'—':e.after_qty}</b>`}</div><div>${esc([e.area,e.aisle].filter(Boolean).join(' · ')||'—')}</div><div class="m">${e.splits&&e.splits.length?e.splits.map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join(', '):e.expiry?'BB '+fmtDate(e.expiry):''}</div></div>`).join('')}</div>`;};
   const list=()=>{let L=R.slice();const ql=q.toLowerCase();
     if(filt==='var')L=L.filter(r=>r.kind==='short'||r.kind==='over');else if(filt==='typed')L=L.filter(r=>r.flags.length);else if(filt!=='all')L=L.filter(r=>r.kind===filt);
