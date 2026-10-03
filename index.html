@@ -1044,7 +1044,8 @@ function openBatchSplit(title,total,rows,onSave){
   }
   host.innerHTML=shell();document.body.appendChild(host);
   host.querySelector('#bs-x').onclick=close;host.querySelector('#bs-cancel').onclick=close;
-  host.querySelector('#bs-ok').onclick=()=>{const out=R.filter(r=>(+r.qty>0)&&r.exp);if(!out.length)return toast('Add at least one dated quantity',true);if(total!=null&&out.reduce((s,r)=>s+(+r.qty||0),0)!==+total)return toast('Quantities must total '+total,true);close();onSave(out.map(r=>({qty:+r.qty,exp:r.exp})));};
+  host.querySelector('#bs-ok').onclick=()=>{const out=R.filter(r=>(+r.qty>0)&&r.exp);if(!out.length)return toast('Add at least one dated quantity',true);
+    {const bad=out.find(r=>!validBB(r.exp)||r.exp<today());if(bad)return toast(`Best-before ${fmtDate(bad.exp)} is ${bad.exp<today()?'in the past':'not a valid date'} — check the date on the pack`,true);}if(total!=null&&out.reduce((s,r)=>s+(+r.qty||0),0)!==+total)return toast('Quantities must total '+total,true);close();onSave(out.map(r=>({qty:+r.qty,exp:r.exp})));};
   wireRows();
 }
 // A confirmation dialog that floats OVER the current form (its own overlay) without replacing it.
@@ -3287,7 +3288,7 @@ function openReceive(id){
     const note=(document.getElementById('rc-note')||{}).value||'';
     for(const l of (t.lines||[])){const it=item(l.item_id);const c=plCollect(l.id,hubR);const remBox=pk2boxWhole(l.qty_dispatched-l.qty_received,it);
       if(c.qty>remBox)return toast(it.name+': receiving ('+c.qty+' bx) is more than what is in transit ('+remBox+' bx)',true);
-      for(const r of c.rows){if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);if(hubR&&(!r.area||!r.aisle))return toast(it.name+': pick a store area and aisle # for every location',true);}}
+      for(const r of c.rows){if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);if(r.exp<today())return toast(it.name+': best-before '+fmtDate(r.exp)+' is in the past — check the date on the pack',true);if(hubR&&(!r.area||!r.aisle))return toast(it.name+': pick a store area and aisle # for every location',true);}}
     const finish=async()=>{
       const recv=(t.lines||[]).map(l=>({line:l.id,qty:box2pk(plCollect(l.id,hubR).qty,item(l.item_id))}));
       await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
@@ -3516,6 +3517,13 @@ function openStock(id,amend){
    ====================================================================================== */
 let STE=false, stEnt={}, stEntSeen=null;
 const validBB=d=>{if(!d)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false;const y=+d.slice(0,4);return y>=2000&&y<=2100;};
+/* Best-before can't be in the past on stock takes, transfers (picking / receiving) and supplier / PO receipts.
+   (Reporting EXPIRED stock and credit notes for expired returns are different screens and still allow past dates.) */
+const BB_SEL='[data-plx],[data-bx],[data-pkexpm],[data-sexp],#se-exp,[data-rx],[data-bbfuture]';
+document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.matches&&t.matches('input[type=date]')&&t.matches(BB_SEL))t.min=today();},true);
+document.addEventListener('change',e=>{const t=e.target;if(!t||!t.matches||!t.matches('input[type=date]')||!t.matches(BB_SEL))return;
+  const v=t.value;if(!v||!/^\d{4}-\d{2}-\d{2}$/.test(v)||+v.slice(0,4)<2000)return;   // still typing the year
+  if(v<today()){e.stopImmediatePropagation();t.value='';toast(`Best-before ${fmtDate(v)} is in the past — check the date on the pack`,true);t.dispatchEvent(new Event('input',{bubbles:true}));}},true);
 const stMe=()=>ME&&ME.id;
 function stEntTotal(lid){return (stEnt[lid]||[]).reduce((s,e)=>s+(+e.qty||0),0);}
 function stEntSync(lid){   // keep the line figures the rest of the screen uses in step with the entries
@@ -3597,6 +3605,7 @@ function openStEntryPanel(st,line,entry,opts){
     const q=qty(),nd=$('se-nd').checked,ex=nd?'':expVal(),a=$('se-area').value.trim(),b=$('se-aisle').value.trim();
     if($('se-pk').value===''&&(!per||$('se-box').value==='')&&!entry)return err('Enter the quantity you counted (0 if none here).');
     if(ex&&!validBB(ex))return err('Check the best-before date — the year must be 4 digits (e.g. 2027).');
+    if(ex&&ex<today())return err(`Best-before ${fmtDate(ex)} is in the past — check the date on the pack.`);
     if(q>0&&!ex&&!nd)return err('Enter the best-before date, or tick “No date on pack”.');
     if(hub&&q>0&&(!a||!b))return err('Central Warehouse: choose a store area and enter an aisle #.');
     // same person, same date + place as one of their earlier counts of this item → add to it instead of a new line
@@ -3633,7 +3642,8 @@ async function loadStKnown(st){
   let ok=false;
   try{const{data,error}=await sb.rpc('st_known_dates',{p_id:st.id});
     if(!error&&Array.isArray(data)){data.forEach(r=>{stKnown[r.line_id]=(r.dates||[]).map(d=>String(d).slice(0,10));});ok=true;}}catch(e){}
-  if(!ok&&!HELPER){(st.lines||[]).forEach(l=>{const a=(S.batches&&S.batches[st.location_id+'__'+l.item_id])||[];stKnown[l.id]=[...new Set(a.filter(b=>(+b.qty||0)>0&&b.expiry).map(b=>String(b.expiry).slice(0,10)))].sort();});}
+  if(!ok&&!HELPER){(st.lines||[]).forEach(l=>{const a=(S.batches&&S.batches[st.location_id+'__'+l.item_id])||[];stKnown[l.id]=[...new Set(a.filter(b=>(+b.qty||0)>0&&b.expiry).map(b=>String(b.expiry).slice(0,10)))].filter(d=>d>=today()).sort();});}
+  Object.keys(stKnown).forEach(k=>{stKnown[k]=(stKnown[k]||[]).filter(d=>d>=today());});   // never offer a past date
   if(stCurrentId===st.id&&document.getElementById('stList'))renderStList(st);
 }
 const stIsTyped=lid=>{const v=stExp[lid];const k=stKnown[lid]||[];return !!(v&&k.length&&!k.includes(v));};
@@ -3927,6 +3937,7 @@ function openScanEntry(st,line,opts){
     if(hub&&q>0&&(!a||!b))return err('Central Warehouse: choose a store area and enter an aisle #.');
     const ndOn=!!($('se-nd')&&$('se-nd').checked);
     if(q>0&&!e&&!ndOn)return err('Enter the best-before date, or tick “No date on pack”.');
+    if(e&&e<today())return err(`Best-before ${fmtDate(e)} is in the past — check the date on the pack.`);
     const prev=cur||0,prevExp=stExp[line.id]||'',prevSplit=stSplit[line.id]&&stSplit[line.id].length?stSplit[line.id].map(r=>({...r})):null;
     if(mode==='add'&&cur!=null){
       stCounts[line.id]=prev+q;
@@ -4511,6 +4522,7 @@ async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
   if(lines.some(l=>!l.exp&&!(l.batches&&l.batches.length)))return toast('Enter a Best Before date for every item',true);
+  {const td=today(),past=lines.find(l=>(l.exp&&l.exp<td)||(l.batches||[]).some(r=>r.exp&&r.exp<td));if(past)return toast(item(past.item).name+': best-before is in the past — check the date on the pack',true);}
   for(const l of lines){if(l.batches&&l.batches.length){const sum=l.batches.reduce((s,r)=>s+r.qty,0);if(sum!==+l.qty)return toast(item(l.item).name+': dated quantities ('+sum+') must equal quantity ('+l.qty+')',true);}}
   const area=saVal('area','rcpt_area'),aisle=saVal('aisle','rcpt_aisle');
   if(isHub(lc)&&(!area||!aisle))return toast('Central Warehouse: pick a storage area and enter an aisle #',true);
@@ -6887,7 +6899,7 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
     for(const l of (o.lines||[])){const it=item(l.item_id);const c=plCollect(l.item_id,hub);const oBox=pk2boxWhole(+l.qty||0,it);
       if(c.qty>oBox)return toast(it.name+': receiving ('+c.qty+' bx) is more than ordered ('+oBox+' bx)',true);
-      for(const r of c.rows){if(!String(r.area||'').trim()||!String(r.aisle||'').trim())return toast(it.name+': enter a store area and aisle # for every location',true);if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);}
+      for(const r of c.rows){if(!String(r.area||'').trim()||!String(r.aisle||'').trim())return toast(it.name+': enter a store area and aisle # for every location',true);if(!r.exp)return toast(it.name+': enter a Best Before date for every location',true);if(r.exp<today())return toast(it.name+': best-before '+fmtDate(r.exp)+' is in the past — check the date on the pack',true);}
       const ce=document.querySelector('[data-rcost="'+l.item_id+'"]');const cv=ce?ce.value.trim():'';if(c.qty>0&&(cv===''||!(+cv>=0)))return toast(it.name+': enter the cost per packet',true);}
     const finish=async()=>{
       const recv=(o.lines||[]).map(l=>{const ce=document.querySelector('[data-rcost="'+l.item_id+'"]');const cost=ce&&ce.value.trim()!==''?Math.max(0,+ce.value):+l.unit_cost||0;return {item:l.item_id,qty:box2pk(plCollect(l.item_id,hub).qty,item(l.item_id)),cost};});
