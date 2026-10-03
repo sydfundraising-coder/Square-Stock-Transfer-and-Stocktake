@@ -598,6 +598,11 @@
   .stl-f .stl-dates{height:38px;display:flex;align-items:center;font-size:13px;color:var(--ink);font-weight:600}
   .stl-det .btn{height:38px;white-space:nowrap}
   .stl.st-flash{animation:stflash 1.4s ease}
+  .stl-det.nh{grid-template-columns:minmax(0,340px)}
+  .stl-det.nh2{grid-template-columns:minmax(0,1.4fr) minmax(0,.7fr);border-top:0;padding-top:0;margin-top:8px;max-width:520px}
+  .stl-addloc{display:inline-flex;align-items:center;gap:5px;margin-top:8px;border:0;background:none;padding:2px 0;color:var(--accent-ink);font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+  .stl-addloc svg{width:13px;height:13px}
+  .stl-addloc span{text-decoration:underline;color:var(--muted);font-weight:500}
   .stl-nd{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-top:4px;cursor:pointer;text-transform:none}
   .stl-nd input{width:16px!important;height:16px!important;margin:0;padding:0!important}
   .stl-typed{display:flex;gap:5px;align-items:center;margin-top:5px;font-size:11.5px;font-weight:600;color:var(--warn);text-transform:none;letter-spacing:0}
@@ -3408,7 +3413,7 @@ function openStock(id,amend){
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;stAmending=!!amend;
-  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={};stKnown={};stOther={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
+  if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={};stKnown={};stOther={};stLocOpen={}; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
       if(Array.isArray(l.splits)&&l.splits.length){stSplit[l.id]=l.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[l.id]='';}else stExp[l.id]=(l.expiry?String(l.expiry).slice(0,10):'')||(open?'':((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry))||'';   // open counts: the counter picks the date from the list — no silent pre-fill
       stNoExp[l.id]=!!l.no_expiry;if(l.no_expiry)stExp[l.id]='';
       stSig[l.id]=stLineSig(l);
@@ -3466,7 +3471,7 @@ function stPhoneLayout(){
     const card=e.target.closest('.stl');if(card)setTimeout(()=>{try{card.scrollIntoView({block:'start',behavior:'smooth'});}catch(_){}},260);});
   pnl.addEventListener('focusout',()=>setTimeout(()=>{if(!isEntry(document.activeElement))pnl.classList.remove('st-typing');},150));
 }
-let stFilt='all', stCurrentIdPrev=null, stMine=new Set(), stSig={}, stNoExp={}, stKnown={}, stOther={};
+let stFilt='all', stCurrentIdPrev=null, stMine=new Set(), stSig={}, stNoExp={}, stKnown={}, stOther={}, stLocOpen={};
 /* best-before pick list: the dates already on the system for each item at this centre */
 async function loadStKnown(st){
   let ok=false;
@@ -3616,12 +3621,18 @@ function renderStRows(st,editable,filter){
                <div class="stl-qty bx" style="margin-top:6px"><button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per} packets) to the count">+1 box</button><button type="button" class="btn primary" data-stadd="${l.id}" title="Add a count with location and best-before" aria-label="Add a count">${svg(I.plus,18)}</button></div>
                <div class="stl-unit" data-stunit="${l.id}">${done?`= <b>${+c}</b> packets · `:''}${per} per box</div></div></div>`
             :`<div><div class="stl-qty"><input type="number" min="0" inputmode="numeric" value="${done?c:''}" placeholder="–" data-c="${l.id}" aria-label="Counted packets for ${esc(it.name)}"><button type="button" class="btn primary" data-stadd="${l.id}" title="Add a count with location and best-before" aria-label="Add a count">${svg(I.plus,18)}</button></div><div class="stl-unit" data-stunit="${l.id}">packets${per&&done?' · '+boxDec(+c,it)+' bx':''}</div>${per?`<div style="text-align:right;margin-top:4px"><button type="button" class="btn sm" data-stbox="${l.id}" title="Add one box (${per} packets)">+1 box</button></div>`:''}</div></div>`}
-        <div class="stl-det">
-          <label class="stl-f wide${hubS?' need':''}"><span>Location${hubS?' *':''}</span>${areaCtl}</label>
-          <label class="stl-f${hubS?' need':''}"><span>Aisle${hubS?' *':''}</span><input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="#" autocomplete="off"></label>
-          <div class="stl-f stl-bb"><span>Best before *${nd?'':`<button type="button" class="lnk" data-stsplit="${l.id}">${sp?'edit':'+ more'}</button>`}</span>${nd?`<div class="stl-dates">No date on pack</div>`:sp?`<div class="stl-dates">${stSplit[l.id].map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join(', ')}</div>`:stBbCtl(l.id)}
-            <label class="stl-nd"><input type="checkbox" data-snd="${l.id}"${nd?' checked':''}> No date on pack</label></div>
-        </div><div class="stl-need">Best before needed — enter the date or tick “No date on pack”.</div></div>`;}
+        ${(()=>{
+          const bb=`<div class="stl-f stl-bb"><span>Best before *${nd?'':`<button type="button" class="lnk" data-stsplit="${l.id}">${sp?'edit':'+ more'}</button>`}</span>${nd?`<div class="stl-dates">No date on pack</div>`:sp?`<div class="stl-dates">${stSplit[l.id].map(s=>esc(s.qty+' × '+fmtDate(s.exp))).join(', ')}</div>`:stBbCtl(l.id)}
+            <label class="stl-nd"><input type="checkbox" data-snd="${l.id}"${nd?' checked':''}> No date on pack</label></div>`;
+          const locF=`<label class="stl-f wide${hubS?' need':''}"><span>Location${hubS?' *':''}</span>${areaCtl}</label>
+            <label class="stl-f${hubS?' need':''}"><span>Aisle${hubS?' *':''}</span><input list="st-aisles" data-saisle="${l.id}" value="${esc(stAisle[l.id]||'')}" placeholder="#" autocomplete="off"></label>`;
+          if(hubS)return `<div class="stl-det">${locF}${bb}</div>`;     // Central Warehouse: location + aisle required
+          // other centres: best-before straight under the count; location / aisle only if they want it
+          const a=(stArea[l.id]||'').trim(),ai=(stAisle[l.id]||'').trim();
+          return `<div class="stl-det nh">${bb}</div>`+(stLocOpen[l.id]?`<div class="stl-det nh2">${locF}</div>`
+            :`<button type="button" class="stl-addloc" data-stloc="${l.id}">${a||ai?`${svg(I.location,13)} ${esc([a,ai?'Aisle '+ai:''].filter(Boolean).join(' · '))} <span>change</span>`:'+ Add location / aisle'}</button>`);
+        })()}
+        <div class="stl-need">Best before needed — enter the date or tick “No date on pack”.</div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
   }).join('');
@@ -3664,6 +3675,9 @@ function bindStInputs(root){
   R.querySelectorAll('[data-sexp]').forEach(inp=>{inp.oninput=e=>{stExp[e.target.dataset.sexp]=e.target.value;stCardMark(e.target.dataset.sexp);updateStProgress();};
     inp.onchange=e=>{const lid=e.target.dataset.sexp;stExp[lid]=e.target.value;if(e.target.value)stNoExp[lid]=false;stCardMark(lid);updateStProgress();if(live)stQueue({line:lid,mode:'details',area:stArea[lid]||'',aisle:stAisle[lid]||'',expiry:stExp[lid]||null,noexp:e.target.value?false:undefined});
       if((stKnown[lid]||[]).length&&e.target.value){stOther[lid]=!stIsTyped(lid)?false:stOther[lid];stCardRefresh(lid);}};});
+  // other centres: open the location / aisle fields only when wanted
+  R.querySelectorAll('[data-stloc]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stloc;stLocOpen[lid]=true;stCardRefresh(lid);
+    const f=document.querySelector(`#stList [data-stl="${lid}"] [data-starea]`);if(f)f.focus();});
   // pick list: choose a date the system already has, or "Other date" to type one
   R.querySelectorAll('[data-sexpsel]').forEach(sel=>sel.onchange=e=>{const lid=e.target.dataset.sexpsel,v=e.target.value;
     if(v==='__other'){stOther[lid]=true;stCardRefresh(lid);const d=document.querySelector(`#stList [data-sexp="${lid}"]`);if(d){d.focus();try{d.showPicker&&d.showPicker();}catch(_){}}return;}
