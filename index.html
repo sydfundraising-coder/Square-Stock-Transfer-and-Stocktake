@@ -27,6 +27,37 @@
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
+/* Camera barcode scanning on every phone.
+   Android Chrome has a built-in barcode reader (BarcodeDetector); iPhone/iPad Safari and some desktop
+   browsers don't. There we stand in a small reader (ZXing, loaded only when the camera is first used)
+   with the same interface, so every Camera button in the app works on iPhone too. */
+(function(){
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))return;   // no camera access at all
+  let zp=null;
+  const loadZ=()=>{if(window.ZXing)return Promise.resolve(window.ZXing);if(zp)return zp;
+    zp=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+      s.onload=()=>window.ZXing?res(window.ZXing):rej(new Error('Scanner failed to load'));s.onerror=()=>{zp=null;rej(new Error('Scanner failed to load — check the connection'));};document.head.appendChild(s);});return zp;};
+  class ShimDetector{
+    constructor(){this.cv=document.createElement('canvas');this.ctx=this.cv.getContext('2d',{willReadFrequently:true});this.reader=null;this.n=0;loadZ().catch(()=>{});}
+    static async getSupportedFormats(){return ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'];}
+    async detect(src){
+      const Z=await loadZ();
+      if(!this.reader){const h=new Map();h.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.EAN_8,Z.BarcodeFormat.UPC_A,Z.BarcodeFormat.UPC_E,Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.QR_CODE]);h.set(Z.DecodeHintType.TRY_HARDER,true);this.reader=new Z.MultiFormatReader();this.reader.setHints(h);}
+      const w=src.videoWidth||src.naturalWidth||src.width,hh=src.videoHeight||src.naturalHeight||src.height;if(!w||!hh)return [];
+      // alternate between the full frame and a centre strip (where people aim) — keeps it quick on phones
+      const crop=(this.n++%2)===1;const sx=crop?0:0,sy=crop?Math.round(hh*0.3):0,sw=w,sh=crop?Math.round(hh*0.4):hh;
+      const sc=Math.min(1,1000/Math.max(sw,sh));this.cv.width=Math.round(sw*sc);this.cv.height=Math.round(sh*sc);
+      this.ctx.drawImage(src,sx,sy,sw,sh,0,0,this.cv.width,this.cv.height);
+      try{const r=this.reader.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(this.cv))));
+        return r?[{rawValue:r.getText(),format:String(r.getBarcodeFormat())}]:[];}catch(e){return [];}   // nothing in view this frame
+    }
+  }
+  if(!('BarcodeDetector' in window)){window.BarcodeDetector=ShimDetector;return;}
+  // built-in reader present but with no barcode formats (e.g. some desktops): use the stand-in
+  try{window.BarcodeDetector.getSupportedFormats().then(f=>{if(!f||!f.length)window.BarcodeDetector=ShimDetector;}).catch(()=>{window.BarcodeDetector=ShimDetector;});}catch(e){window.BarcodeDetector=ShimDetector;}
+})();
+</script>
+<script>
   /* Logo loader: tries several file names/extensions, falls back to the "S" mark + text.
      Put your logo file next to index.html (same folder) named one of these. */
   window.LOGO_CANDIDATES=['shayona-logo.png','shayona-logo.jpg','shayona-logo.jpeg','shayona-logo.svg','shayona-logo.webp','logo.png','logo.jpg','logo.svg'];
