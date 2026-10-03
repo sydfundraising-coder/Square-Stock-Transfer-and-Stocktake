@@ -3497,7 +3497,9 @@ function openStock(id,amend){
     const sv=document.getElementById('st-save'); if(sv)sv.onclick=()=>{saveStProgress(st,true);if(HELPER)setTimeout(()=>{if(!stPending.length)closeOverlay();},600);};
     const fin=document.getElementById('fin'); if(fin)fin.onclick=()=>reviewStocktake(st);
     const am=document.getElementById('st-amend-save'); if(am)am.onclick=()=>saveAmend(st);
-    if(open&&!amend){ stSyncUi(); if(stPending.length)stFlush(); stPoll(true); loadStKnown(st); loadStEntries(st).then(()=>{if(STE&&!stEntSeen)stEntSeen=new Date(Date.now()-60000).toISOString();}); }   // pull everyone's latest counts, then keep them live
+    if(open&&!amend){ stSyncUi(); stPoll(true); loadStKnown(st);
+      // load everyone's counts first, then send anything still waiting on this phone (so older entries are converted correctly)
+      loadStEntries(st).then(()=>{if(STE&&!stEntSeen)stEntSeen=new Date(Date.now()-60000).toISOString();if(stPending.length)stFlush();}); }   // pull everyone's latest counts, then keep them live
   } else {
     const amb=document.getElementById('st-amend'); if(amb)amb.onclick=()=>openStock(id,true);
   }
@@ -3951,7 +3953,7 @@ function openScanEntry(st,line,opts){
 }
 function saveStProgress(st,announce){
   // counts are saved line by line as they're entered (migration 54); "Save" just makes sure nothing is still waiting
-  if(!window._stLegacy){ stFlush().then(()=>{ if(announce){ if(st&&st.lines)persistStLocations(st); toast(stPending.length?`${stPending.length} count(s) still waiting for the connection — they’ll send automatically`:'All counts are saved',!!stPending.length);} }); return; }
+  if(!window._stLegacy){ stFlush().then(()=>{ if(announce){ if(st&&st.lines)persistStLocations(st); toast(stPending.length?`${stPending.length} count(s) not sent yet${stSyncErr?' — '+stSyncErr:' — waiting for the connection'}. They’ll send automatically.`:'All counts are saved',!!stPending.length);} }); return; }
   const counts=stCountsArray();clearTimeout(stSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_stocktake_counts',{p_id:st.id||stCurrentId,p_counts:counts});if(announce){if(st&&st.lines)persistStLocations(st);toast(error?('Save failed: '+error.message):'Progress saved',!!error);}};if(announce)doSave();else stSaveT=setTimeout(doSave,700);}
 
 /* ---------- group counting: every entry goes straight to the database, others' counts appear live ---------- */
@@ -3964,16 +3966,36 @@ function stSyncUi(){const el=document.getElementById('st-sync');if(!el)return;co
   el.className='st-sync'+(stSyncErr?' bad':n?' busy':'');el.innerHTML=`<i></i>${stSyncErr?'Not saved yet — '+esc(stSyncErr.slice(0,60))+' (retrying)':n?`Saving ${n}…`:'All saved · live'}`;}
 /* one count entry for one line: mode add | set | clear | details */
 function stQueue(op){if(op&&op.line&&(op.mode==='add'||op.mode==='set'||op.mode==='entry'))stMine.add(op.line);if(window._stLegacy){saveStProgress({id:stCurrentId},false);return;}op.at=Date.now();stPending.push(op);stSavePending();stSyncUi();stFlush();}
+/* is this a connection problem (keep retrying) or a real refusal from the database (don't block the queue)? */
+function stNetErr(err){const m=String((err&&err.message)||'');const c=String((err&&err.code)||'');
+  return (!c&&/fetch|network|timeout|load failed|connection|offline|abort/i.test(m))||/^(08|53|57)/.test(c)||(err&&err.status>=500);}
+const stOpItem=op=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===op.line);return l?item(l.item_id).name:'an item';};
+/* tidy the waiting list: drop half-typed dates, and turn entries made on the older single-count screen into own-count entries */
+function stCleanQueue(){
+  const keep=[],dropped=[];
+  for(const op of stPending){
+    if(op.expiry&&!validBB(op.expiry)){ if(op.mode==='details')continue; op.expiry=null; }            // "0002-…" from typing a year
+    if(STE&&!stAmending&&['add','set','clear','details'].includes(op.mode)){
+      if(op.mode==='add'&&(+op.qty||0)>0&&(op.expiry||op.noexp)){                                       // a plain "add" becomes your own count
+        keep.push({mode:'entry',line:op.line,id:(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()),qty:+op.qty,area:op.area||'',aisle:op.aisle||'',expiry:op.expiry||null,noexp:!!op.noexp,at:op.at});continue;}
+      if(op.mode==='set'||op.mode==='add')dropped.push(stOpItem(op));
+      continue;                                                                                           // old "replace" / date-only changes can't be applied safely now
+    }
+    keep.push(op);
+  }
+  stPending=keep;stSavePending();
+  if(dropped.length)toast(`Please re-enter your count for: ${[...new Set(dropped)].slice(0,6).join(', ')}${dropped.length>6?' …':''} (made on the old screen before the update)`,true);
+}
 async function stFlush(){
-  if(stFlushing||window._stLegacy)return;stFlushing=true;stSyncUi();
+  if(stFlushing||window._stLegacy)return;stFlushing=true;stCleanQueue();stSyncUi();
   while(stPending.length){const op=stPending[0];
     if(op.mode==='entry'||op.mode==='entry_del'){   // one person's own count (migration 64)
       const r=op.mode==='entry'
         ?await sb.rpc('st_entry_save',{p_id:op.id,p_line:op.line,p_qty:Math.max(0,Math.round(+op.qty||0)),p_area:op.area||null,p_aisle:op.aisle||null,p_expiry:op.expiry||null,p_no_expiry:!!op.noexp,p_device:stDevice()})
         :await sb.rpc('st_entry_delete',{p_id:op.id});
       if(r.error){const m=r.error.message||'';
-        if(/finalised|not counting|not found|your own|another item|was removed|best-before|Central Warehouse|quantity|year/i.test(m)){
-          toast(m,true);stPending.shift();stSavePending();const s=S.stocktakes.find(x=>x.id===stCurrentId);if(s)loadStEntries(s);continue;}
+        if(!stNetErr(r.error)){   // refused by the database: tell the person, drop it, carry on with the rest
+          toast(`${stOpItem(op)}: ${m}`,true);console.error('st_entry',op,r.error);stPending.shift();stSavePending();const s=S.stocktakes.find(x=>x.id===stCurrentId);if(s)loadStEntries(s);continue;}
         op.tries=(op.tries||0)+1;stSyncErr=m;stSyncUi();stFlushing=false;setTimeout(stFlush,Math.min(30000,1500*op.tries));return;}
       stPending.shift();stSavePending();stSyncErr='';
       const d=r.data||{};if(d.entry)stEntUpsert(d.entry);
@@ -3988,7 +4010,7 @@ async function stFlush(){
       // 55 not run yet: carry on without the "No date on pack" option
       if(!window._stNoNd&&/schema cache|could not find|p_no_expiry|does not exist/i.test(m)){window._stNoNd=true;toast('Run 55_stocktake_best_before.sql in Supabase to save “No date on pack”',true);continue;}
       if(/st_record_count|does not exist|schema cache/i.test(m)){window._stLegacy=true;stPending=[];stSavePending();stFlushing=false;stSyncErr='';saveStProgress({id:stCurrentId},false);toast('Run 54_stocktake_team.sql in Supabase to turn on safe group counting',true);return;}
-      if(/finalised|not counting|not found|Bad mode/i.test(m)){toast(m,true);stPending.shift();stSavePending();continue;}
+      if(/finalised|not counting|not found|Bad mode/i.test(m)||!stNetErr(error)){toast(`${stOpItem(op)}: ${m}`,true);console.error('st_record_count',op,error);stPending.shift();stSavePending();continue;}
       op.tries=(op.tries||0)+1;stSyncErr=m;stSyncUi();stFlushing=false;
       setTimeout(stFlush,Math.min(30000,1500*op.tries));return;           // offline or a hiccup: keep it and retry
     }
