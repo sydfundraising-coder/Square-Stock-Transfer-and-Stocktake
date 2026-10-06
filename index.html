@@ -27,6 +27,12 @@
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
+/* ---- App version: change on every release so you can see which copy a device is running ---- */
+const APP_VERSION='2026.10.07-1';
+const APP_VERSION_NOTE='Customer payment terms, contacts & accounts email · CC on emails';
+document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
+</script>
+<script>
 /* Camera barcode scanning on every phone.
    Android Chrome has a built-in barcode reader (BarcodeDetector); iPhone/iPad Safari and some desktop
    browsers don't. There we stand in a small reader (ZXing, loaded only when the camera is first used)
@@ -114,6 +120,7 @@
   [data-theme="dark"] .nav-item[data-route="cash"]:hover{background:rgba(240,171,76,.14)}
   [data-theme="dark"] .nav-item[data-route="cash"].active{background:rgba(240,171,76,.2);border-color:var(--warn)}
   .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
+  .app-ver{font-size:11px;color:var(--faint);padding:6px 14px 12px;letter-spacing:.02em;user-select:all}
   .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
   .sq-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
   .dot{width:8px;height:8px;border-radius:50%;flex:none}.dot.ok{background:var(--good)}.dot.off{background:var(--faint)}
@@ -794,6 +801,7 @@
     <div class="field"><label for="newPw2">Type it again</label><input id="newPw2" type="password" autocomplete="new-password"></div>
     <button class="btn primary" id="setPwSave" style="width:100%;justify-content:center">Save password and continue</button>
     </div>
+    <div class="app-ver" data-appver style="text-align:center;margin-top:14px"></div>
   </div>
 </div>
 
@@ -804,6 +812,7 @@
     <div class="brand"><img id="sideLogo" class="applogo" data-i="0" data-hide="sideBrandText" src="shayona-logo.png" alt="Shayona" style="max-height:36px;display:none" onload="logoOk(this)" onerror="nextLogo(this)"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Portal</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="sq-status" id="sqStatus"></div>
+    <div class="app-ver" data-appver title="The version of the app this device is running — hard-refresh (Ctrl+Shift+R) after an update"></div>
   </aside>
   <div class="main">
     <header class="topbar">
@@ -821,6 +830,7 @@
           <div class="ud-sep"></div>
           <button class="ud-item" id="changePw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Change password</button>
           <button class="ud-item danger" id="signout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg> Sign out</button>
+          <div class="app-ver" data-appver style="padding:8px 4px 2px"></div>
         </div>
       </div>
     </header>
