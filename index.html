@@ -6275,12 +6275,15 @@ const slCustOpts=(sel,blank)=>`<option value="">${esc(blank||'All customers')}</
 function slStatements(el,warn){
   el.innerHTML=`${warn}<div class="banner info" style="margin:0 0 12px">${svg(I.calendar,17)}<div>Monthly statements are generated <b>automatically on the last working day</b> of each month (about 5–6 pm Sydney) for every customer with activity or a balance. Next automatic run: <b>${fmtDate(slNextStatementRun())}</b>. You can also generate a custom statement for any customer and period.</div></div>
     <div class="rep-controls"><div class="rep-actions no-print" style="margin-left:0;flex-wrap:wrap"><select class="filter" id="st-c">${slCustOpts(slStCust)}</select><select class="filter" id="st-k"><option value="all">All statements</option><option value="monthly">Monthly (automatic)</option><option value="custom">Custom</option></select></div>
-    <div class="rep-actions no-print"><button class="btn" id="st-month">${svg(I.calendar,15)} Generate monthly now</button><button class="btn" id="st-emailall">${svg(I.order,15)} Email unsent</button><button class="btn primary" id="st-new">${svg(I.plus,15)} Generate statement</button></div></div>
+    <div class="rep-actions no-print">${'auto_email_statements' in (invSettings||{})?`<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-right:6px" title="At midnight at the end of the last day of each month, statements are made and emailed to every customer with an email"><input type="checkbox" id="st-auto"${invSettings.auto_email_statements!==false?' checked':''}> Email statements automatically at month end</label>`:''}<button class="btn" id="st-month">${svg(I.calendar,15)} Generate monthly now</button><button class="btn" id="st-emailall">${svg(I.order,15)} Email unsent</button><button class="btn primary" id="st-new">${svg(I.plus,15)} Generate statement</button></div></div>
     <div id="st-list"></div>`;
   const k=document.getElementById('st-k');k.value=slStKind;k.onchange=e=>{slStKind=e.target.value;slStList();};
   document.getElementById('st-c').onchange=e=>{slStCust=e.target.value;slStList();};
   document.getElementById('st-new').onclick=()=>slStatementForm(slStCust);
   document.getElementById('st-month').onclick=slMonthlyForm;
+  {const au=document.getElementById('st-auto');if(au)au.onchange=async()=>{const on=au.checked;const{error}=await sb.rpc('set_auto_email_statements',{p_on:on});
+    if(error){au.checked=!on;return toast(error.message,true);}invSettings.auto_email_statements=on;
+    toast(on?'Statements will be emailed automatically at midnight at the end of each month':'Automatic statement emails turned off — use “Email unsent” to send them yourself');};}
   document.getElementById('st-emailall').onclick=slEmailUnsent;
   slStList();
 }
