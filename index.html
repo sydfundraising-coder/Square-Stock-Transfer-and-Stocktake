@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.07-1';
-const APP_VERSION_NOTE='Customer payment terms, contacts & accounts email · CC on emails';
+const APP_VERSION='2026.10.07-2';
+const APP_VERSION_NOTE='Live sales reporting (auto-updates every 10 min) · customer payment terms, contacts & accounts email · CC on emails';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1189,6 +1189,7 @@ async function refresh(){ await loadAll(); renderNav(); renderSq(); renderView()
    the stock for the location(s) that actually changed — NOT the whole catalog
    and all ~35k stock rows. Keeps items/velocity cached (they only change on Sync). */
 async function loadOps(){
+  try{perfLoadedAt=new Date();}catch(e){}   // shown as "last updated" on the live reports
   const q=async(p)=>{const{data,error}=await p;if(error)throw error;return data||[];};
   try{
     const[locations,transfers,receipts,orders,stocktakes,profiles,audit,plocs,adjreq,invoices2,consign,sareas,recvd,smonth,spay]=await Promise.all([
@@ -5483,7 +5484,7 @@ function vPerfFull(v){
   const opts=`${cs.length>1?`<option value="all">${scoped()?'All my centres':'All centres'}</option>`:''}`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const rf=perfCanRefresh();
   v.innerHTML=`<div class="rep-controls">
-      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Net sales, orders and basket size from <b>Square</b> — rolling last 24 months. ${scoped()?'Showing your centre(s) only.':'All centres, or pick one.'} Keep current with <b>Refresh sales</b>${rf?'':' (ask an admin)'}.</div></div>
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Net sales, orders and basket size from <b>Square</b> — rolling last 24 months. ${scoped()?'Showing your centre(s) only.':'All centres, or pick one.'} <b>Live</b> — updates automatically every 10 minutes${perfLiveTxt()}. <b>Refresh sales</b> re-pulls everything${rf?'':' (ask an admin)'}.</div></div>
       <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
     </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
   const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerf();};}
@@ -5648,6 +5649,18 @@ function perfExport(fmt){const d=window._perfData;if(!d||!d.yms||!d.yms.length)r
   const cn=(!perfCentre||perfCentre==='all')?'all':loc(perfCentre).code;const stamp=today();
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sales');XLSX.writeFile(wb,`sales-performance_${cn}_${stamp}.xlsx`);toast('Excel exported');}
   else downloadCSV(`sales-performance_${cn}_${stamp}.csv`,header,data);}
+/* Live reporting (migration 69): the database pulls this month's Square sales every 10 minutes;
+   while a report page is open the app re-reads the figures every 10 minutes too. */
+let perfLoadedAt=null;
+function perfLiveTxt(){return perfLoadedAt?` (last updated ${perfLoadedAt.toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'})})`:'';}
+const PERF_LIVE_ROUTES=['perf','reports','dashboard','sales','cash'];
+setInterval(async()=>{
+  if(typeof route==='undefined'||!PERF_LIVE_ROUTES.includes(route)||document.hidden)return;
+  if(document.querySelector('.scrim')||document.querySelector('.scan-entry-host'))return;          // don't redraw under an open window
+  const a=document.activeElement;if(a&&a.matches&&a.matches('input,textarea,select'))return;          // or while someone is typing
+  try{const y=window.scrollY;await loadOps();perfLoadedAt=new Date();renderView();window.scrollTo(0,y);}catch(e){console.error('live refresh',e);}
+},600000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&perfLoadedAt&&Date.now()-perfLoadedAt>600000&&PERF_LIVE_ROUTES.includes(route)&&!document.querySelector('.scrim')){loadOps().then(()=>{perfLoadedAt=new Date();renderView();}).catch(()=>{});}});
 async function runPerfSync(){
   const base=scoped()?S.locations.filter(l=>mine(l.id)):S.locations;
   const locs=base.filter(l=>l.square_location_id).map(l=>l.id);
@@ -5742,7 +5755,7 @@ function vPerfNational(v){
   const cs=S.locations.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const opts=`<option value="all">All centres (national)</option>`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   v.innerHTML=`<div class="rep-controls">
-      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>National sales report from <b>Square</b>, Australian financial years (Jul–Jun) from <b>FY2025</b> (1 Jul 2024). Net sales, transactions, items, payment methods, customers and baskets. Keep current with <b>Refresh sales</b>.</div></div>
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>National sales report from <b>Square</b>, Australian financial years (Jul–Jun) from <b>FY2025</b> (1 Jul 2024). Net sales, transactions, items, payment methods, customers and baskets. <b>Live</b> — updates automatically every 10 minutes${perfLiveTxt()}. <b>Refresh sales</b> re-pulls everything.</div></div>
       <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button><button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button></div>
     </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
   const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerfNational();};}
