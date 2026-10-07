@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.07-3';
-const APP_VERSION_NOTE='Purchase orders: PDF, Excel & email to supplier · Catalogue: CW available, on order & allocation · live sales reporting';
+const APP_VERSION='2026.10.07-4';
+const APP_VERSION_NOTE='Purchase orders: approval by National / Super Admin before emailing · duplicate-item warnings · PDF, Excel & email · Catalogue CW figures';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1094,7 +1094,9 @@ const sPill=s=>`<span class="pill ${(STATUS[s]||STATUS.requested).cls}">${(STATU
 function tStat(t){ if(t.status==='approved'&&t.picking_started_at) return {label:'Picking in progress',cls:'p-partial'}; return STATUS[t.status]||{label:t.status,cls:'p-draft'}; }
 const sPillT=t=>`<span class="pill ${tStat(t).cls}">${tStat(t).label}</span>`;
 const OSTATUS={draft:{label:'Draft',cls:'p-draft'},placed:{label:'Placed',cls:'p-req'},shipped:{label:'Shipped',cls:'p-transit'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
-const oPill=s=>`<span class="pill ${(OSTATUS[s]||OSTATUS.placed).cls}">${(OSTATUS[s]||{label:s}).label}</span>`;
+const oPill=(s,o)=>`<span class="pill ${(OSTATUS[s]||OSTATUS.placed).cls}">${(OSTATUS[s]||{label:s}).label}</span>${o&&('approved_at' in o)&&!o.approved_at&&s==='placed'?' <span class="pill p-req" title="A National Admin or Super Admin must approve it before it is emailed to the supplier">Awaiting approval</span>':''}`;
+/* orders waiting for a National / Super Admin to approve (shown on the menu badge for approvers) */
+const poAwaitingCount=()=>(typeof HELPER!=='undefined'&&!HELPER&&['national_admin','super_admin'].includes(ROLE))?(S.orders||[]).filter(o=>('approved_at' in o)&&!o.approved_at&&o.status==='placed').length:0;
 function daysUntil(d){if(!d)return null;return Math.round((new Date(d+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);}
 function etaText(d){const n=daysUntil(d);if(n===null)return'—';if(n<0)return'overdue '+(-n)+'d';if(n===0)return'due today';return'in '+n+'d';}
 const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
@@ -1303,7 +1305,7 @@ const NAV=[
   {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview'},
   {id:'perf',label:'Sales & Performance',icon:I.cost,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
-  {id:'orders',label:'Purchase Orders',icon:I.order,group:'Operations',badge:()=>incomingCount(),show:()=>canPO()},
+  {id:'orders',label:'Purchase Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
   {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)},
   {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
   {id:'freight',label:'Freight',icon:I.truck,group:'Operations'},
@@ -3490,14 +3492,14 @@ let oSearch='';
 function vOrders(v){
   const inc=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on));
   v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div>Purchase orders and their expected arrival.</div></div>
-    ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
+    ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status,o)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
     <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')&&canPO()?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New purchase order</button>`:''}</div><div id="list"></div>`;
   document.getElementById('q').oninput=e=>{oSearch=e.target.value;oList();};oList();
 }
 function oList(){
   const q=oSearch.toLowerCase();let list=S.orders.filter(o=>!scoped()||mine(o.location_id));
   if(q)list=list.filter(o=>o.code.toLowerCase().includes(q)||supplier(o.supplier_id).name.toLowerCase().includes(q));
-  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Order</th><th>Supplier</th><th>Into</th><th>Status</th><th>ETA</th><th class="num">Value</th></tr></thead><tbody>${list.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="mono">${o.code}</span></td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td>${oPill(o.status)}</td><td style="font-size:12.5px;color:${daysUntil(o.expected_on)<0&&o.status!=='received'?'var(--crit)':'var(--muted)'}">${o.status==='received'?'—':fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.order,38)}<div>No orders yet.</div></div>`;
+  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Order</th><th>Supplier</th><th>Into</th><th>Status</th><th>ETA</th><th class="num">Value</th></tr></thead><tbody>${list.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="mono">${o.code}</span></td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td>${oPill(o.status,o)}</td><td style="font-size:12.5px;color:${daysUntil(o.expected_on)<0&&o.status!=='received'?'var(--crit)':'var(--muted)'}">${o.status==='received'?'—':fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.order,38)}<div>No orders yet.</div></div>`;
 }
 function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
@@ -3511,24 +3513,35 @@ function openOrder(id){
   else if((o.status==='shipped'||o.status==='received')&&(!scoped()||mine(o.location_id))&&!o.reversed_at)act+=`<span class="lock" style="font-size:11.5px">${svg(I.lock,13)} Locked — ${o.status}</span>`;
   if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
-    <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
+    <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status,o)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   // send to the supplier: PDF, Excel, or email through the system
   const canMail=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE)&&(!scoped()||mine(o.location_id));
-  const share=`<button class="btn" data-opdf="${o.id}" title="Download as PDF">${svg(I.receipt,15)} PDF</button><button class="btn" data-oxls="${o.id}" title="Download as Excel">${svg(I.receipt,15)} Excel</button>${canMail&&o.status!=='cancelled'?`<button class="btn" data-omail="${o.id}">${svg(I.order,15)} Email supplier</button>`:''}`;
-  const sent=o.emailed_at?`<div class="banner info" style="margin-bottom:12px">${svg(I.order,17)}<div>Emailed to the supplier ${fmtDT(o.emailed_at)}${o.emailed_to?' ('+esc(o.emailed_to)+')':''}.</div></div>`:'';
+  // approval (migration 71): National / Super Admin approve before the order can go to the supplier
+  const apprOn=('approved_at' in o),approved=!apprOn||!!o.approved_at,isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE);
+  const canApprove=apprOn&&!approved&&o.status==='placed'&&isAppr;
+  const share=`<button class="btn" data-opdf="${o.id}" title="Download as PDF">${svg(I.receipt,15)} PDF</button><button class="btn" data-oxls="${o.id}" title="Download as Excel">${svg(I.receipt,15)} Excel</button>${canApprove?`<button class="btn primary" data-oappr="${o.id}">${svg(I.check,15)} Approve</button>`:''}${canMail&&o.status!=='cancelled'?(approved?`<button class="btn" data-omail="${o.id}">${svg(I.order,15)} Email supplier</button>`:`<button class="btn" disabled title="A National Admin or Super Admin must approve this order first">${svg(I.lock,15)} Email supplier</button>`):''}`;
+  const sent=(apprOn&&!approved&&o.status==='placed'?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>Awaiting approval.</b> A National Admin or Super Admin must approve this order before it can be emailed to the supplier.${isAppr?' Check the lines below, then tap <b>Approve</b>.':''}</div></div>`
+      :(apprOn&&o.approved_at?`<div class="banner info" style="margin-bottom:12px">${svg(I.check,17)}<div>Approved by ${esc(pname(o.approved_by))} on ${fmtDT(o.approved_at)}${o.approval_note?' — '+esc(o.approval_note):''}.</div></div>`:''))
+    +(o.emailed_at?`<div class="banner info" style="margin-bottom:12px">${svg(I.order,17)}<div>Emailed to the supplier ${fmtDT(o.emailed_at)}${o.emailed_to?' ('+esc(o.emailed_to)+')':''}.</div></div>`:'');
   slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,sent+body,share+act);
   const q=s=>document.querySelector(s);
   const bp=q(`[data-opdf="${o.id}"]`);if(bp)bp.onclick=()=>poPdf(o,'save');
   const bx=q(`[data-oxls="${o.id}"]`);if(bx)bx.onclick=()=>poExcel(o);
   const bm=q(`[data-omail="${o.id}"]`);if(bm)bm.onclick=()=>poEmail(o);
+  const ba=q(`[data-oappr="${o.id}"]`);if(ba)ba.onclick=()=>{let note='';
+    stackConfirm('Approve '+o.code,supplier(o.supplier_id).name+' · '+money(oValue(o)),`<div style="margin-bottom:10px">Approve this order of <b>${(o.lines||[]).length}</b> line(s), <b>${money(oValue(o))}</b>, to ${esc(loc(o.location_id).name)}? It can then be emailed to the supplier.</div><div class="field" style="margin-bottom:0"><label>Note (optional)</label><input id="oa-note" placeholder="e.g. approved — check price on line 3"></div>`,
+      {okLabel:'Approve',onOk:async()=>{const{error}=await sb.rpc('approve_purchase_order',{p_id:o.id,p_note:note||null});if(error)return toast(error.message,true);toast(o.code+' approved — it can now be emailed to the supplier');await refreshOps([]);openOrder(o.id);}});
+    const ni=document.getElementById('oa-note');if(ni)ni.oninput=e=>{note=e.target.value;};};
 }
 /* ---------- purchase order document (PDF / Excel / email to supplier) ---------- */
 function poRows(o){return (o.lines||[]).map(l=>{const it=item(l.item_id);const n=ppc(it);return {code:it.sku||'',barcode:it.barcode||'',name:it.name||'—',ppc:n||'',boxes:n?Math.round(l.qty/n*100)/100:'',qty:+l.qty||0,cost:+l.unit_cost||0,total:(+l.qty||0)*(+l.unit_cost||0)};});}
 function poDocHtml(o){
   const s=invSettings||{},sup=supplier(o.supplier_id),R=poRows(o),tot=R.reduce((a,r)=>a+r.total,0),dest=loc(o.location_id);
   const cell='padding:6px 6px;border-bottom:1px solid #e5e5e5;font-size:11.5px',th='padding:7px 6px;border-bottom:2px solid #1f2d7b;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:#1f2d7b;text-align:left';
+  const draft=('approved_at' in o)&&!o.approved_at&&o.status==='placed';
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;padding:28px 30px">
+    ${draft?`<div style="border:2px solid #b4231d;color:#b4231d;font-weight:800;text-align:center;padding:6px;margin-bottom:12px;letter-spacing:.08em">DRAFT — AWAITING APPROVAL · NOT TO BE SENT TO THE SUPPLIER</div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1f2d7b;padding-bottom:12px">
       <div><div style="font-size:20px;font-weight:800">${esc(s.seller_name||'Shayona')}</div><div style="font-size:11px;color:#444;white-space:pre-line">${esc(s.address||'')}${s.abn?'\nABN '+esc(s.abn):''}${s.phone?'\n'+esc(s.phone):''}${s.email?'\n'+esc(s.email):''}</div></div>
       <div style="text-align:right"><div style="font-size:24px;font-weight:800;color:#1f2d7b">PURCHASE ORDER</div><div style="font-size:14px;font-weight:700">${esc(o.code)}</div>
@@ -3549,7 +3562,7 @@ async function poPdf(o,mode){
 function poExcel(o){
   if(!window.XLSX)return toast('Spreadsheet library still loading — try again in a moment',true);
   const sup=supplier(o.supplier_id),R=poRows(o),tot=R.reduce((a,r)=>a+r.total,0);
-  const aoa=[['PURCHASE ORDER',o.code],['From',(invSettings&&invSettings.seller_name)||'Shayona'],['Supplier',sup.name],['Supplier email',sup.email||sup.contact||''],['Deliver to',loc(o.location_id).name||''],['Order date',fmtDate(o.created_at)],['Required by',o.expected_on?fmtDate(o.expected_on):''],['Notes',o.notes||''],[],
+  const aoa=[...((('approved_at' in o)&&!o.approved_at&&o.status==='placed')?[['DRAFT — AWAITING APPROVAL · NOT TO BE SENT TO THE SUPPLIER']]:[]),['PURCHASE ORDER',o.code],['From',(invSettings&&invSettings.seller_name)||'Shayona'],['Supplier',sup.name],['Supplier email',sup.email||sup.contact||''],['Deliver to',loc(o.location_id).name||''],['Order date',fmtDate(o.created_at)],['Required by',o.expected_on?fmtDate(o.expected_on):''],['Notes',o.notes||''],[],
     ['Code','Barcode','Item','Boxes','Packets per box','Packets','Cost per packet','Line total'],
     ...R.map(r=>[r.code,r.barcode,r.name,r.boxes,r.ppc,r.qty,r.cost,Math.round(r.total*100)/100]),[],['','','','','','','Order total (ex GST)',Math.round(tot*100)/100]];
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:14},{wch:16},{wch:42},{wch:8},{wch:14},{wch:9},{wch:14},{wch:12}];
@@ -3605,7 +3618,16 @@ function pEd(){
   const ed=document.getElementById('ped');
   ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" data-ppk="${ix}" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><div class="ltot" data-plt="${ix}">${l.item?money((+l.qty||0)*(+l.cost||0)):'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
-  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi;poLines[ix].item=e.target.value;if(!poLines[ix].cost){poLines[ix].cost=item(e.target.value).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pEd();pSum();});
+  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi,val=e.target.value,prev=poLines[ix].item;
+    // the same item is already on another line: merge, keep both, or pick something else
+    const dupIx=val?poLines.findIndex((l,j)=>j!==ix&&l.item===val):-1;
+    if(dupIx>=0){const it=item(val),other=poLines[dupIx];e.target.value=prev||'';
+      stackConfirm('Item already on this order',it.name,`<div><b>${esc(it.name)}</b> is already on <b>line ${dupIx+1}</b> (${pk2boxWhole(other.qty,it)} boxes). Ordering it twice on the same PO is usually a mistake.</div><div style="margin-top:8px;color:var(--muted);font-size:13px"><b>Add to line ${dupIx+1}</b> adds this line’s boxes to the existing line. <b>Choose another item</b> leaves this line for a different product.</div>`,
+        {okLabel:'Add to line '+(dupIx+1),cancelLabel:'Choose another item',onOk:()=>{const add=prev?0:(+poLines[ix].qty||box2pk(1,it));other.qty=(+other.qty||0)+(prev?box2pk(1,it):add);if(!prev)poLines.splice(ix,1);pEd();pSum();toast(`Added to line ${dupIx+1} — now ${pk2boxWhole(other.qty,it)} boxes`);}});
+      return;}
+    poLines[ix].item=val;if(!poLines[ix].cost){poLines[ix].cost=item(val).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pEd();pSum();});
+  // flag any duplicates already in the list (e.g. from an uploaded template)
+  {const seen={};poLines.forEach((l,ix)=>{if(!l.item)return;if(seen[l.item]!=null){[seen[l.item],ix].forEach(j=>{const row=ed.querySelector(`[data-pi="${j}"]`);if(row){const r=row.closest('.linerow');r.style.outline='2px solid var(--crit)';r.style.borderRadius='8px';r.title='This item is on the order more than once';}});}else seen[l.item]=ix;});}
   ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));poLines[ix].qty=box2pk(bx,it0);const pk=ed.querySelector(`[data-ppk="${ix}"]`);if(pk&&poLines[ix].item&&ppc(it0))pk.textContent=poLines[ix].qty+' pk';pSum();});
   ed.querySelectorAll('[data-pc]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pc].cost=Math.max(0,+e.target.value||0);pSum();});
   ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
@@ -3615,6 +3637,11 @@ function pSum(){trayCount('ped-count',poLines.filter(l=>l.item).length);const t=
 async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
   const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
+  {const cnt={};lines.forEach(l=>{cnt[l.item]=(cnt[l.item]||0)+1;});const dups=Object.keys(cnt).filter(k=>cnt[k]>1);
+   if(dups.length&&!editId?.__dupOk){
+     stackConfirm('Duplicate items on this order',dups.length+' item(s)',`<div>These items are on the order more than once (highlighted in red):</div><ul style="margin:8px 0 0 18px">${dups.map(k=>{const it=item(k);const tot=lines.filter(l=>l.item===k).reduce((s,l)=>s+(+l.qty||0),0);return `<li><b>${esc(it.name)}</b> — ${cnt[k]} lines, ${pk2boxWhole(tot,it)} boxes in total</li>`;}).join('')}</ul><div style="margin-top:8px;color:var(--muted);font-size:13px"><b>Combine &amp; continue</b> merges each into one line (boxes added together, first line’s cost kept).</div>`,
+       {okLabel:'Combine & continue',cancelLabel:'Go back',onOk:()=>{const merged=[];poLines.forEach(l=>{if(!l.item){merged.push(l);return;}const m=merged.find(x=>x.item===l.item);if(m)m.qty=(+m.qty||0)+(+l.qty||0);else merged.push({...l});});poLines=merged;pEd();pSum();submitOrder(editId);}});
+     return;}}
   const noPack=lines.filter(l=>!hasPpc(item(l.item)));
   if(noPack.length)return toast('Set a pack size (packets per carton) for: '+noPack.slice(0,3).map(l=>item(l.item).name).join(', ')+(noPack.length>3?'…':'')+' — orders are placed in boxes.',true);
   const payloadLines=lines.map(l=>({item:l.item,qty:l.qty,cost:l.cost}));
