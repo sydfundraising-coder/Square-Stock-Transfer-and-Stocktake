@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.07-2';
-const APP_VERSION_NOTE='Live sales reporting (auto-updates every 10 min) · customer payment terms, contacts & accounts email · CC on emails';
+const APP_VERSION='2026.10.07-3';
+const APP_VERSION_NOTE='Purchase orders: PDF, Excel & email to supplier · Catalogue: CW available, on order & allocation · live sales reporting';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -3513,7 +3513,67 @@ function openOrder(id){
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-  slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,body,act);
+  // send to the supplier: PDF, Excel, or email through the system
+  const canMail=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE)&&(!scoped()||mine(o.location_id));
+  const share=`<button class="btn" data-opdf="${o.id}" title="Download as PDF">${svg(I.receipt,15)} PDF</button><button class="btn" data-oxls="${o.id}" title="Download as Excel">${svg(I.receipt,15)} Excel</button>${canMail&&o.status!=='cancelled'?`<button class="btn" data-omail="${o.id}">${svg(I.order,15)} Email supplier</button>`:''}`;
+  const sent=o.emailed_at?`<div class="banner info" style="margin-bottom:12px">${svg(I.order,17)}<div>Emailed to the supplier ${fmtDT(o.emailed_at)}${o.emailed_to?' ('+esc(o.emailed_to)+')':''}.</div></div>`:'';
+  slideover(o.code,supplier(o.supplier_id).name+' → '+loc(o.location_id).code,sent+body,share+act);
+  const q=s=>document.querySelector(s);
+  const bp=q(`[data-opdf="${o.id}"]`);if(bp)bp.onclick=()=>poPdf(o,'save');
+  const bx=q(`[data-oxls="${o.id}"]`);if(bx)bx.onclick=()=>poExcel(o);
+  const bm=q(`[data-omail="${o.id}"]`);if(bm)bm.onclick=()=>poEmail(o);
+}
+/* ---------- purchase order document (PDF / Excel / email to supplier) ---------- */
+function poRows(o){return (o.lines||[]).map(l=>{const it=item(l.item_id);const n=ppc(it);return {code:it.sku||'',barcode:it.barcode||'',name:it.name||'—',ppc:n||'',boxes:n?Math.round(l.qty/n*100)/100:'',qty:+l.qty||0,cost:+l.unit_cost||0,total:(+l.qty||0)*(+l.unit_cost||0)};});}
+function poDocHtml(o){
+  const s=invSettings||{},sup=supplier(o.supplier_id),R=poRows(o),tot=R.reduce((a,r)=>a+r.total,0),dest=loc(o.location_id);
+  const cell='padding:6px 6px;border-bottom:1px solid #e5e5e5;font-size:11.5px',th='padding:7px 6px;border-bottom:2px solid #1f2d7b;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:#1f2d7b;text-align:left';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;padding:28px 30px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1f2d7b;padding-bottom:12px">
+      <div><div style="font-size:20px;font-weight:800">${esc(s.seller_name||'Shayona')}</div><div style="font-size:11px;color:#444;white-space:pre-line">${esc(s.address||'')}${s.abn?'\nABN '+esc(s.abn):''}${s.phone?'\n'+esc(s.phone):''}${s.email?'\n'+esc(s.email):''}</div></div>
+      <div style="text-align:right"><div style="font-size:24px;font-weight:800;color:#1f2d7b">PURCHASE ORDER</div><div style="font-size:14px;font-weight:700">${esc(o.code)}</div>
+        <div style="font-size:11.5px;color:#444;margin-top:4px">Order date ${fmtDate(o.created_at)}<br><b style="color:#111">Required by ${o.expected_on?fmtDate(o.expected_on):'—'}</b></div></div></div>
+    <table style="width:100%;margin:14px 0;font-size:12px;border-collapse:collapse"><tr>
+      <td style="vertical-align:top;width:50%;padding-right:12px"><div style="font-size:10px;color:#777;text-transform:uppercase">Supplier</div><b>${esc(sup.name)}</b>${sup.contact_name?`<br>Attn: ${esc(sup.contact_name)}`:''}${sup.email||sup.contact?`<br>${esc(sup.email||sup.contact)}`:''}${sup.phone?`<br>${esc(sup.phone)}`:''}${sup.country?`<br>${esc(sup.country)}`:''}</td>
+      <td style="vertical-align:top;width:50%"><div style="font-size:10px;color:#777;text-transform:uppercase">Deliver to</div><b>${esc(dest.name||'')}</b>${dest.address?`<div style="white-space:pre-line">${esc(dest.address)}</div>`:''}</td></tr></table>
+    <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Code</th><th style="${th}">Barcode</th><th style="${th}">Item</th><th style="${th};text-align:right">Boxes</th><th style="${th};text-align:right">Pkts/box</th><th style="${th};text-align:right">Packets</th><th style="${th};text-align:right">Cost/pkt</th><th style="${th};text-align:right">Total</th></tr></thead>
+      <tbody>${R.map(r=>`<tr><td style="${cell}">${esc(r.code)}</td><td style="${cell}">${esc(r.barcode)}</td><td style="${cell}">${esc(r.name)}</td><td style="${cell};text-align:right">${r.boxes}</td><td style="${cell};text-align:right">${r.ppc}</td><td style="${cell};text-align:right">${r.qty}</td><td style="${cell};text-align:right">${money(r.cost)}</td><td style="${cell};text-align:right">${money(r.total)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="7" style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">Order total (ex GST)</td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">${money(tot)}</td></tr></tfoot></table>
+    ${o.notes?`<div style="margin-top:14px;font-size:12px;white-space:pre-line"><b>Notes</b><br>${esc(o.notes)}</div>`:''}
+    <div style="margin-top:22px;font-size:11px;color:#555">Please confirm receipt of this order, availability and the expected dispatch date. Quote <b>${esc(o.code)}</b> on your invoice and delivery paperwork.</div></div>`;
+}
+async function poPdf(o,mode){
+  if(mode==='save')toast('Preparing the PDF…');
+  try{return await docPdf(poDocHtml(o),o.code+'.pdf',mode||'save');}catch(e){toast('PDF failed: '+(e.message||e),true);return null;}
+}
+function poExcel(o){
+  if(!window.XLSX)return toast('Spreadsheet library still loading — try again in a moment',true);
+  const sup=supplier(o.supplier_id),R=poRows(o),tot=R.reduce((a,r)=>a+r.total,0);
+  const aoa=[['PURCHASE ORDER',o.code],['From',(invSettings&&invSettings.seller_name)||'Shayona'],['Supplier',sup.name],['Supplier email',sup.email||sup.contact||''],['Deliver to',loc(o.location_id).name||''],['Order date',fmtDate(o.created_at)],['Required by',o.expected_on?fmtDate(o.expected_on):''],['Notes',o.notes||''],[],
+    ['Code','Barcode','Item','Boxes','Packets per box','Packets','Cost per packet','Line total'],
+    ...R.map(r=>[r.code,r.barcode,r.name,r.boxes,r.ppc,r.qty,r.cost,Math.round(r.total*100)/100]),[],['','','','','','','Order total (ex GST)',Math.round(tot*100)/100]];
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:14},{wch:16},{wch:42},{wch:8},{wch:14},{wch:9},{wch:14},{wch:12}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Purchase order');XLSX.writeFile(wb,o.code+'.xlsx');toast('Excel downloaded');
+}
+function poEmail(o){
+  const sup=supplier(o.supplier_id),to=String(sup.email||(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(sup.contact||'').trim())?sup.contact:'')||'').trim();
+  let cc='',note='';
+  stackConfirm('Email '+o.code,sup.name,to
+    ?`<div class="field"><label>To (supplier email on file)</label><div style="padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);font-weight:600">${esc(to)}</div><div class="hint" style="margin-top:4px">To change it, edit the supplier on the Suppliers page.</div></div>
+      <div class="field"><label>CC (optional)</label><input id="pm-cc" placeholder="name@example.com — separate several with commas" autocomplete="off"><div class="hint" style="margin-top:4px">You get a copy too, and the supplier’s reply comes to you.</div></div>
+      <div class="field" style="margin-bottom:0"><label>Message (optional)</label><textarea id="pm-note" rows="3" placeholder="e.g. Please confirm the dispatch date."></textarea></div>`
+    :`<div class="banner warn">${svg(I.alert,17)}<div>${esc(sup.name)} has no email on file. Add it on the <b>Suppliers</b> page, then email the order again.</div></div>`,
+    {okLabel:to?'Send':'OK',cancelLabel:'Cancel',okOnly:!to,onOk:async()=>{if(!to)return;
+      const bad=cc.split(/[,;\s]+/).filter(Boolean).filter(x=>!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));if(bad.length)return toast('Check the CC address: '+bad.join(', '),true);
+      toast('Preparing the PDF…');let b64=null;
+      try{const blob=await docPdf(poDocHtml(o),o.code+'.pdf','blob');b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=rej;r.readAsDataURL(blob);});}catch(e){console.warn('PO PDF not attached',e);}
+      toast('Sending…');
+      const{data,error}=await sb.functions.invoke('po-mail',{body:{po_id:o.id,cc:cc.trim(),note:note.trim(),pdf_base64:b64}});
+      if(error)return toast('Email failed: '+await fnErr(error),true);if(data&&data.error)return toast(data.error,true);
+      toast(`${o.code} emailed to ${data.sent_to}${data.cc&&data.cc.length?' (cc '+data.cc.join(', ')+')':''}${data.attached?' with the PDF':''}`);
+      o.emailed_at=new Date().toISOString();o.emailed_to=data.sent_to;refresh();}});
+  const ci=document.getElementById('pm-cc');if(ci)ci.oninput=e=>{cc=e.target.value;};
+  const ni=document.getElementById('pm-note');if(ni)ni.oninput=e=>{note=e.target.value;};
 }
 let poLines=[],poUnit='pkt';
 function newOrder(o){
@@ -4733,7 +4793,7 @@ function vCatalog(v){
   const cens=catCentres();
   if(catCentre===null)catCentre=scoped()?(HOME||(cens[0]&&cens[0].id)||''):'';
   const cenOpts=`${scoped()?'':`<option value="">All centres (total)</option>`}${cens.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}`;
-  v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div>${S.items.length} items · stock &amp; storage per centre.</div></div>
+  v.innerHTML=`<div class="banner info">${svg(I.sync,17)}<div>${S.items.length} items · stock &amp; storage per centre. <b>CW available</b> = Central Warehouse stock after what’s reserved for transfer requests; <b>CW on order</b> = coming in on supplier orders${catCentre&&!isHub(catCentre)?'; <b>Your allocation left</b> = your share of CW stock you can still request':''}.</div></div>
     <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search name or SKU…" value="${esc(catSearch)}"></div>
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
@@ -5054,16 +5114,33 @@ function catFiltered(){
   return list;
 }
 function catOnHand(i){if(catCentre)return onHand(catCentre,i.id);if(scoped())return MYLOCS.reduce((a,l)=>a+onHand(l,i.id),0);return (S.itemTotal&&S.itemTotal[i.id])||0;}
+/* Central Warehouse figures for every centre (migration 70): available after reservations, on supplier order, and
+   the chosen centre's allocation still to request */
+let catHub=null,catHubFor=null,catHubAt=0,catHubBusy=false;
+async function loadCatHub(force){
+  const p=(catCentre&&!isHub(catCentre))?catCentre:null,key=p||'';
+  if(!force&&catHub&&catHubFor===key&&Date.now()-catHubAt<300000)return false;
+  if(catHubBusy)return false;catHubBusy=true;
+  try{const{data,error}=await sb.rpc('catalog_hub_view',{p_loc:p});
+    if(error){if(!/catalog_hub_view|schema cache/i.test(error.message||''))console.warn('catalog_hub_view',error);catHub=false;return false;}
+    catHub={};(data||[]).forEach(r=>{catHub[r.item_id]=r;});catHubFor=key;catHubAt=Date.now();return true;}
+  finally{catHubBusy=false;}
+}
+const catPk=(n,it)=>{if(n==null)return '<span style="color:var(--faint)">—</span>';const b=bxTag(n,it);return `${n}${b?`<div style="font-size:10.5px;color:var(--faint)">${b}</div>`:''}`;};
 function catList(){
+  if(catHub===null||(catHub&&catHubFor!==((catCentre&&!isHub(catCentre))?catCentre:'')))loadCatHub().then(ch=>{if(ch&&route==='catalog')catList();});
+  const hv=catHub||null,showAl=!!(hv&&catCentre&&!isHub(catCentre));
   const list=catFiltered();
   const ohLbl=catCentre?('On hand ('+loc(catCentre).code+')'):(scoped()?'On hand (your centres)':'Total on hand');
   const showLoc=!!catCentre;
-  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/box</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${i.pack_per_carton||'<span style="color:var(--faint)">—</span>'}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/box</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${hv?`<th class="num" title="Central Warehouse stock on hand minus what is set aside for transfer requests and pending write-offs">CW available</th><th class="num" title="On supplier orders (placed or shipped) coming into the Central Warehouse">CW on order</th>${showAl?'<th class="num" title="Your centre’s share of Central Warehouse stock still available to request">Your allocation left</th>':''}`:''}${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${i.pack_per_carton||'<span style="color:var(--faint)">—</span>'}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${hv?(()=>{const h=hv[i.id]||{};return `<td class="num tnum"${(h.cw_reserved||0)>0?` title="${h.cw_on_hand||0} on hand − ${h.cw_reserved} reserved"`:''}>${catPk(h.cw_available!=null?Math.max(0,h.cw_available):0,i)}</td><td class="num tnum"${h.cw_next_eta?` title="Next delivery expected ${fmtDate(h.cw_next_eta)}"`:''}>${h.cw_on_order?`${catPk(h.cw_on_order,i)}${h.cw_next_eta?`<div style="font-size:10.5px;color:var(--transit)">ETA ${fmtDate(h.cw_next_eta)}</div>`:''}`:'<span style="color:var(--faint)">—</span>'}</td>${showAl?`<td class="num tnum">${h.my_alloc_remaining==null?'<span style="color:var(--faint)">—</span>':`<span style="${h.my_alloc_remaining<0?'color:var(--crit);font-weight:700':''}">${catPk(h.my_alloc_remaining,i)}</span>`}</td>`:''}`;})():''}${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
 }
 function exportCatalogue(fmt){
   const list=catFiltered();const cen=catCentre;
-  const header=['Item','Product code','Category','Cost/packet','Packets/box','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','On hand (boxes)','Store area','Aisle'];
-  const rows=list.map(i=>{const oh=catOnHand(i);const b=pktToBox(oh,i);return [i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,i.pack_per_carton||'',Number(i.price)||0,oh,b==null?'':Math.round(b*100)/100,cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):''];});
+  const hv=catHub||null,al=!!(hv&&cen&&!isHub(cen));
+  const header=['Item','Product code','Category','Cost/packet','Packets/box','Price',cen?('On hand ('+loc(cen).code+')'):'On hand','On hand (boxes)','Store area','Aisle'].concat(hv?['CW available (pkts)','CW on order (pkts)','CW next ETA']:[]).concat(al?['Your allocation left (pkts)']:[]);
+  const rows=list.map(i=>{const oh=catOnHand(i);const b=pktToBox(oh,i);const h=(hv&&hv[i.id])||{};return [i.name,i.sku||'',i.category||'',Number(i.unit_cost)||0,i.pack_per_carton||'',Number(i.price)||0,oh,b==null?'':Math.round(b*100)/100,cen?areaOf(cen,i.id):'',cen?aisleOf(cen,i.id):'']
+    .concat(hv?[Math.max(0,h.cw_available||0),h.cw_on_order||0,h.cw_next_eta||'']:[]).concat(al?[h.my_alloc_remaining==null?'':h.my_alloc_remaining]:[]);});
   const stamp=today();const suffix=cen?loc(cen).code:'all';
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Stock');XLSX.writeFile(wb,`catalogue_${suffix}_${stamp}.xlsx`);toast('Excel exported ('+rows.length+' items)');}
   else{downloadCSV(`catalogue_${suffix}_${stamp}.csv`,header,rows);toast('CSV exported ('+rows.length+' items)');}
@@ -5282,14 +5359,25 @@ async function decideAdjust(fn,id,ask){
 async function cancelAdjust(id){const req=(S.adjReq||[]).find(r=>r.id===id);const{error}=await sb.rpc('cancel_adjustment',{p_id:id});if(error)return toast(error.message||'Failed',true);closeOverlay();toast('Request cancelled');await refreshOps(req?[req.location_id]:[]);}
 /* Suppliers */
 function vSuppliers(v){
-  v.innerHTML=`<div class="toolbar"><div class="spacer"></div>${can('supplier.manage')?`<button class="btn primary" data-act="new-supplier">${svg(I.plus,16)} Add supplier</button>`:''}</div><div class="tablewrap"><table><thead><tr><th>Supplier</th><th>Country</th><th>Contact</th><th class="num">Lead time</th><th class="num">Open orders</th></tr></thead><tbody>${S.suppliers.map(s=>{const open=S.orders.filter(o=>o.supplier_id===s.id&&(o.status==='placed'||o.status==='shipped')).length;return `<tr><td style="font-weight:600">${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.country||'—')}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(s.contact||'—')}</td><td class="num tnum">${s.lead_days||'—'} days</td><td class="num tnum">${open}</td></tr>`;}).join('')}</tbody></table></div>`;
+  const ed=can('supplier.manage');
+  v.innerHTML=`<div class="toolbar"><div class="spacer"></div>${ed?`<button class="btn primary" data-act="new-supplier">${svg(I.plus,16)} Add supplier</button>`:''}</div><div class="tablewrap"><table><thead><tr><th>Supplier</th><th>Country</th><th>Contact</th><th class="num">Lead time</th><th class="num">Open orders</th>${ed?'<th></th>':''}</tr></thead><tbody>${S.suppliers.map(s=>{const open=S.orders.filter(o=>o.supplier_id===s.id&&(o.status==='placed'||o.status==='shipped')).length;const mail=s.email||s.contact||'';return `<tr><td style="font-weight:600">${esc(s.name)}</td><td style="color:var(--muted)">${esc(s.country||'—')}</td><td style="font-size:12.5px;color:var(--muted)">${s.contact_name?`<b style="color:var(--ink)">${esc(s.contact_name)}</b><br>`:''}<span class="mono" style="font-size:12px">${esc(mail||'—')}</span>${s.phone?`<div>${esc(s.phone)}</div>`:''}${!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(mail).trim())?'<div style="color:var(--warn);font-size:11.5px">No email — orders can’t be emailed</div>':''}</td><td class="num tnum">${s.lead_days||'—'} days</td><td class="num tnum">${open}</td>${ed?`<td style="text-align:right"><button class="btn sm" data-sued="${s.id}">Edit</button></td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  v.querySelectorAll('[data-sued]').forEach(b=>b.onclick=()=>newSupplier(S.suppliers.find(x=>x.id===b.dataset.sued)));
 }
-function newSupplier(){
-  modal('Add supplier','Someone you order stock from',`<div class="field"><label>Name</label><input id="su-name" placeholder="e.g. Premvati India"></div><div class="grid2"><div class="field"><label>Country</label><input id="su-country"></div><div class="field"><label>Lead time (days)</label><input id="su-lead" type="number" value="30"></div></div><div class="field"><label>Contact email</label><input id="su-contact"></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Add supplier</button>`);
+function newSupplier(s){
+  s=(s&&s.id)?s:null;
+  modal(s?'Edit supplier':'Add supplier','Someone you order stock from',`<div class="field"><label>Name</label><input id="su-name" placeholder="e.g. Premvati India" value="${esc(s?s.name:'')}"></div>
+    <div class="grid2"><div class="field"><label>Country</label><input id="su-country" value="${esc(s&&s.country||'')}"></div><div class="field"><label>Lead time (days)</label><input id="su-lead" type="number" value="${s?(s.lead_days||30):30}"></div></div>
+    <div class="grid2"><div class="field"><label>Contact name</label><input id="su-cname" value="${esc(s&&s.contact_name||'')}"></div><div class="field"><label>Phone</label><input id="su-phone" value="${esc(s&&s.phone||'')}"></div></div>
+    <div class="field"><label>Email (purchase orders are sent here)</label><input id="su-contact" type="email" value="${esc(s?(s.email||s.contact||''):'')}"></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${s?'Save':'Add supplier'}</button>`);
   document.getElementById('go').onclick=async()=>{
     const name=document.getElementById('su-name').value.trim();if(!name)return toast('Enter a name',true);
-    const{error}=await sb.from('suppliers').insert({name,country:document.getElementById('su-country').value.trim(),contact:document.getElementById('su-contact').value.trim(),lead_days:+document.getElementById('su-lead').value||30});
-    if(error)return toast(error.message,true);closeOverlay();toast('Supplier added');refresh();
+    const em=document.getElementById('su-contact').value.trim();if(em&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em))return toast('Check the email address',true);
+    const base={name,country:document.getElementById('su-country').value.trim(),contact:em,lead_days:+document.getElementById('su-lead').value||30};
+    const ext={email:em||null,contact_name:document.getElementById('su-cname').value.trim()||null,phone:document.getElementById('su-phone').value.trim()||null};
+    let r=s?await sb.from('suppliers').update({...base,...ext}).eq('id',s.id):await sb.from('suppliers').insert({...base,...ext});
+    if(r.error&&/email|contact_name|phone|column/i.test(r.error.message||''))r=s?await sb.from('suppliers').update(base).eq('id',s.id):await sb.from('suppliers').insert(base);   // 70 not run yet
+    if(r.error)return toast(r.error.message,true);closeOverlay();toast(s?'Supplier saved':'Supplier added');refresh();
   };
 }
 /* Locations, Users, Audit, Settings */
