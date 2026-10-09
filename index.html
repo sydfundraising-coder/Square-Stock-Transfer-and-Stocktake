@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.07-4';
-const APP_VERSION_NOTE='Purchase orders: approval by National / Super Admin before emailing · duplicate-item warnings · PDF, Excel & email · Catalogue CW figures';
+const APP_VERSION='2026.10.08-1';
+const APP_VERSION_NOTE='Security hardening (server functions locked down, safer links & escaping) · PO approval · duplicate-item warnings';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -863,7 +863,8 @@ const I={dash:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>'
 const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="${w}" height="${w}">${p}</svg>`;
 const money=n=>'$'+(Number(n)||0).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
 const money0=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-AU');
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl=u=>{u=String(u||'').trim();return /^https?:\/\//i.test(u)?u:'';};   /* only http(s) links — never javascript: */
 const uid=()=>Math.random().toString(36).slice(2,9);
 const today=()=>new Date().toISOString().slice(0,10);
 const fmtDate=d=>d?new Date(d).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}):'—';
@@ -3464,7 +3465,7 @@ function openReceive(id){
   const hubR=isHub(t.to_location);
   PL={};PLMAX={};(t.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.id,pk2boxWhole(l.qty_dispatched-l.qty_received,it),areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));if(l.pick_expiry&&PL[l.id]&&PL[l.id][0])PL[l.id][0].exp=l.pick_expiry;});
   const draft=plApplyDraft('transfer',id);
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600"><span class="icode">${it.sku}</span>${esc(it.name)}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_dispatched,it)} bx</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_received,it)} bx</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_dispatched,it)} bx</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_received,it)} bx</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
   modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
   (t.lines||[]).forEach(l=>plRender(l.id,t.to_location,hubR));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('transfer',id,t.to_location,(document.getElementById('rc-note')||{}).value||'',(t.lines||[]).map(l=>l.id));
@@ -3503,7 +3504,7 @@ function oList(){
 }
 function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
-  const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${it.sku}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
+  const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   let act='';
   if(o.status==='cancelled'&&ROLE==='super_admin')act=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-opurge="${o.id}">${svg(I.x,15)} Delete permanently</button>`;
   if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
@@ -4764,7 +4765,7 @@ function rcList(){
 }
 function openReceipt(id){
   const r=S.receipts.find(x=>x.id===id);if(!r)return;
-  const rows=(r.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600"><span class="icode">${it.sku}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
+  const rows=(r.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   const rbanner=r.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(r.reversed_at)}${r.reverse_reason?` — ${esc(r.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:'';
   const ract=(ROLE==='super_admin'&&!r.reversed_at)?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-rreverse="${r.id}">${svg(I.alert,15)} Reverse</button>`:'';
   slideover(r.code,r.supplier||'',`${rbanner}<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(r.supplier||'—')}</dd><dt>Reference</dt><dd class="mono">${esc(r.reference||'—')}</dd><dt>Into</dt><dd>${esc(loc(r.location_id).name)}</dd><dt>Date</dt><dd>${fmtDate(r.received_on)}</dd><dt>By</dt><dd>${esc(pname(r.created_by))}</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`,ract);
@@ -7010,7 +7011,7 @@ function newConsignment(cn,presetTransfer){
     const from=document.getElementById('cn-from').value||null,to=document.getElementById('cn-to').value||null;
     if(!from&&!to)return toast('Pick a From or To centre',true);
     if(scoped()&&!(from&&mine(from))&&!(to&&mine(to)))return toast('One of your centres must be on the consignment',true);
-    const row={transfer_id:document.getElementById('cn-tr').value||null,from_location:from,to_location:to,carrier:document.getElementById('cn-carrier').value.trim(),connote:document.getElementById('cn-connote').value.trim(),tracking_url:document.getElementById('cn-url').value.trim(),status:document.getElementById('cn-status').value,dispatch_date:document.getElementById('cn-disp').value||null,eta:document.getElementById('cn-eta').value||null,cost:parseFloat(document.getElementById('cn-cost').value)||0,notes:document.getElementById('cn-notes').value.trim()};
+    const row={transfer_id:document.getElementById('cn-tr').value||null,from_location:from,to_location:to,carrier:document.getElementById('cn-carrier').value.trim(),connote:document.getElementById('cn-connote').value.trim(),tracking_url:safeUrl(document.getElementById('cn-url').value)||null,status:document.getElementById('cn-status').value,dispatch_date:document.getElementById('cn-disp').value||null,eta:document.getElementById('cn-eta').value||null,cost:parseFloat(document.getElementById('cn-cost').value)||0,notes:document.getElementById('cn-notes').value.trim()};
     if(row.status==='delivered'&&!c.delivered_date)row.delivered_date=today();
     let error;
     if(cn){({error}=await sb.from('consignments').update(row).eq('id',c.id));}
@@ -7022,7 +7023,7 @@ function newConsignment(cn,presetTransfer){
 function openConsignment(id){
   const c=(S.consignments||[]).find(x=>x.id===id);if(!c)return;
   const t=c.transfer_id?S.transfers.find(x=>x.id===c.transfer_id):null;
-  const body=`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Connote</dt><dd class="mono">${esc(c.connote||c.code)}</dd><dt>Carrier</dt><dd>${esc(c.carrier||'—')}</dd><dt>Route</dt><dd>${c.from_location?esc(loc(c.from_location).name):'—'} → ${c.to_location?esc(loc(c.to_location).name):'—'}</dd><dt>Status</dt><dd>${cnPill(c.status)}</dd><dt>Dispatched</dt><dd>${fmtDate(c.dispatch_date)}</dd><dt>ETA</dt><dd>${fmtDate(c.eta)}</dd>${c.delivered_date?`<dt>Delivered</dt><dd>${fmtDate(c.delivered_date)}</dd>`:''}<dt>Cost</dt><dd class="tnum">${c.cost?money(c.cost):'—'}</dd>${t?`<dt>Transfer</dt><dd class="mono">${esc(t.code)}</dd>`:''}</dl>${c.notes?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">${esc(c.notes)}</div>`:''}${c.tracking_url?`<div style="margin-top:10px"><a href="${esc(c.tracking_url)}" target="_blank" rel="noopener" class="btn sm">${svg(I.truck,14)} Track online</a></div>`:''}</div>`;
+  const body=`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Connote</dt><dd class="mono">${esc(c.connote||c.code)}</dd><dt>Carrier</dt><dd>${esc(c.carrier||'—')}</dd><dt>Route</dt><dd>${c.from_location?esc(loc(c.from_location).name):'—'} → ${c.to_location?esc(loc(c.to_location).name):'—'}</dd><dt>Status</dt><dd>${cnPill(c.status)}</dd><dt>Dispatched</dt><dd>${fmtDate(c.dispatch_date)}</dd><dt>ETA</dt><dd>${fmtDate(c.eta)}</dd>${c.delivered_date?`<dt>Delivered</dt><dd>${fmtDate(c.delivered_date)}</dd>`:''}<dt>Cost</dt><dd class="tnum">${c.cost?money(c.cost):'—'}</dd>${t?`<dt>Transfer</dt><dd class="mono">${esc(t.code)}</dd>`:''}</dl>${c.notes?`<div style="margin-top:10px;font-size:13px;color:var(--muted)">${esc(c.notes)}</div>`:''}${safeUrl(c.tracking_url)?`<div style="margin-top:10px"><a href="${esc(safeUrl(c.tracking_url))}" target="_blank" rel="noopener" class="btn sm">${svg(I.truck,14)} Track online</a></div>`:''}</div>`;
   let act=`<button class="btn" data-close>Close</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" id="cn-del">Delete</button><button class="btn" id="cn-edit">Edit</button>`;
   if(c.status!=='delivered')act+=`<button class="btn primary" id="cn-deliver">${svg(I.check,16)} Mark delivered</button>`;
   slideover(c.connote||c.code,'Consignment',body,act);
@@ -7146,7 +7147,7 @@ async function runTeamSync(){
     if(data&&data.error){toast('Team sync: '+data.error,true);return;}
     const rm=(data&&data.removed)||0,ri=(data&&data.reinstated)||0;
     toast(`Team synced — ${data?data.created:0} new, ${data?data.updated:0} updated`+(rm?`, ${rm} removed (no longer in Square)`:'')+(ri?`, ${ri} reinstated`:''));
-    if(rm)logEvent('Team sync removed access for: '+(data.removed_emails||[]).join(', '));refresh();}
+    /* the function now records who was removed in the Audit log itself (migration 72) */refresh();}
   catch(e){toast('Team sync failed: '+(e.message||e),true);}
 }
 
