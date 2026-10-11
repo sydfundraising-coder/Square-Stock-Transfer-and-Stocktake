@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.08-1';
-const APP_VERSION_NOTE='Security hardening (server functions locked down, safer links & escaping) · PO approval · duplicate-item warnings';
+const APP_VERSION='2026.10.11-1';
+const APP_VERSION_NOTE='Stock-take helper requests (centres request, National / Super Admin approve) · security hardening · PO approval';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1307,7 +1307,7 @@ const NAV=[
   {id:'perf',label:'Sales & Performance',icon:I.cost,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
   {id:'orders',label:'Purchase Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
-  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)},
+  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
   {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
   {id:'freight',label:'Freight',icon:I.truck,group:'Operations'},
   {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
@@ -3657,14 +3657,16 @@ function doDeleteOrder(id){
 /* Stock take */
 function vStock(v){
   const list=S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&(!HELPER||s.status==='open'));
-  const canHelpers=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
+  const canHelpers=!HELPER&&!!ROLE;   /* everyone can REQUEST a helper (migration 73); National / Super Admin approve */
   v.innerHTML=(HELPER?`<div class="banner info">${svg(I.stocktake,17)}<div><b>You’re signed in to count stock</b> at ${esc((MYLOCS.length?MYLOCS:[HOME]).filter(Boolean).map(l=>loc(l).name).join(', ')||'your centre')}${HELPER_UNTIL?` until <b>${fmtDate(HELPER_UNTIL)}</b>`:''}. Open a count below, scan or search each item and enter what you see. Every entry saves straight away — your team sees it live.</div></div>`
     :`<div class="banner info">${svg(I.stocktake,17)}<div><b>You can count while trading.</b> Each item’s variance is measured against the system stock at the moment it was counted, so anything sold (or received) before you finalise is kept — not lost. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+
-    (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+`
+    (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+
+    (!HELPER&&['national_admin','super_admin'].includes(ROLE)&&S.helperReqN?`<div class="banner warn" style="align-items:center">${svg(I.users||I.alert,17)}<div style="flex:1"><b>${S.helperReqN} stock-take helper request${S.helperReqN===1?'':'s'}</b> waiting for your approval.</div><button class="btn sm" id="st-hreq">Review requests</button></div>`:'')+`
     <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
     ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
+  const hq=document.getElementById('st-hreq');if(hq)hq.onclick=openStHelpers;
   const ub=document.getElementById('st-undo');if(ub)ub.onclick=openUndoDeletedStocktakes;
   // live "x / y counted" for open counts (the list's own copy of the lines isn't refreshed while people count)
   {const ids=[...v.querySelectorAll('[data-stpc]')].map(x=>x.dataset.stpc);
@@ -4595,6 +4597,7 @@ async function loadStDateFlags(){
   if(!['super_admin','national_admin'].includes(ROLE)||HELPER)return;
   const{data,error}=await sbAll(()=>sb.from('stocktake_date_flags').select('id,stocktake_id,location_id').is('reviewed_at',null).order('id'));
   S.stFlags=error?[]:(data||[]);
+  try{const{count,error:he}=await sb.from('helper_requests').select('id',{count:'exact',head:true}).eq('status','pending');S.helperReqN=he?0:(count||0);}catch(e){S.helperReqN=0;}
   try{renderNav();}catch(e){}
   if(route==='stocktake'&&!document.querySelector('.scrim'))renderView();
 }
@@ -4627,14 +4630,19 @@ async function openStDateFlags(stId){
 }
 /* ---------- stock-take helpers (people not in Square who only count) ---------- */
 async function openStHelpers(){
-  modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-body"><div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div></div>`,`<button class="btn" data-close>Close</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add helper</button>`,'full form');
-  document.getElementById('sh-add').onclick=()=>stHelperForm();
+  const isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE),isAdm=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
+  modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-req"></div><div id="sh-body">${isAdm?`<div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div>`:''}</div>`,
+    `<button class="btn" data-close>Close</button>${isAppr?`<button class="btn" id="sh-reqbtn">${svg(I.plus,16)} Request a helper</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add helper</button>`:`<button class="btn primary" id="sh-reqbtn">${svg(I.plus,16)} Request a helper</button>`}`,'full form');
+  const ba=document.getElementById('sh-add');if(ba)ba.onclick=()=>stHelperForm('add');
+  document.getElementById('sh-reqbtn').onclick=()=>stHelperForm('request');
+  stHelperRequests(isAppr);
+  if(!isAdm)return;
   const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'list'}});
   const box=document.getElementById('sh-body');if(!box)return;
   if(error||(data&&data.error)){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${esc((data&&data.error)||await fnErr(error))}. Make sure <b>54_stocktake_team.sql</b> is run and the <b>stocktake-helpers</b> function is deployed.</div></div>`;return;}
   const hs=data.helpers||[];const now=Date.now();
-  box.innerHTML=`<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Helpers sign in with their own email and password (they get an email to set it). They see <b>only the open stock takes</b> of their centre — no stock figures, prices, transfers or reports — and can’t start, finalise or delete a count. Access ends automatically on the last day you choose. Everything they count is in each stock take’s <b>Count history</b>.</div></div>
-    ${hs.length?`<div class="tablewrap"><table><thead><tr><th>Helper</th><th>Centre</th><th>Access until</th><th>Status</th><th>Last count</th><th></th></tr></thead><tbody>${hs.map(h=>{const exp=h.expires_at?new Date(h.expires_at):null;const live=h.active!==false&&(!exp||exp>now);return `<tr><td><b>${esc(h.full_name||'')}</b><div style="font-size:12px;color:var(--muted)">${esc(h.email||'')}${h.helper_note?' · '+esc(h.helper_note):''}</div></td><td>${esc(loc(h.home_centre).name)}</td><td style="white-space:nowrap">${exp?fmtDate(exp):'—'}</td><td>${live?'<span class="pill p-done">Active</span>':`<span class="pill p-cancel">${h.active===false?'Removed':'Ended'}</span>`}</td><td style="font-size:12.5px;white-space:nowrap">${h.last_count?fmtDT(h.last_count)+` · ${h.entries} entr${h.entries===1?'y':'ies'}`:'—'}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-shext="${h.id}">${live?'Extend':'Restore'}</button> ${live?`<button class="btn sm" data-shmail="${h.id}">Resend email</button> <button class="btn sm" data-shrm="${h.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button>`:''}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users||I.stocktake,30)}<div>No helpers yet. Click <b>Add helper</b>.</div></div>`}`;
+  box.innerHTML=`<h3 style="font-size:14px;margin:14px 0 8px">Helpers</h3><div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Helpers sign in with their own email and password (they get an email to set it). They see <b>only the open stock takes</b> of their centre — no stock figures, prices, transfers or reports — and can’t start, finalise or delete a count. Access ends automatically on the last day you choose. Everything they count is in each stock take’s <b>Count history</b>.</div></div>
+    ${hs.length?`<div class="tablewrap"><table><thead><tr><th>Helper</th><th>Centre</th><th>Access until</th><th>Status</th><th>Last count</th><th></th></tr></thead><tbody>${hs.map(h=>{const exp=h.expires_at?new Date(h.expires_at):null;const live=h.active!==false&&(!exp||exp>now);return `<tr><td><b>${esc(h.full_name||'')}</b><div style="font-size:12px;color:var(--muted)">${esc(h.email||'')}${h.helper_note?' · '+esc(h.helper_note):''}</div></td><td>${esc(loc(h.home_centre).name)}</td><td style="white-space:nowrap">${exp?fmtDate(exp):'—'}</td><td>${live?'<span class="pill p-done">Active</span>':`<span class="pill p-cancel">${h.active===false?'Removed':'Ended'}</span>`}</td><td style="font-size:12.5px;white-space:nowrap">${h.last_count?fmtDT(h.last_count)+` · ${h.entries} entr${h.entries===1?'y':'ies'}`:'—'}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-shext="${h.id}">${live?'Extend':'Restore'}</button> ${live?`<button class="btn sm" data-shmail="${h.id}">Resend email</button> <button class="btn sm" data-shrm="${h.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button>`:''}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users||I.stocktake,30)}<div>No helpers yet.${isAppr?' Approve a request above or click <b>Add helper</b>.':' Use <b>Request a helper</b> — a National or Super Admin approves it.'}</div></div>`}`;
   const app_url=location.origin+location.pathname.replace(/[^/]*$/,'');
   box.querySelectorAll('[data-shext]').forEach(b=>b.onclick=()=>{const h=hs.find(x=>x.id===b.dataset.shext);const d=new Date(Date.now()+7*864e5);let until=slYmdSafe(d);
     stackConfirm('Access until',h.full_name,`<div class="field"><label>Last day ${esc(h.full_name)} can count</label><input type="date" id="shx-d" value="${until}" min="${slYmdSafe(new Date())}"></div>`,{okLabel:'Save',onOk:async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'extend',id:h.id,until}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Access updated');openStHelpers();}});
@@ -4643,21 +4651,55 @@ async function openStHelpers(){
   box.querySelectorAll('[data-shrm]').forEach(b=>b.onclick=()=>{const h=hs.find(x=>x.id===b.dataset.shrm);stackConfirm('Remove helper',h.full_name,`<div>Remove <b>${esc(h.full_name)}</b>’s access now? They are signed out straight away. Their counts stay in the history.</div>`,{okLabel:'Remove',danger:true,onOk:async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'remove',id:h.id}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Helper removed');openStHelpers();}});});
 }
 function slYmdSafe(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function stHelperForm(){
+/* helper REQUESTS (migration 73): centre staff ask, National / Super Admin approve or reject */
+async function stHelperRequests(isAppr){
+  const box=document.getElementById('sh-req');if(!box)return;
+  const{data,error}=await sb.from('helper_requests').select('*').order('requested_at',{ascending:false}).limit(200);
+  if(error){box.innerHTML=/helper_requests|does not exist|schema cache/i.test(error.message||'')?`<div class="banner warn" style="margin-bottom:10px">${svg(I.alert,17)}<div>Run <b>73_helper_requests.sql</b> in Supabase to turn on helper requests.</div></div>`:'';return;}
+  const R=data||[],pend=R.filter(r=>r.status==='pending'),done=R.filter(r=>r.status!=='pending').slice(0,30);
+  const pill=s=>s==='pending'?'<span class="pill p-req">Waiting for approval</span>':s==='approved'?'<span class="pill p-done">Approved</span>':s==='rejected'?'<span class="pill p-cancel">Rejected</span>':'<span class="pill p-cancel">Cancelled</span>';
+  const row=r=>`<tr><td><b>${esc(r.full_name)}</b><div style="font-size:12px;color:var(--muted)">${esc(r.email)}${r.note?' · '+esc(r.note):''}</div></td><td>${esc(loc(r.location_id).name)}</td><td style="white-space:nowrap">${fmtDate(r.until)}</td><td style="font-size:12.5px">${esc(pname(r.requested_by))}<div style="color:var(--muted)">${fmtDT(r.requested_at)}</div></td><td>${pill(r.status)}${r.decision_note?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(r.decision_note)}</div>`:''}${r.decided_by&&r.status!=='pending'?`<div style="font-size:11.5px;color:var(--muted)">${esc(pname(r.decided_by))} · ${fmtDate(r.decided_at)}</div>`:''}</td>
+    <td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isAppr?`<button class="btn sm primary" data-hrok="${r.id}">Approve</button> <button class="btn sm" data-hrno="${r.id}" style="color:var(--crit);border-color:var(--crit)">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-hrcx="${r.id}">Cancel</button>`:'')):''}</td></tr>`;
+  const tbl=L=>`<div class="tablewrap" style="margin-bottom:10px"><table><thead><tr><th>Person</th><th>Centre</th><th>Last day</th><th>Requested by</th><th>Status</th><th></th></tr></thead><tbody>${L.map(row).join('')}</tbody></table></div>`;
+  box.innerHTML=`<h3 style="font-size:14px;margin:0 0 8px">Helper requests${pend.length?` <span class="badge-count" style="margin-left:6px">${pend.length}</span>`:''}</h3>
+    ${pend.length?tbl(pend):`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">${isAppr?'No requests waiting.':'No requests waiting. Tap <b>Request a helper</b> to ask for someone to help with a count.'}</div>`}
+    ${done.length?`<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:13px;font-weight:600">Earlier requests (${done.length})</summary>${tbl(done)}</details>`:''}`;
+  box.querySelectorAll('[data-hrok]').forEach(b=>b.onclick=()=>{const r=R.find(x=>x.id===b.dataset.hrok);let until=String(r.until).slice(0,10),note='';
+    const max=slYmdSafe(new Date(Date.now()+90*864e5)),min=slYmdSafe(new Date());if(until<min)until=min;
+    stackConfirm('Approve helper',r.full_name+' · '+loc(r.location_id).name,`<div style="margin-bottom:10px">Create a stock-take helper account for <b>${esc(r.full_name)}</b> (${esc(r.email)}) at <b>${esc(loc(r.location_id).name)}</b>? They’re emailed a link to set their password straight away.</div>
+      <div class="grid2"><div class="field"><label>Can count until (last day)</label><input type="date" id="hr-until" value="${until}" min="${min}" max="${max}"></div><div class="field"><label>Note (optional)</label><input id="hr-note"></div></div>`,
+      {okLabel:'Approve & create helper',onOk:async()=>{toast('Creating the helper…');const{data:x,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'approve_request',request_id:r.id,until,note}});
+        if(e||(x&&x.error))return toast((x&&x.error)||await fnErr(e),true);
+        toast(x.emailed?`${r.full_name} added — they’ve been emailed a link to set their password`:`${r.full_name} added, but the email didn’t send — use Resend email`,!x.emailed);loadStDateFlags&&loadStDateFlags();openStHelpers();}});
+    const ui=document.getElementById('hr-until');if(ui)ui.onchange=e=>{until=e.target.value;};const ni=document.getElementById('hr-note');if(ni)ni.oninput=e=>{note=e.target.value;};});
+  box.querySelectorAll('[data-hrno]').forEach(b=>b.onclick=()=>{const r=R.find(x=>x.id===b.dataset.hrno);let note='';
+    stackConfirm('Reject request',r.full_name,`<div class="field" style="margin-bottom:0"><label>Reason (the requester sees this)</label><input id="hr-why" placeholder="e.g. not needed — enough staff for this count"></div>`,
+      {okLabel:'Reject',danger:true,onOk:async()=>{const{error:e}=await sb.rpc('reject_helper_request',{p_id:r.id,p_note:note||null});if(e)return toast(e.message,true);toast('Request rejected');loadStDateFlags&&loadStDateFlags();openStHelpers();}});
+    const wi=document.getElementById('hr-why');if(wi)wi.oninput=e=>{note=e.target.value;};});
+  box.querySelectorAll('[data-hrcx]').forEach(b=>b.onclick=async()=>{if(!window.confirm('Cancel this request?'))return;const{error:e}=await sb.rpc('cancel_helper_request',{p_id:b.dataset.hrcx});if(e)return toast(e.message,true);toast('Request cancelled');openStHelpers();});
+}
+function stHelperForm(mode){
+  const isReq=mode!=='add';
   const cs=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.filter(l=>l.active!==false)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const d7=slYmdSafe(new Date(Date.now()+7*864e5)),max=slYmdSafe(new Date(Date.now()+90*864e5));
-  modal('Add stock-take helper','For people who are not in the Square team',`<div class="grid2"><div class="field"><label>Full name *</label><input id="shf-name" autocomplete="off"></div><div class="field"><label>Email *</label><input id="shf-email" type="email" autocomplete="off" placeholder="they’ll get a link to set a password"></div></div>
+  modal(isReq?'Request a stock-take helper':'Add stock-take helper',isReq?'A National or Super Admin approves it, then the helper is emailed':'For people who are not in the Square team',`<div class="grid2"><div class="field"><label>Full name *</label><input id="shf-name" autocomplete="off"></div><div class="field"><label>Email *</label><input id="shf-email" type="email" autocomplete="off" placeholder="they’ll get a link to set a password"></div></div>
     <div class="grid2"><div class="field"><label>Centre *</label><select id="shf-loc">${cs.map(l=>`<option value="${l.id}"${l.id===HOME?' selected':''}>${esc(l.name)}</option>`).join('')}</select></div><div class="field"><label>Can count until (last day) *</label><input id="shf-until" type="date" value="${d7}" min="${slYmdSafe(new Date())}" max="${max}"></div></div>
-    <div class="field"><label>Note</label><input id="shf-note" placeholder="e.g. volunteer for the October count"></div>
-    <div class="banner info">${svg(I.lock,17)}<div>They can only count the open stock takes at this centre. Access ends automatically at the end of the last day (Sydney time). You can extend or remove it any time.</div></div>`,
-    `<button class="btn" id="shf-back">Back</button><button class="btn primary" id="shf-go">${svg(I.check,16)} Add helper &amp; send email</button>`);
+    <div class="field"><label>${isReq?'Why is this helper needed? *':'Note'}</label><input id="shf-note" placeholder="e.g. volunteer for the October stock take"></div>
+    <div class="banner info">${svg(I.lock,17)}<div>${isReq?'Once approved, they get an email to set a password. ':''}They can only count the open stock takes at this centre — no stock figures, prices or reports. Access ends automatically at the end of the last day (Sydney time).</div></div>`,
+    `<button class="btn" id="shf-back">Back</button><button class="btn primary" id="shf-go">${svg(I.check,16)} ${isReq?'Send request':'Add helper &amp; send email'}</button>`);
   document.getElementById('shf-back').onclick=openStHelpers;
   document.getElementById('shf-go').onclick=async e=>{const b=e.currentTarget;
     const name=document.getElementById('shf-name').value.trim(),email=document.getElementById('shf-email').value.trim(),location_id=document.getElementById('shf-loc').value,until=document.getElementById('shf-until').value,note=document.getElementById('shf-note').value.trim();
     if(!name||!email)return toast('Enter their name and email',true);
-    b.disabled=true;const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'add',name,email,location_id,until,note,app_url:location.origin+location.pathname.replace(/[^/]*$/,'')}});b.disabled=false;
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return toast('Check the email address',true);
+    if(isReq&&!note)return toast('Say briefly why the helper is needed',true);
+    b.disabled=true;
+    if(isReq){const{error}=await sb.rpc('request_helper',{p_loc:location_id,p_name:name,p_email:email,p_until:until,p_note:note||null});b.disabled=false;
+      if(error)return toast(/request_helper|schema cache/i.test(error.message||'')?'Run 73_helper_requests.sql in Supabase first':error.message,true);
+      toast('Request sent — a National or Super Admin will approve it');openStHelpers();return;}
+    const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'add',name,email,location_id,until,note}});b.disabled=false;
     if(error||(data&&data.error))return toast((data&&data.error)||await fnErr(error),true);
-    toast(data.emailed?`${name} added — they’ve been emailed a link to set their password`:`${name} added, but the email didn’t send (${data.email_error||'unknown'}) — use Resend email`,!data.emailed);
+    toast(data.emailed?`${name} added — they’ve been emailed a link to set their password`:`${name} added, but the email didn’t send — use Resend email`,!data.emailed);
     openStHelpers();};
 }
 async function openScanner(st){
