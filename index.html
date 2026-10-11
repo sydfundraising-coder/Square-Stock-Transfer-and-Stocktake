@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.11-1';
-const APP_VERSION_NOTE='Stock-take helper requests (centres request, National / Super Admin approve) · security hardening · PO approval';
+const APP_VERSION='2026.10.12-1';
+const APP_VERSION_NOTE='New look: grouped, collapsible menu with quick find (Ctrl K) and slim icon mode · helper-request emails to Super Admin';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -111,14 +111,6 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .nav-item:hover{background:var(--surface-2);color:var(--ink)}
   .nav-item.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
   .nav-item svg{width:20px;height:20px;flex:none}
-  /* Cash on Hand stands out in the menu */
-  .nav-item[data-route="cash"]{background:#fffaf1;color:var(--ink);border:1.5px solid #f3d49c;margin:4px 0;font-weight:700}
-  .nav-item[data-route="cash"] svg{color:var(--warn)}
-  .nav-item[data-route="cash"]:hover{background:#fff4e0}
-  .nav-item[data-route="cash"].active{background:#fdf0d8;color:var(--ink);border-color:var(--warn)}
-  [data-theme="dark"] .nav-item[data-route="cash"]{background:rgba(240,171,76,.08);border-color:rgba(240,171,76,.45)}
-  [data-theme="dark"] .nav-item[data-route="cash"]:hover{background:rgba(240,171,76,.14)}
-  [data-theme="dark"] .nav-item[data-route="cash"].active{background:rgba(240,171,76,.2);border-color:var(--warn)}
   .nav-item .badge-count{margin-left:auto;background:var(--crit);color:#fff;border-radius:20px;font-size:11px;font-weight:700;padding:1px 7px}
   .app-ver{font-size:11px;color:var(--faint);padding:6px 14px 12px;letter-spacing:.02em;user-select:all}
   .sq-status{margin:10px;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}
@@ -772,6 +764,124 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
     .panel-foot .btn{flex-basis:100%}
     .rolechip{display:none}
   }
+
+  /* =====================================================================
+     2026 LAYOUT REFRESH — navy menu, grouped & collapsible navigation,
+     quick find, slim icon mode, cleaner top bar and phone tab bar.
+     Only the frame changes; every screen works exactly as before.
+     ===================================================================== */
+  :root{--bg:#f3f5f9;--side-w:256px;--top-h:64px}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0f16}}
+  :root[data-theme="dark"]{--bg:#0a0f16}
+  @media (min-width:901px){.app{grid-template-columns:var(--side-w) 1fr;transition:grid-template-columns .2s ease}}
+  /* the menu panel carries its own dark palette so everything inside it (Square card, buttons) adapts */
+  .sidebar{
+    --surface:#13243a;--surface-2:rgba(255,255,255,.06);--ink:#f1f5fb;--muted:#b9c6d8;--faint:#8394ab;
+    --border:rgba(255,255,255,.08);--border-strong:rgba(255,255,255,.16);--accent-soft:rgba(45,212,191,.16);--accent-ink:#5eead4;
+    background:linear-gradient(180deg,#10223a 0%,#0c1a2c 100%);border-right:0;color:var(--ink);
+    box-shadow:1px 0 0 rgba(15,26,42,.06);overflow:hidden}
+  [data-theme="dark"] .sidebar{background:linear-gradient(180deg,#0d1828 0%,#09121e 100%);box-shadow:1px 0 0 rgba(255,255,255,.05)}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .sidebar{background:linear-gradient(180deg,#0d1828 0%,#09121e 100%);box-shadow:1px 0 0 rgba(255,255,255,.05)}}
+  .sidebar .brand{padding:18px 16px 14px;min-height:var(--top-h)}
+  .sidebar .brand-mark{background:linear-gradient(150deg,#2dd4bf,#0e8f83);box-shadow:0 4px 14px rgba(45,212,191,.3)}
+  .sidebar .brand-name{font-size:14.5px;color:#fff}
+  .sidebar .brand-sub{color:var(--faint)}
+  .sidebar #sideLogo{background:#fff;border-radius:10px;padding:4px 8px;max-height:40px!important}
+  /* quick find */
+  .nav-find{position:relative;margin:2px 14px 6px;display:flex;align-items:center}
+  .nav-find svg{position:absolute;left:11px;color:var(--faint);pointer-events:none}
+  .nav-find input{width:100%;height:38px;padding:0 54px 0 33px;border-radius:10px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--ink);font-size:13.5px!important;min-height:0!important;-webkit-appearance:none;appearance:none}
+  .nav-find input::placeholder{color:var(--faint)}
+  .nav-find input:focus{outline:none;border-color:#2dd4bf;background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(45,212,191,.18)}
+  .nav-find input::-webkit-search-cancel-button{display:none}
+  .nav-find kbd{position:absolute;right:8px;font-family:var(--sans);font-size:10.5px;font-weight:600;color:var(--faint);border:1px solid var(--border-strong);border-radius:6px;padding:1px 6px;pointer-events:none}
+  /* menu */
+  .nav{padding:4px 10px 12px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent}
+  .nav::-webkit-scrollbar{width:6px}.nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:6px}
+  .nav-sec{margin-top:6px}
+  .nav-group{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;cursor:pointer;color:var(--faint);font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:12px 10px 6px;border-radius:8px;text-align:left}
+  .nav-group:hover{color:var(--muted)}
+  .nav-group svg{margin-left:auto;transition:transform .18s ease;opacity:.7}
+  .nav-sec.closed .nav-group svg{transform:rotate(-90deg)}
+  .nav-sec.closed .nav-list{display:none}
+  .ng-dot{background:#ef4444;color:#fff;border-radius:20px;font-size:10px;letter-spacing:0;padding:0 6px;line-height:16px}
+  .nav-item{position:relative;gap:12px;padding:9px 12px;margin:1px 0;border-radius:10px;font-size:14px;font-weight:500;color:var(--muted);transition:background .14s,color .14s}
+  .nav-item svg{width:19px;height:19px;opacity:.85}
+  .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+  .nav-item.active{background:linear-gradient(90deg,rgba(45,212,191,.2),rgba(45,212,191,.07));color:#fff;font-weight:600}
+  .nav-item.active svg{color:#5eead4;opacity:1}
+  .nav-item.active::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#2dd4bf}
+  .nav-item .ni-label{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav-item .badge-count{background:#ef4444;font-size:10.5px;padding:1px 7px;line-height:16px;box-shadow:0 0 0 2px rgba(12,26,44,.6)}
+  .nav-empty{color:var(--faint);font-size:12.5px;padding:18px 12px;text-align:center}
+  /* menu footer */
+  .side-foot{border-top:1px solid var(--border);padding:10px 12px 12px}
+  .side-foot .sq-status{margin:0 0 8px;background:rgba(255,255,255,.04);border-color:var(--border);border-radius:12px}
+  .side-foot-row{display:flex;align-items:center;gap:8px}
+  .side-foot .app-ver{padding:0 4px;flex:1;color:var(--faint)}
+  .rail-btn{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);flex:none}
+  .rail-btn:hover{background:rgba(255,255,255,.07);color:#fff}
+  /* slim icon mode (desktop) */
+  @media (min-width:901px){
+    .app.rail{--side-w:76px}
+    .app.rail .brand{justify-content:center;padding:18px 0 14px}
+    .app.rail .brand-name,.app.rail .brand-sub,.app.rail #sideLogo{display:none!important}
+    .app.rail #sideBrandText{display:flex!important}
+    .app.rail .nav-find,.app.rail .sq-status,.app.rail .app-ver,.app.rail .ni-label,.app.rail .nav-group span{display:none!important}
+    .app.rail .nav{padding:4px 12px 12px}
+    .app.rail .nav-group{padding:8px 0 4px;justify-content:center;cursor:default;pointer-events:none}
+    .app.rail .nav-group svg{display:none}
+    .app.rail .nav-group::after{content:"";display:block;width:26px;height:1px;background:var(--border-strong);margin:4px auto}
+    .app.rail .nav-sec:first-child .nav-group::after{display:none}
+    .app.rail .nav-sec.closed .nav-list{display:block}
+    .app.rail .nav-item{justify-content:center;padding:11px 0}
+    .app.rail .nav-item svg{width:21px;height:21px}
+    .app.rail .nav-item .badge-count{position:absolute;top:3px;right:3px;padding:0 5px;font-size:9.5px;line-height:15px}
+    .app.rail .nav-item.active::before{left:-12px}
+    .app.rail .side-foot-row{justify-content:center}
+    .app.rail .rail-btn svg{transform:scaleX(-1)}
+  }
+  /* top bar */
+  .topbar{min-height:var(--top-h);padding:10px 26px;gap:12px;background:var(--surface);border-bottom:1px solid var(--border)}
+  @supports (background:color-mix(in srgb,red 50%,blue)){.topbar{background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(12px);-webkit-backdrop-filter:saturate(1.6) blur(12px)}tbody tr:hover td{background:color-mix(in srgb,var(--accent-soft) 35%,transparent)}}
+  .tb-title{min-width:0;flex:0 1 auto}
+  .tb-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);line-height:1.2;margin-bottom:1px}
+  .tb-eyebrow:empty{display:none}
+  .topbar h1{font-size:19px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar .sub{font-size:12.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
+  .topbar .theme-btn{width:38px;height:38px;border-radius:10px;border-color:var(--border);background:var(--surface);transition:background .14s,color .14s}
+  .topbar .theme-btn:hover{background:var(--surface-2);color:var(--ink)}
+  .topbar .avatar{width:38px;height:38px;background:linear-gradient(150deg,var(--accent),var(--accent-ink));box-shadow:0 0 0 3px var(--accent-soft)}
+  .hamburger{width:40px;height:40px;border-radius:10px;border-color:var(--border)}
+  .content{padding:26px}
+  .user-drop{top:50px;border-radius:14px;padding:14px}
+  /* calmer, more consistent surfaces */
+  .btn{border-radius:10px;transition:background .14s,border-color .14s,box-shadow .14s,filter .14s}
+  .btn.primary{box-shadow:0 1px 2px rgba(14,143,131,.25),0 4px 12px rgba(14,143,131,.18)}
+  .card,.tablewrap,.tile{border-color:var(--border)}
+  th{background:var(--surface-2)}
+  .field input,.field select,.field textarea,select.filter,.search input{border-radius:10px;transition:border-color .14s,box-shadow .14s}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  /* phone & tablet */
+  @media (max-width:900px){
+    .sidebar{width:288px;transform:translateX(-102%);transition:transform .24s cubic-bezier(.2,.8,.2,1)}
+    .sidebar.open{box-shadow:12px 0 40px rgba(0,0,0,.35)}
+    .sidebar-scrim.show{background:rgba(5,10,18,.5);backdrop-filter:blur(2px)}
+    .nav-find kbd{display:none}.nav-find input{padding-right:12px}
+    .rail-btn{display:none}
+    .nav-item{font-size:15px;padding:11px 12px}
+    .topbar{padding:8px 14px;min-height:58px}
+    .content{padding:16px}
+    .mobile-tabs{background:var(--surface);border-top:1px solid var(--border);padding:4px 6px calc(4px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 24px rgba(15,26,42,.06)}
+    .mtab{border-radius:12px;color:var(--faint);transition:color .14s}
+    .mtab svg{transition:transform .14s}
+    .mtab.active{color:var(--accent)}
+    .mtab.active::before{content:"";position:absolute;top:-4px;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+    .mtab.active svg{transform:translateY(-1px)}
+  }
+  @media (max-width:600px){.tb-eyebrow{display:none}}
+  @media print{.side-foot,.nav-find{display:none!important}}
+  .is-helper .nav-find,.is-helper .rail-btn{display:none}
 </style>
 </head>
 <body>
@@ -810,14 +920,17 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   <div class="sidebar-scrim" id="sidebarScrim"></div>
   <aside class="sidebar" id="sidebar">
     <div class="brand"><img id="sideLogo" class="applogo" data-i="0" data-hide="sideBrandText" src="shayona-logo.png" alt="Shayona" style="max-height:36px;display:none" onload="logoOk(this)" onerror="nextLogo(this)"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Portal</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
+    <div class="nav-find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="15" height="15"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="navSearch" type="search" placeholder="Find a screen…" autocomplete="off" aria-label="Find a screen"><kbd>Ctrl K</kbd></div>
     <nav class="nav" id="nav"></nav>
-    <div class="sq-status" id="sqStatus"></div>
-    <div class="app-ver" data-appver title="The version of the app this device is running — hard-refresh (Ctrl+Shift+R) after an update"></div>
+    <div class="side-foot">
+      <div class="sq-status" id="sqStatus"></div>
+      <div class="side-foot-row"><div class="app-ver" data-appver title="The version of the app this device is running — hard-refresh (Ctrl+Shift+R) after an update"></div><button type="button" class="rail-btn" id="railBtn" title="Collapse menu" aria-label="Collapse menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 10l-2 2 2 2"/></svg></button></div>
+    </div>
   </aside>
   <div class="main">
     <header class="topbar">
       <button class="hamburger" id="hamburger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-      <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub"></div></div>
+      <div class="tb-title"><div class="tb-eyebrow" id="pageEyebrow"></div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub"></div></div>
       <div class="spacer"></div>
       <button class="theme-btn help-btn" id="helpBtn" aria-label="Help (F1)" title="Help (F1)" onclick="openHelp('screen')">?</button>
       <button class="theme-btn" id="themeBtn" aria-label="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"/><circle cx="12" cy="12" r="3.5"/></svg></button>
@@ -860,6 +973,19 @@ function initClient(){
 
 /* icons */
 const I={dash:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>',transfer:'<path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 20l-4-4 4-4"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',catalog:'<path d="M4 5h16v14H4zM4 9h16M9 5v14"/>',location:'<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.8M22 20a6 6 0 0 0-4-5.6"/>',audit:'<path d="M5 3h9l5 5v13H5zM14 3v5h5M8 13h8M8 17h6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',check:'<path d="M20 6 9 17l-5-5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',alert:'<path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',truck:'<path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>',box:'<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16M3 12A9 9 0 0 1 18.5 5.7L21 8"/><path d="M21 4v4h-4M3 20v-4h4"/>',arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.3c0-1 1.1-1.8 2.5-1.8s2.5.8 2.5 1.8-1.1 1.6-2.5 1.9-2.5.9-2.5 1.9 1.1 1.8 2.5 1.8 2.5-.8 2.5-1.8"/>',order:'<path d="M3 4h2l2.2 11a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.8L20 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/>',stocktake:'<path d="M9 3.5h6V6H9zM8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',supplier:'<path d="M3 7h12v9H3zM15 10h3.5l2.5 3v3H15z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'};
+/* menu icons (2026 layout refresh) — each menu item gets its own picture */
+Object.assign(I,{
+  wallet:'<path d="M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 6v12a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-3"/>',
+  invoice:'<path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  trend:'<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',
+  tag:'<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  hourglass:'<path d="M6 2h12M6 22h12M7 2v4a5 5 0 0 0 10 0V2M7 22v-4a5 5 0 0 1 10 0v4"/>',
+  damage:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m10 9 2 3-2 2 3 3"/>',
+  warehouse:'<path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 17h10"/>',
+  inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
+  chevron:'<path d="m6 9 6 6 6-6"/>',
+  panel:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
+});
 const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="${w}" height="${w}">${p}</svg>`;
 const money=n=>'$'+(Number(n)||0).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
 const money0=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-AU');
@@ -1304,19 +1430,19 @@ const NAV=[
   {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
   {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview'},
-  {id:'perf',label:'Sales & Performance',icon:I.cost,group:'Overview'},
-  {id:'transfers',label:'Transfers',icon:I.transfer,group:'Operations',badge:()=>myActionCount()},
-  {id:'orders',label:'Purchase Orders',icon:I.order,group:'Operations',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
-  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Operations',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
-  {id:'adjustments',label:'Damage / Expiry',icon:I.alert,group:'Operations',badge:()=>adjPendingCount()},
-  {id:'freight',label:'Freight',icon:I.truck,group:'Operations'},
-  {id:'receipts',label:'Goods Receipts',icon:I.receipt,group:'Operations'},
-  {id:'expiry',label:'Near Expiry',icon:I.alert,group:'Operations',badge:()=>nearExpiryCount()},
-  {id:'sales',label:'Sales',icon:I.cost,group:'Operations',need:'*',badge:()=>salesOverdueCount()},
-  {id:'catalog',label:'Catalogue',icon:I.catalog,group:'Operations'},
-  {id:'labels',label:'Shelf Labels',icon:I.receipt,group:'Operations'},
-  {id:'warehouse',label:'Warehouse Allocation',icon:I.box,group:'Operations'},
-  {id:'cash',label:'Cash on Hand',icon:I.cost,group:'Operations'},
+  {id:'perf',label:'Sales & Performance',icon:I.trend,group:'Overview'},
+  {id:'transfers',label:'Transfers',icon:I.transfer,group:'Stock Movement',badge:()=>myActionCount()},
+  {id:'orders',label:'Purchase Orders',icon:I.order,group:'Stock Movement',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
+  {id:'receipts',label:'Goods Receipts',icon:I.inbox,group:'Stock Movement'},
+  {id:'freight',label:'Freight',icon:I.truck,group:'Stock Movement'},
+  {id:'warehouse',label:'Warehouse Allocation',icon:I.warehouse,group:'Stock Movement'},
+  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Inventory',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
+  {id:'adjustments',label:'Damage / Expiry',icon:I.damage,group:'Inventory',badge:()=>adjPendingCount()},
+  {id:'expiry',label:'Near Expiry',icon:I.hourglass,group:'Inventory',badge:()=>nearExpiryCount()},
+  {id:'catalog',label:'Catalogue',icon:I.catalog,group:'Inventory'},
+  {id:'labels',label:'Shelf Labels',icon:I.tag,group:'Inventory'},
+  {id:'sales',label:'Sales',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
+  {id:'cash',label:'Cash on Hand',icon:I.wallet,group:'Sales & Cash'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
   {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
@@ -1333,14 +1459,33 @@ function incomingCount(){return S.orders.filter(o=>(!scoped()||mine(o.location_i
 function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&&(!scoped()||mine(r.location_id))).length;}
 const ADJST={pending:{l:'Pending',c:'p-req'},approved:{l:'Approved',c:'p-done'},rejected:{l:'Rejected',c:'p-cancel'},cancelled:{l:'Cancelled',c:'p-cancel'},reversed:{l:'Reversed',c:'p-cancel'}};
 const adjPill=s=>`<span class="pill ${(ADJST[s]||{c:'p-draft'}).c}">${(ADJST[s]||{l:s}).l}</span>`;
+/* ---- menu state (remembered on this device) ---- */
+const NAVUI={q:'',closed:{}};
+try{NAVUI.closed=JSON.parse(localStorage.getItem('nav.closed')||'{}')||{};}catch(e){}
+function navSaveClosed(){try{localStorage.setItem('nav.closed',JSON.stringify(NAVUI.closed));}catch(e){}}
+function navGroupOf(r){const n=NAV.find(x=>x.id===r);return n?n.group:'';}
 function renderNav(){
-  let html='',g='';
-  NAV.filter(navVisible).forEach(n=>{if(n.group!==g){html+=`<div class="nav-group">${n.group}</div>`;g=n.group;}const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}">${svg(n.icon)}<span>${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
+  const q=(NAVUI.q||'').trim().toLowerCase();
+  const vis=NAV.filter(navVisible).filter(n=>!q||n.label.toLowerCase().includes(q)||n.group.toLowerCase().includes(q));
+  const groups=[];vis.forEach(n=>{let g=groups.find(x=>x.name===n.group);if(!g){g={name:n.group,items:[]};groups.push(g);}g.items.push(n);});
+  let html='';
+  groups.forEach(g=>{
+    const hasActive=g.items.some(n=>n.id===route);
+    const closed=!q&&!hasActive&&!!NAVUI.closed[g.name];
+    const gb=g.items.reduce((t,n)=>t+(n.badge?(+n.badge()||0):0),0);
+    html+=`<div class="nav-sec${closed?' closed':''}"><button type="button" class="nav-group" data-navgrp="${esc(g.name)}" aria-expanded="${!closed}"><span>${esc(g.name)}</span>${closed&&gb?`<span class="ng-dot" title="${gb} waiting">${gb}</span>`:''}${svg(I.chevron,14)}</button><div class="nav-list">`;
+    g.items.forEach(n=>{const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}" title="${esc(n.label)}">${svg(n.icon)}<span class="ni-label">${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
+    html+='</div></div>';
+  });
+  if(!groups.length)html=`<div class="nav-empty">No menu item matches “${esc(NAVUI.q)}”</div>`;
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  mt.innerHTML=MOBILE.filter(id=>{const n=NAV.find(x=>x.id===id);return n&&navVisible(n);}).map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${['insights','perf','adjustments','freight','receipts','expiry','invoices','sales','catalog','suppliers','locations','users','audit','settings'].includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  const mob=MOBILE.filter(id=>{const n=NAV.find(x=>x.id===id);return n&&navVisible(n);});
+  mt.innerHTML=mob.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${!mob.includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
+  const eb=document.getElementById('pageEyebrow');if(eb)eb.textContent=navGroupOf(route);
+  if(!renderNav._seen){const act=document.querySelector('#nav .nav-item.active');if(act){renderNav._seen=1;try{act.scrollIntoView({block:'nearest'});}catch(e){}}}
 }
-function go(r){if(r==='__more'){toggleSidebar(true);return;}if(HELPER)r='stocktake';route=r;toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
+function go(r){if(r==='__more'){toggleSidebar(true);return;}if(HELPER)r='stocktake';route=r;if(NAVUI.q){NAVUI.q='';const ns=document.getElementById('navSearch');if(ns)ns.value='';}toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
 
 /* =========================================================
    STOCK STATUS REPORT  (excess / reorder / dead-stock by item & category)
@@ -7517,6 +7662,34 @@ document.addEventListener('click',e=>{
 });
 /* Escape no longer closes an open window — a window closes only via its Cancel/Close/X button or once its action is processed, so nothing accidental (a stray click or key) wipes entered data. */
 document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
+/* ---- menu: quick find, collapsible groups, slim icon mode ---- */
+(function(){
+  const app=document.getElementById('app'),ns=document.getElementById('navSearch'),rb=document.getElementById('railBtn');
+  const setRail=on=>{app.classList.toggle('rail',on);try{localStorage.setItem('nav.rail',on?'1':'0');}catch(e){}
+    rb.title=on?'Expand menu':'Collapse menu';rb.setAttribute('aria-label',rb.title);};
+  try{if(localStorage.getItem('nav.rail')==='1')setRail(true);}catch(e){}
+  rb.onclick=()=>setRail(!app.classList.contains('rail'));
+  ns.addEventListener('input',()=>{NAVUI.q=ns.value;renderNav();});
+  ns.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();const f=document.querySelector('#nav .nav-item');if(f)go(f.dataset.route);ns.blur();}
+    if(e.key==='Escape'){ns.value='';NAVUI.q='';renderNav();ns.blur();}
+  });
+  document.getElementById('nav').addEventListener('click',e=>{
+    const g=e.target.closest('[data-navgrp]');if(!g)return;
+    if(app.classList.contains('rail'))return;
+    const k=g.dataset.navgrp;NAVUI.closed[k]=!g.parentElement.classList.contains('closed');navSaveClosed();
+    g.parentElement.classList.toggle('closed',NAVUI.closed[k]);g.setAttribute('aria-expanded',String(!NAVUI.closed[k]));
+  });
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='k'||e.key==='K')){
+      if(app.hidden||document.body.classList.contains('is-helper'))return;
+      e.preventDefault();
+      if(window.matchMedia('(max-width:900px)').matches)toggleSidebar(true);
+      else if(app.classList.contains('rail'))setRail(false);
+      setTimeout(()=>{ns.focus();ns.select();},30);
+    }
+  });
+})();
 document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
 document.getElementById('themeBtn').onclick=()=>{const r=document.documentElement,c=r.getAttribute('data-theme');r.setAttribute('data-theme',c==='dark'?'light':(c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark')));};
 document.getElementById('signout').onclick=async()=>{await sb.auth.signOut();location.reload();};
