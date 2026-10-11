@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.12-1';
-const APP_VERSION_NOTE='New look: grouped, collapsible menu with quick find (Ctrl K) and slim icon mode · helper-request emails to Super Admin';
+const APP_VERSION='2026.10.12-2';
+const APP_VERSION_NOTE='Easier navigation: Home button, Back button (browser/phone back works), Go-to search (Ctrl K), favourites, Quick access on Home, reopens your screen after refresh';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -845,8 +845,6 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .topbar{min-height:var(--top-h);padding:10px 26px;gap:12px;background:var(--surface);border-bottom:1px solid var(--border)}
   @supports (background:color-mix(in srgb,red 50%,blue)){.topbar{background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.6) blur(12px);-webkit-backdrop-filter:saturate(1.6) blur(12px)}tbody tr:hover td{background:color-mix(in srgb,var(--accent-soft) 35%,transparent)}}
   .tb-title{min-width:0;flex:0 1 auto}
-  .tb-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);line-height:1.2;margin-bottom:1px}
-  .tb-eyebrow:empty{display:none}
   .topbar h1{font-size:19px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .topbar .sub{font-size:12.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62vw}
   .topbar .theme-btn{width:38px;height:38px;border-radius:10px;border-color:var(--border);background:var(--surface);transition:background .14s,color .14s}
@@ -879,9 +877,92 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
     .mtab.active::before{content:"";position:absolute;top:-4px;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
     .mtab.active svg{transform:translateY(-1px)}
   }
-  @media (max-width:600px){.tb-eyebrow{display:none}}
   @media print{.side-foot,.nav-find{display:none!important}}
   .is-helper .nav-find,.is-helper .rail-btn{display:none}
+  /* ---- top bar: Back, Home, breadcrumb, Go-to search ---- */
+  .tb-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--muted);flex:none;transition:background .14s,color .14s,border-color .14s}
+  .tb-icon:hover{background:var(--surface-2);color:var(--ink)}
+  .tb-home{display:inline-flex;align-items:center;gap:7px;width:auto;padding:0 13px 0 11px;font-weight:600;font-size:13.5px;color:var(--ink)}
+  .tb-home.on{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink)}
+  .crumbs{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--faint);line-height:1.2;margin-bottom:2px;white-space:nowrap}
+  .crumbs:empty{display:none}
+  .crumbs button{background:none;border:0;padding:0;color:var(--accent);font-weight:700;font-size:11.5px}
+  .crumbs button:hover{text-decoration:underline}
+  .crumbs i{font-style:normal;opacity:.6}
+  .tb-search{display:inline-flex;align-items:center;gap:9px;height:38px;min-width:230px;padding:0 8px 0 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--faint);font-size:13px;font-weight:500;transition:border-color .14s,box-shadow .14s}
+  .tb-search:hover{border-color:var(--accent);color:var(--muted);box-shadow:0 0 0 3px var(--accent-soft)}
+  .tb-search span{flex:1;text-align:left}
+  .tb-search kbd,.cmdk kbd{font-family:var(--sans);font-size:10.5px;font-weight:600;color:var(--faint);border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:6px;padding:1px 6px;background:var(--surface)}
+  .is-helper #homeBtn,.is-helper #backBtn,.is-helper #cmdkBtn{display:none!important}
+  /* ---- menu favourites ---- */
+  .ni-star{display:grid;place-items:center;width:24px;height:24px;margin:-4px -6px -4px 0;border-radius:7px;color:var(--faint);opacity:0;transition:opacity .12s,color .12s,background .12s;flex:none}
+  .nav-item:hover .ni-star,.ni-star.on,.nav-item:focus-visible .ni-star{opacity:1}
+  .ni-star:hover{background:rgba(255,255,255,.1);color:#fde68a}
+  .ni-star.on{color:#fbbf24}.ni-star.on svg{fill:currentColor}
+  .nav-item .badge-count+.ni-star{margin-left:2px}
+  @media (hover:none){.ni-star{opacity:.55}}
+  .nav-sec.fav .nav-group{color:#fbbf24}.nav-sec.fav .nav-group svg:first-child{fill:currentColor;margin:0}
+  .nav-tip{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:8px 10px 2px;line-height:1.35}
+  .nav-tip svg{flex:none;color:#fbbf24}
+  .app.rail .ni-star,.app.rail .nav-tip{display:none!important}
+  .app.rail .nav-sec.fav .nav-group svg:first-child{display:none}
+  /* ---- Home: quick access ---- */
+  .qa{margin:0 0 20px}
+  .qa-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .qa-head h3{display:flex;align-items:center;gap:7px;font-size:15px}
+  .qa-head h3 svg{color:var(--accent)}
+  .qa-hint{font-size:12px;color:var(--faint)}
+  .qa-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .qa-card{position:relative;display:flex;align-items:center;gap:12px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;color:var(--ink);box-shadow:var(--shadow);transition:transform .13s,box-shadow .13s,border-color .13s}
+  .qa-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-color:var(--accent)}
+  .qa-ic{display:grid;place-items:center;width:40px;height:40px;border-radius:11px;background:var(--accent-soft);color:var(--accent-ink);flex:none}
+  .qa-card.due .qa-ic{background:var(--crit-soft);color:var(--crit)}
+  .qa-tx{display:flex;flex-direction:column;min-width:0}
+  .qa-tx b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qa-tx small{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qa-tx small svg{color:#f59e0b;fill:currentColor;flex:none}
+  .qa-card.due small{color:var(--crit);font-weight:600}
+  .qa-card .badge-count{position:absolute;top:8px;right:9px;background:var(--crit);color:#fff;border-radius:20px;font-size:10.5px;font-weight:700;padding:0 7px;line-height:17px}
+  @media (max-width:1100px){.qa-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:900px){.qa-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.qa-card{padding:11px;gap:10px}.qa-ic{width:36px;height:36px}.qa-hint{display:none}}
+  /* ---- Go-to search window ---- */
+  .cmdk{position:fixed;inset:0;z-index:95;background:rgba(8,14,22,.45);backdrop-filter:blur(3px);display:flex;justify-content:center;align-items:flex-start;padding:10vh 16px 16px;opacity:0;transition:opacity .15s}
+  .cmdk.show{opacity:1}
+  .cmdk-box{width:min(620px,100%);max-height:72vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);overflow:hidden;transform:translateY(-6px) scale(.985);transition:transform .15s}
+  .cmdk.show .cmdk-box{transform:none}
+  .cmdk-in{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);color:var(--faint)}
+  .cmdk-in input{flex:1;border:0;background:none;outline:none;color:var(--ink);font-size:16px!important;min-height:0!important;padding:4px 0}
+  .cmdk-in input::-webkit-search-cancel-button{display:none}
+  .cmdk-x{border:1px solid var(--border-strong);background:var(--surface-2);color:var(--muted);border-radius:7px;font-size:11px;font-weight:700;padding:3px 8px}
+  .cmdk-list{overflow-y:auto;padding:6px 8px 10px}
+  .cmdk-sec{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:12px 10px 5px}
+  .cmdk-row{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:10px;cursor:pointer}
+  .cmdk-row.hi{background:var(--accent-soft)}
+  .cmdk-ic{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--surface-2);color:var(--muted);flex:none}
+  .cmdk-row.hi .cmdk-ic{background:var(--accent);color:#fff}
+  .cmdk-tx{display:flex;flex-direction:column;min-width:0;flex:1}
+  .cmdk-tx b{font-size:14px;font-weight:600}
+  .cmdk-tx small{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmdk-row .badge-count{background:var(--crit);color:#fff;border-radius:20px;font-size:10.5px;font-weight:700;padding:0 7px;line-height:17px}
+  .cmdk-fav{color:#f59e0b;display:grid}.cmdk-fav svg{fill:currentColor}
+  .cmdk-go{color:var(--faint);font-size:13px;opacity:0;width:16px;text-align:center}
+  .cmdk-row.hi .cmdk-go{opacity:1;color:var(--accent-ink)}
+  .cmdk-empty{padding:28px 16px;text-align:center;color:var(--faint);font-size:13px}
+  .cmdk-foot{display:flex;gap:16px;flex-wrap:wrap;padding:9px 16px;border-top:1px solid var(--border);background:var(--surface-2);font-size:11.5px;color:var(--faint)}
+  .cmdk-foot span{display:inline-flex;align-items:center;gap:4px}
+  @media (max-width:900px){
+    .tb-search{min-width:0;width:40px;padding:0;justify-content:center;background:var(--surface)}
+    .tb-search span,.tb-search kbd{display:none}
+    .tb-home{display:none}
+    .tb-icon{width:40px;height:40px}
+    .cmdk{padding:calc(10px + env(safe-area-inset-top,0px)) 10px 10px}
+    .cmdk-box{max-height:82dvh}
+    .cmdk-foot{display:none}
+    .cmdk-row{padding:11px 10px}
+  }
+  @media (max-width:600px){.crumbs{display:none}}
+  .ud-theme{display:none}
+  @media (max-width:480px){#themeBtn{display:none}.ud-theme{display:flex}.topbar{gap:8px}}
 </style>
 </head>
 <body>
@@ -919,8 +1000,8 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
 <div class="app" id="app" hidden>
   <div class="sidebar-scrim" id="sidebarScrim"></div>
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><img id="sideLogo" class="applogo" data-i="0" data-hide="sideBrandText" src="shayona-logo.png" alt="Shayona" style="max-height:36px;display:none" onload="logoOk(this)" onerror="nextLogo(this)"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Portal</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
-    <div class="nav-find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="15" height="15"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="navSearch" type="search" placeholder="Find a screen…" autocomplete="off" aria-label="Find a screen"><kbd>Ctrl K</kbd></div>
+    <div class="brand" data-route="dashboard" title="Home" style="cursor:pointer"><img id="sideLogo" class="applogo" data-i="0" data-hide="sideBrandText" src="shayona-logo.png" alt="Shayona" style="max-height:36px;display:none" onload="logoOk(this)" onerror="nextLogo(this)"><div id="sideBrandText" style="display:flex;align-items:center;gap:10px"><div class="brand-mark">S</div><div><div class="brand-name">Shayona Stock Control Portal</div><div class="brand-sub">Multi-site inventory &amp; transit</div></div></div></div>
+    <div class="nav-find"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="15" height="15"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="navSearch" type="search" placeholder="Filter menu…" autocomplete="off" aria-label="Filter the menu"></div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot">
       <div class="sq-status" id="sqStatus"></div>
@@ -930,8 +1011,11 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   <div class="main">
     <header class="topbar">
       <button class="hamburger" id="hamburger" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-      <div class="tb-title"><div class="tb-eyebrow" id="pageEyebrow"></div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub"></div></div>
+      <button type="button" class="tb-icon" id="backBtn" hidden title="Back to the previous screen (Alt+←)" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M19 12H5M11 18l-6-6 6-6"/></svg></button>
+      <button type="button" class="tb-icon tb-home" id="homeBtn" data-route="dashboard" title="Home (Alt+H)" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"/></svg><span>Home</span></button>
+      <div class="tb-title"><div class="crumbs" id="pageEyebrow"></div><h1 id="pageTitle">Home</h1><div class="sub" id="pageSub"></div></div>
       <div class="spacer"></div>
+      <button type="button" class="tb-search" id="cmdkBtn" title="Search screens and actions (Ctrl K)" aria-label="Search screens and actions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Go to…</span><kbd>Ctrl K</kbd></button>
       <button class="theme-btn help-btn" id="helpBtn" aria-label="Help (F1)" title="Help (F1)" onclick="openHelp('screen')">?</button>
       <button class="theme-btn" id="themeBtn" aria-label="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"/><circle cx="12" cy="12" r="3.5"/></svg></button>
       <div class="usermenu">
@@ -941,6 +1025,7 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
           <div class="ud-email" id="udEmail"></div>
           <div class="ud-role" id="udRole"></div>
           <div class="ud-sep"></div>
+          <button class="ud-item ud-theme" type="button" onclick="document.getElementById('themeBtn').click()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5"/><circle cx="12" cy="12" r="3.5"/></svg> Light / dark mode</button>
           <button class="ud-item" id="changePw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg> Change password</button>
           <button class="ud-item danger" id="signout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg> Sign out</button>
           <div class="app-ver" data-appver style="padding:8px 4px 2px"></div>
@@ -984,6 +1069,12 @@ Object.assign(I,{
   warehouse:'<path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 17h10"/>',
   inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
   chevron:'<path d="m6 9 6 6 6-6"/>',
+  home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"/>',
+  back:'<path d="M19 12H5M11 18l-6-6 6-6"/>',
+  star:'<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
   panel:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
 });
 const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="${w}" height="${w}">${p}</svg>`;
@@ -1415,6 +1506,9 @@ async function startApp(){
   document.getElementById('avatar').textContent=(prof.full_name||prof.email||'?').split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
   await loadAll();
   // if scoped but no home centre set, warn
+  // reopen the screen this tab was on before a refresh; start the Back history here
+  if(!HELPER){try{const r0=sessionStorage.getItem('nav.route');if(r0&&navItem(r0))route=r0;}catch(e){}}
+  try{history.replaceState({route,idx:0},'',location.pathname);}catch(e){}
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
   if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
@@ -1427,22 +1521,22 @@ function renderRoleChip(prof){
 
 /* ---------- nav ---------- */
 const NAV=[
-  {id:'dashboard',label:'Dashboard',icon:I.dash,group:'Overview'},
+  {id:'dashboard',label:'Home',icon:I.home,group:'Overview',kw:'dashboard start main'},
   {id:'reports',label:'Reports',icon:I.chart,group:'Overview',need:'audit.view'},
   {id:'stockstatus',label:'Stock Status',icon:I.box,group:'Overview'},
   {id:'perf',label:'Sales & Performance',icon:I.trend,group:'Overview'},
   {id:'transfers',label:'Transfers',icon:I.transfer,group:'Stock Movement',badge:()=>myActionCount()},
-  {id:'orders',label:'Purchase Orders',icon:I.order,group:'Stock Movement',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
-  {id:'receipts',label:'Goods Receipts',icon:I.inbox,group:'Stock Movement'},
+  {id:'orders',label:'Purchase Orders',short:'Orders',kw:'po supplier buy',icon:I.order,group:'Stock Movement',badge:()=>incomingCount()+poAwaitingCount(),show:()=>canPO()},
+  {id:'receipts',label:'Goods Receipts',kw:'receive delivery supplier',icon:I.inbox,group:'Stock Movement'},
   {id:'freight',label:'Freight',icon:I.truck,group:'Stock Movement'},
   {id:'warehouse',label:'Warehouse Allocation',icon:I.warehouse,group:'Stock Movement'},
-  {id:'stocktake',label:'Stock Take',icon:I.stocktake,group:'Inventory',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
-  {id:'adjustments',label:'Damage / Expiry',icon:I.damage,group:'Inventory',badge:()=>adjPendingCount()},
-  {id:'expiry',label:'Near Expiry',icon:I.hourglass,group:'Inventory',badge:()=>nearExpiryCount()},
-  {id:'catalog',label:'Catalogue',icon:I.catalog,group:'Inventory'},
-  {id:'labels',label:'Shelf Labels',icon:I.tag,group:'Inventory'},
-  {id:'sales',label:'Sales',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
-  {id:'cash',label:'Cash on Hand',icon:I.wallet,group:'Sales & Cash'},
+  {id:'stocktake',label:'Stock Take',short:'Stock Take',kw:'count spot check helpers',icon:I.stocktake,group:'Inventory',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
+  {id:'adjustments',label:'Damage / Expiry',kw:'write off expired broken',icon:I.damage,group:'Inventory',badge:()=>adjPendingCount()},
+  {id:'expiry',label:'Near Expiry',kw:'best before bb dates',icon:I.hourglass,group:'Inventory',badge:()=>nearExpiryCount()},
+  {id:'catalog',label:'Catalogue',kw:'items products prices',icon:I.catalog,group:'Inventory'},
+  {id:'labels',label:'Shelf Labels',kw:'barcode print',icon:I.tag,group:'Inventory'},
+  {id:'sales',label:'Sales',kw:'invoice customers statements credit',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
+  {id:'cash',label:'Cash on Hand',kw:'banking till drawer',icon:I.wallet,group:'Sales & Cash'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
   {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
@@ -1460,32 +1554,78 @@ function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&
 const ADJST={pending:{l:'Pending',c:'p-req'},approved:{l:'Approved',c:'p-done'},rejected:{l:'Rejected',c:'p-cancel'},cancelled:{l:'Cancelled',c:'p-cancel'},reversed:{l:'Reversed',c:'p-cancel'}};
 const adjPill=s=>`<span class="pill ${(ADJST[s]||{c:'p-draft'}).c}">${(ADJST[s]||{l:s}).l}</span>`;
 /* ---- menu state (remembered on this device) ---- */
-const NAVUI={q:'',closed:{}};
+const NAVUI={q:'',closed:{},fav:[],recent:[],idx:0};
 try{NAVUI.closed=JSON.parse(localStorage.getItem('nav.closed')||'{}')||{};}catch(e){}
+try{NAVUI.fav=JSON.parse(localStorage.getItem('nav.fav')||'[]')||[];}catch(e){}
+try{NAVUI.recent=JSON.parse(localStorage.getItem('nav.recent')||'[]')||[];}catch(e){}
 function navSaveClosed(){try{localStorage.setItem('nav.closed',JSON.stringify(NAVUI.closed));}catch(e){}}
+function navSaveFav(){try{localStorage.setItem('nav.fav',JSON.stringify(NAVUI.fav));}catch(e){}}
 function navGroupOf(r){const n=NAV.find(x=>x.id===r);return n?n.group:'';}
+function navItem(id){const n=NAV.find(x=>x.id===id);return n&&navVisible(n)?n:null;}
+function navBadge(n){try{return n&&n.badge?(+n.badge()||0):0;}catch(e){return 0;}}
+function navFavs(){return NAVUI.fav.map(navItem).filter(Boolean);}
+function navRecents(){return NAVUI.recent.filter(id=>id!==route).map(navItem).filter(Boolean);}
+function navToggleFav(id){const i=NAVUI.fav.indexOf(id);if(i>=0)NAVUI.fav.splice(i,1);else NAVUI.fav.push(id);navSaveFav();renderNav();
+  const n=NAV.find(x=>x.id===id);toast(i>=0?`Removed ${n?n.label:''} from Favourites`:`Added ${n?n.label:''} to Favourites`);
+  if(route==='dashboard'){const hs=document.getElementById('homeShortcuts');if(hs)hs.outerHTML=homeShortcuts();}}
+function navMatch(n,q){return !q||(n.label+' '+n.group+' '+(n.kw||'')).toLowerCase().includes(q);}
+function navItemHtml(n,fav){const b=navBadge(n);const on=NAVUI.fav.includes(n.id);
+  return `<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}" title="${esc(n.label)}">${svg(n.icon)}<span class="ni-label">${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}<span class="ni-star${on?' on':''}" data-navfav="${n.id}" role="button" tabindex="-1" title="${on?'Remove from':'Add to'} Favourites" aria-label="${on?'Remove from':'Add to'} Favourites">${svg(I.star,14)}</span></button>`;}
 function renderNav(){
   const q=(NAVUI.q||'').trim().toLowerCase();
-  const vis=NAV.filter(navVisible).filter(n=>!q||n.label.toLowerCase().includes(q)||n.group.toLowerCase().includes(q));
-  const groups=[];vis.forEach(n=>{let g=groups.find(x=>x.name===n.group);if(!g){g={name:n.group,items:[]};groups.push(g);}g.items.push(n);});
+  const vis=NAV.filter(navVisible).filter(n=>navMatch(n,q));
+  const groups=[];
+  const favs=q?[]:navFavs();
+  if(favs.length)groups.push({name:'Favourites',items:favs,fav:true});
+  vis.forEach(n=>{let g=groups.find(x=>x.name===n.group&&!x.fav);if(!g){g={name:n.group,items:[]};groups.push(g);}g.items.push(n);});
   let html='';
   groups.forEach(g=>{
-    const hasActive=g.items.some(n=>n.id===route);
+    const hasActive=g.items.some(n=>n.id===route)&&!g.fav;
     const closed=!q&&!hasActive&&!!NAVUI.closed[g.name];
-    const gb=g.items.reduce((t,n)=>t+(n.badge?(+n.badge()||0):0),0);
-    html+=`<div class="nav-sec${closed?' closed':''}"><button type="button" class="nav-group" data-navgrp="${esc(g.name)}" aria-expanded="${!closed}"><span>${esc(g.name)}</span>${closed&&gb?`<span class="ng-dot" title="${gb} waiting">${gb}</span>`:''}${svg(I.chevron,14)}</button><div class="nav-list">`;
-    g.items.forEach(n=>{const b=n.badge?n.badge():0;html+=`<button class="nav-item ${route===n.id?'active':''}" data-route="${n.id}" title="${esc(n.label)}">${svg(n.icon)}<span class="ni-label">${n.label}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;});
+    const gb=g.items.reduce((t,n)=>t+navBadge(n),0);
+    html+=`<div class="nav-sec${closed?' closed':''}${g.fav?' fav':''}"><button type="button" class="nav-group" data-navgrp="${esc(g.name)}" aria-expanded="${!closed}">${g.fav?svg(I.star,12):''}<span>${esc(g.name)}</span>${closed&&gb?`<span class="ng-dot" title="${gb} waiting">${gb}</span>`:''}${svg(I.chevron,14)}</button><div class="nav-list">`;
+    g.items.forEach(n=>{html+=navItemHtml(n,g.fav);});
     html+='</div></div>';
   });
   if(!groups.length)html=`<div class="nav-empty">No menu item matches “${esc(NAVUI.q)}”</div>`;
+  else if(!q&&!favs.length&&!HELPER)html=`<div class="nav-tip">${svg(I.star,13)} Tip: tap the star next to a screen to pin it here.</div>`+html;
   document.getElementById('nav').innerHTML=html;
   const mt=document.getElementById('mtabs');
-  const mob=MOBILE.filter(id=>{const n=NAV.find(x=>x.id===id);return n&&navVisible(n);});
-  mt.innerHTML=mob.map(id=>{const n=NAV.find(x=>x.id===id);const b=n.badge?n.badge():0;return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${n.label.split(' ')[0]}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${!mob.includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>More</span></button>`;
-  const eb=document.getElementById('pageEyebrow');if(eb)eb.textContent=navGroupOf(route);
+  const mob=MOBILE.filter(id=>navItem(id));
+  mt.innerHTML=mob.map(id=>{const n=NAV.find(x=>x.id===id);const b=navBadge(n);return `<button class="mtab ${route===id?'active':''}" data-route="${id}">${svg(n.icon,20)}<span>${esc(n.short||n.label.split(' ')[0])}</span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('')+`<button class="mtab ${!mob.includes(route)?'active':''}" data-route="__more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>Menu</span></button>`;
+  const eb=document.getElementById('pageEyebrow');
+  if(eb){const g=navGroupOf(route);eb.innerHTML=(route==='dashboard'||HELPER)?'':`<button type="button" data-route="dashboard">Home</button>${g?`<i>›</i><span>${esc(g)}</span>`:''}`;}
+  const hb=document.getElementById('homeBtn');if(hb)hb.classList.toggle('on',route==='dashboard');
+  const bb=document.getElementById('backBtn');if(bb)bb.hidden=!(NAVUI.idx>0)||HELPER;
   if(!renderNav._seen){const act=document.querySelector('#nav .nav-item.active');if(act){renderNav._seen=1;try{act.scrollIntoView({block:'nearest'});}catch(e){}}}
 }
-function go(r){if(r==='__more'){toggleSidebar(true);return;}if(HELPER)r='stocktake';route=r;if(NAVUI.q){NAVUI.q='';const ns=document.getElementById('navSearch');if(ns)ns.value='';}toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;}
+/* go(r)          – open a screen (adds a step to the browser's Back history)
+   go(r,true)     – used by the Back button / browser back: no new history step */
+function go(r,fromHistory){
+  if(r==='__more'){toggleSidebar(true);return;}
+  if(HELPER)r='stocktake';
+  if(typeof PAGE!=='undefined'&&!PAGE[r])r='dashboard';
+  const changed=r!==route;route=r;
+  if(changed&&!fromHistory){NAVUI.idx++;try{history.pushState({route:r,idx:NAVUI.idx},'',location.pathname);}catch(e){}}
+  if(r!=='dashboard'){NAVUI.recent=[r].concat(NAVUI.recent.filter(x=>x!==r)).slice(0,6);try{localStorage.setItem('nav.recent',JSON.stringify(NAVUI.recent));}catch(e){}}
+  try{sessionStorage.setItem('nav.route',r);}catch(e){}
+  if(NAVUI.q){NAVUI.q='';const ns=document.getElementById('navSearch');if(ns)ns.value='';}
+  toggleSidebar(false);renderNav();renderView();document.querySelector('.content').scrollTop=0;
+}
+/* Home page: favourites, things waiting for you, recently used */
+function homeShortcuts(){
+  if(HELPER)return '';
+  const seen=new Set(['dashboard']);const pick=[];
+  const add=(n,why)=>{if(n&&!seen.has(n.id)){seen.add(n.id);pick.push({n,why});}};
+  navFavs().forEach(n=>add(n,'fav'));
+  NAV.filter(navVisible).filter(n=>navBadge(n)>0).forEach(n=>add(n,'due'));
+  navRecents().forEach(n=>add(n,'recent'));
+  ['transfers','stocktake','catalog','expiry','orders','cash'].forEach(id=>add(navItem(id),''));
+  const cards=pick.slice(0,8).map(({n,why})=>{const b=navBadge(n);
+    const note=b?`${b} waiting`:why==='fav'?'Favourite':why==='recent'?'Recently used':n.group;
+    return `<button type="button" class="qa-card${b?' due':''}" data-route="${n.id}"><span class="qa-ic">${svg(n.icon,20)}</span><span class="qa-tx"><b>${esc(n.label)}</b><small>${why==='fav'?svg(I.star,11)+' ':''}${esc(note)}</small></span>${b?`<span class="badge-count">${b}</span>`:''}</button>`;}).join('');
+  return `<div id="homeShortcuts" class="qa"><div class="qa-head"><h3>${svg(I.bolt,16)} Quick access</h3><span class="qa-hint">Star any screen in the menu to keep it here</span><div class="spacer"></div><button type="button" class="btn sm" data-cmdk>${svg(I.grid,14)} All screens</button></div><div class="qa-grid">${cards}</div></div>`;
+}
 
 /* =========================================================
    STOCK STATUS REPORT  (excess / reorder / dead-stock by item & category)
@@ -1935,7 +2075,7 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Dashboard','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 /* ---------- shelf labels (70 x 29.7 mm, 30 per A4) ---------- */
 const LBL={q:'',cat:'all',lines:[],src:'barcode',start:1,page:0,show:{price:true,weight:true,barcode:true},dx:0,dy:0};
 const LBL_COLS=3,LBL_ROWS=10,LBL_PER=30;
@@ -2086,8 +2226,17 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('h5n','Getting started','Finding your way around','Use the menu on the left, the <b>Home</b> button, <b>Back</b>, or <b>Go to…</b> search.',[
+      '<b>Home</b> (top bar, or the logo) brings you back to the start page from anywhere. Keyboard: <b>Alt + H</b>.',
+      '<b>Back</b> (arrow at top left, the browser’s Back button or <b>Alt + ←</b>) returns to the screen you were on before.',
+      '<b>Go to…</b> (top bar, or <b>Ctrl + K</b>): type a few letters such as “exp”, “count” or “transfer” and press <b>Enter</b>. It also lists what is waiting for you, recent screens and quick actions such as New transfer.',
+      'The menu is grouped: Overview, Stock Movement, Inventory, Sales &amp; Cash and Admin. Click a group name to fold it away. A red number on a folded group means something inside needs you.',
+      'Tap the <b>☆ star</b> next to any menu item to pin it to <b>Favourites</b> at the top of the menu and to <b>Quick access</b> on Home.',
+      'On a computer, the button at the bottom of the menu shrinks it to icons only, for more room. Click it again to bring the names back.',
+      'If you refresh the page, the app reopens the screen you were on.'],'','',['route:dashboard'],ALL),
     T('h6','Getting started','Using the app on a phone','Every screen works on a phone: lists become cards and buttons are large.',[
-      'The bottom bar has the main pages; <b>More</b> (or ☰ at top left) opens the full menu.',
+      'The bottom bar has <b>Home</b> and the main pages; <b>Menu</b> (or ☰ at top left) opens the full menu.',
+      'The phone’s own <b>Back</b> button (or swipe back) returns to the previous screen. An open window stays open until you save or cancel it.',
       'In a stock take the top bar shrinks while you scroll and hides while you type a count, so the item stays in view.',
       'Camera scanning works on iPhone and Android — allow camera access the first time.'],'','',['route:dashboard'],ALL),
     T('h16','Stock transfers','Receive a transfer when it arrives','Open the transfer and tap <b>Receive stock</b>. Record what actually arrived.',[
@@ -2776,6 +2925,7 @@ function vDash(v){
   v.innerHTML=`
     <div class="hero"><h2>Good ${daypart}, ${esc(fname.charAt(0).toUpperCase()+fname.slice(1))}</h2><div class="sub">${esc(roleDef().name)} · ${esc(scopeLbl)} · ${fmtDate(today())}</div>
       <div class="hero-actions">${can('transfer.create')?`<button class="btn" data-act="new-transfer">${svg(I.plus,15)} New transfer</button>`:''}<button class="btn" data-route="transfers">${svg(I.truck,15)} Track transfers</button><button class="btn" data-route="reports">${svg(I.chart,15)} Reports</button>${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,15)} Sync now</button>`:''}</div></div>
+    ${homeShortcuts()}
     ${scoped()&&!MYLOCS.length?`<div class="banner info">${svg(I.location,17)}<div>No centre assigned yet — ask a Super Admin.</div></div>`:''}
     <div class="tiles">
       <div class="tile accent"><div class="lbl">${svg(I.box,14)} On-hand value</div><div class="val tnum">${money0(invValueFor(locs))}</div><div class="meta">${scoped()?(MYLOCS.length>1?MYLOCS.length+' centres':(loc(HOME).name)):'all '+S.locations.length+' sites'}</div></div>
@@ -7662,7 +7812,7 @@ document.addEventListener('click',e=>{
 });
 /* Escape no longer closes an open window — a window closes only via its Cancel/Close/X button or once its action is processed, so nothing accidental (a stray click or key) wipes entered data. */
 document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
-/* ---- menu: quick find, collapsible groups, slim icon mode ---- */
+/* ---- menu: filter, collapsible groups, favourites, slim icon mode, Back/Home, Go-to search ---- */
 (function(){
   const app=document.getElementById('app'),ns=document.getElementById('navSearch'),rb=document.getElementById('railBtn');
   const setRail=on=>{app.classList.toggle('rail',on);try{localStorage.setItem('nav.rail',on?'1':'0');}catch(e){}
@@ -7675,19 +7825,83 @@ document.getElementById('hamburger').onclick=()=>toggleSidebar(true);
     if(e.key==='Escape'){ns.value='';NAVUI.q='';renderNav();ns.blur();}
   });
   document.getElementById('nav').addEventListener('click',e=>{
+    const st=e.target.closest('[data-navfav]');
+    if(st){e.preventDefault();e.stopPropagation();navToggleFav(st.dataset.navfav);return;}
     const g=e.target.closest('[data-navgrp]');if(!g)return;
     if(app.classList.contains('rail'))return;
     const k=g.dataset.navgrp;NAVUI.closed[k]=!g.parentElement.classList.contains('closed');navSaveClosed();
     g.parentElement.classList.toggle('closed',NAVUI.closed[k]);g.setAttribute('aria-expanded',String(!NAVUI.closed[k]));
   });
-  document.addEventListener('keydown',e=>{
-    if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='k'||e.key==='K')){
-      if(app.hidden||document.body.classList.contains('is-helper'))return;
-      e.preventDefault();
-      if(window.matchMedia('(max-width:900px)').matches)toggleSidebar(true);
-      else if(app.classList.contains('rail'))setRail(false);
-      setTimeout(()=>{ns.focus();ns.select();},30);
+
+  /* Back: the browser / phone back button moves between screens instead of leaving the app.
+     An open window is never thrown away by Back — it stays until you Save or Cancel it. */
+  const modalOpen=()=>!!document.getElementById('scrim');
+  window.addEventListener('popstate',e=>{
+    const st=e.state;if(!st||!st.route||app.hidden)return;
+    if(modalOpen()){try{history.pushState({route,idx:NAVUI.idx},'',location.pathname);}catch(_){}toast('Finish or close the open window first');return;}
+    if(cmdk.classList.contains('show'))closeCmdk();
+    NAVUI.idx=+st.idx||0;go(st.route,true);
+  });
+  document.getElementById('backBtn').onclick=()=>{if(modalOpen()){toast('Finish or close the open window first');return;}history.back();};
+
+  /* ---- "Go to…" search (Ctrl K): every screen + common actions, keyboard friendly ---- */
+  const cmdk=document.createElement('div');cmdk.className='cmdk';cmdk.hidden=true;
+  cmdk.innerHTML=`<div class="cmdk-box" role="dialog" aria-label="Go to a screen"><div class="cmdk-in">${svg(I.search,18)}<input id="cmdkIn" type="search" placeholder="Type a screen or action — e.g. transfer, expiry, count…" autocomplete="off"><button type="button" class="cmdk-x" data-cmdkx aria-label="Close">Esc</button></div><div class="cmdk-list" id="cmdkList"></div><div class="cmdk-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Alt</kbd>+<kbd>H</kbd> home</span><span><kbd>Alt</kbd>+<kbd>←</kbd> back</span></div></div>`;
+  document.body.appendChild(cmdk);
+  const cin=cmdk.querySelector('#cmdkIn'),clist=cmdk.querySelector('#cmdkList');let rows=[],hi=0;
+  const ACTIONS=()=>[
+    {k:'act',a:'new-transfer',label:'New transfer',icon:I.plus,sub:'Request or send stock to another centre',ok:()=>can('transfer.create')},
+    {k:'act',a:'new-order',label:'New purchase order',icon:I.plus,sub:'Order from a supplier',ok:()=>can('order.create')&&canPO()},
+    {k:'act',a:'new-receipt',label:'New goods receipt',icon:I.plus,sub:'Receive a supplier delivery',ok:()=>can('receipt.create')},
+    {k:'act',a:'new-stock',label:'Start a stock take',icon:I.plus,sub:'Count a centre',ok:()=>can('stocktake.do')},
+    {k:'act',a:'sync',label:'Sync with Square now',icon:I.sync,sub:'Pull the latest stock and catalogue',ok:()=>can('sync.run')},
+    {k:'help',label:'Help for this screen',icon:I.info,sub:'Step-by-step guide (F1)',ok:()=>true},
+  ].filter(x=>{try{return x.ok();}catch(e){return false;}});
+  function build(){
+    const q=cin.value.trim().toLowerCase();rows=[];let h='';
+    const sec=(title,list)=>{if(!list.length)return;h+=`<div class="cmdk-sec">${title}</div>`;list.forEach(x=>{const i=rows.length;rows.push(x);
+      const b=x.n?navBadge(x.n):0;
+      h+=`<div class="cmdk-row" data-ci="${i}"><span class="cmdk-ic">${svg(x.n?x.n.icon:x.icon,18)}</span><span class="cmdk-tx"><b>${esc(x.n?x.n.label:x.label)}</b><small>${esc(x.n?x.n.group+(route===x.n.id?' · you are here':''):x.sub)}</small></span>${b?`<span class="badge-count">${b}</span>`:''}${x.n&&NAVUI.fav.includes(x.n.id)?`<span class="cmdk-fav">${svg(I.star,13)}</span>`:''}<span class="cmdk-go">↵</span></div>`;});};
+    const all=NAV.filter(navVisible);
+    if(!q){
+      const home=all.find(n=>n.id==='dashboard');if(home&&route!=='dashboard')sec('Home',[{n:home}]);
+      sec('Favourites',navFavs().map(n=>({n})));
+      sec('Waiting for you',all.filter(n=>navBadge(n)>0&&!NAVUI.fav.includes(n.id)).map(n=>({n})));
+      sec('Recently used',navRecents().filter(n=>!NAVUI.fav.includes(n.id)&&!navBadge(n)).slice(0,4).map(n=>({n})));
+      sec('Quick actions',ACTIONS());
+      sec('All screens',all.filter(n=>!rows.some(r=>r.n&&r.n.id===n.id)).map(n=>({n})));
+    }else{
+      sec('Screens',all.filter(n=>navMatch(n,q)).map(n=>({n})));
+      sec('Actions',ACTIONS().filter(a=>(a.label+' '+a.sub).toLowerCase().includes(q)));
     }
+    if(!rows.length)h=`<div class="cmdk-empty">Nothing matches “${esc(cin.value)}”. Try another word, or press F1 for Help.</div>`;
+    clist.innerHTML=h;hi=Math.min(hi,Math.max(0,rows.length-1));paint();
+  }
+  function paint(){clist.querySelectorAll('.cmdk-row').forEach(r=>r.classList.toggle('hi',+r.dataset.ci===hi));const el=clist.querySelector('.cmdk-row.hi');if(el)el.scrollIntoView({block:'nearest'});}
+  function run(i){const x=rows[i];if(!x)return;closeCmdk();
+    if(x.n){go(x.n.id);return;}
+    if(x.k==='help'){if(typeof openHelp==='function')openHelp('screen');return;}
+    if(x.k==='act'){const b=document.createElement('button');b.dataset.act=x.a;b.hidden=true;document.body.appendChild(b);b.click();b.remove();}}
+  window.openCmdk=function(){if(app.hidden||HELPER||modalOpen())return;cin.value='';hi=0;build();cmdk.hidden=false;requestAnimationFrame(()=>cmdk.classList.add('show'));setTimeout(()=>cin.focus(),20);};
+  window.closeCmdk=function(){cmdk.classList.remove('show');cmdk.hidden=true;};
+  cin.addEventListener('input',()=>{hi=0;build();});
+  cin.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();hi=Math.min(rows.length-1,hi+1);paint();}
+    else if(e.key==='ArrowUp'){e.preventDefault();hi=Math.max(0,hi-1);paint();}
+    else if(e.key==='Enter'){e.preventDefault();run(hi);}
+    else if(e.key==='Escape'){e.preventDefault();closeCmdk();}
+  });
+  cmdk.addEventListener('mousemove',e=>{const r=e.target.closest('.cmdk-row');if(r&&+r.dataset.ci!==hi){hi=+r.dataset.ci;paint();}});
+  cmdk.addEventListener('click',e=>{e.stopPropagation();
+    if(e.target===cmdk||e.target.closest('[data-cmdkx]')){closeCmdk();return;}
+    const r=e.target.closest('.cmdk-row');if(r)run(+r.dataset.ci);});
+  document.getElementById('cmdkBtn').onclick=()=>openCmdk();
+  document.addEventListener('click',e=>{if(e.target.closest('[data-cmdk]')){e.preventDefault();openCmdk();}},true);
+
+  document.addEventListener('keydown',e=>{
+    if(app.hidden||document.body.classList.contains('is-helper'))return;
+    if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='k'||e.key==='K')){e.preventDefault();if(cmdk.hidden)openCmdk();else closeCmdk();return;}
+    if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(e.key==='h'||e.key==='H'||e.code==='KeyH')){if(modalOpen())return;e.preventDefault();go('dashboard');return;}
   });
 })();
 document.getElementById('sidebarScrim').onclick=()=>toggleSidebar(false);
