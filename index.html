@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-1';
+const APP_VERSION='2026.10.16-2';
 const APP_VERSION_NOTE='Stronger camera scanning: sharper camera, autofocus + tap to focus, zoom, torch, reads small / distant barcodes, check-digit verified · beep on scan';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -920,6 +920,13 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .pf-pick-pop{position:absolute;z-index:60;right:0;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:250px;max-height:60vh;overflow:auto;box-shadow:var(--shadow-lg)}
+  .pf-pick-h{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;padding:0 2px 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
+  .pf-pick-h .lnk{font-size:12.5px;border:0;background:none;padding:0;color:var(--accent-ink);font-weight:700;cursor:pointer}
+  .pf-pick-r{display:flex;align-items:center;gap:9px;padding:7px 4px;font-size:13.5px;border-radius:8px;cursor:pointer}
+  .pf-pick-r:hover{background:var(--surface-2)}
+  .pf-pick-f{position:sticky;bottom:-10px;background:var(--surface);padding:8px 0 0;margin-top:6px;border-top:1px solid var(--border);display:flex;justify-content:flex-end}
+  @media (max-width:900px){.pf-pick-pop{left:0;right:auto;min-width:min(300px,90vw)}}
   .stn-lock{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;color:var(--faint);margin-left:auto;white-space:nowrap}
   .st-taken{display:flex;flex-direction:column;gap:6px;margin-top:4px}
   .st-miss{margin:12px 0 4px;border:1.5px dashed var(--accent);border-radius:14px;background:var(--accent-soft);padding:10px 12px;text-align:left}
@@ -6171,9 +6178,30 @@ function exportInsights(){
   toast('Exported top items, worst items and most-received');
 }
 /* ---------- Sales & Performance (Square, per centre) ---------- */
-let perfCentre='all';
-function perfCentres(){return (scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
-function perfSelIds(){const cs=perfCentres();return (!perfCentre||perfCentre==='all')?cs.map(c=>c.id):[perfCentre];}
+/* centres picked for the report — several can be ticked; none ticked = all the centres you can see */
+let perfSel=[];try{perfSel=JSON.parse(localStorage.getItem('perf.sel')||'[]')||[];}catch(e){perfSel=[];}
+function perfCentres(){return (scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).filter(l=>l.active!==false||(S.salesMonthly||[]).some(r=>r.location_id===l.id)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+function perfPicked(){const ok=new Set(perfCentres().map(c=>c.id));return perfSel.filter(id=>ok.has(id));}
+function perfIsAll(){const p=perfPicked();return !p.length||p.length===perfCentres().length;}
+function perfSelIds(){const p=perfPicked();return p.length?p:perfCentres().map(c=>c.id);}
+function perfScopeName(){const cs=perfCentres(),p=perfPicked();if(!p.length||p.length===cs.length)return ROLE==='super_admin'?'All centres (national)':scoped()?'All my centres':'All centres';
+  const n=p.map(id=>loc(id).name);return n.length<=3?n.join(' + '):n.slice(0,3).join(', ')+' + '+(n.length-3)+' more';}
+function perfScopeCode(){const p=perfPicked();if(!p.length||perfIsAll())return 'all';return p.map(id=>loc(id).code||'x').join('-').slice(0,60);}
+/* the centre picker: tick one or several; "All" clears the ticks */
+function perfPickerHtml(){const cs=perfCentres(),p=perfPicked();if(cs.length<2)return '';
+  return `<details class="ssmp pf-pick" id="pf-pick" style="position:relative"><summary class="btn" style="list-style:none;user-select:none">${svg(I.location,15)} ${esc(perfIsAll()?(scoped()?'All my centres':'All centres'):p.length===1?loc(p[0]).name:p.length+' centres')} ▾</summary>
+    <div class="pf-pick-pop"><div class="pf-pick-h"><b>Centres</b><span><button type="button" class="lnk" data-pfall>All</button> · <button type="button" class="lnk" data-pfnone>Clear</button></span></div>
+    ${cs.map(c=>`<label class="pf-pick-r"><input type="checkbox" value="${c.id}"${(!p.length||p.includes(c.id))?' checked':''}> ${esc(c.name)}</label>`).join('')}
+    <div class="pf-pick-f"><button type="button" class="btn sm primary" data-pfgo>Show report</button></div></div></details>`;}
+function perfPickerBind(onChange){const d=document.getElementById('pf-pick');if(!d)return;
+  const boxes=()=>[...d.querySelectorAll('input[type=checkbox]')];
+  d.querySelector('[data-pfall]').onclick=()=>boxes().forEach(b=>b.checked=true);
+  d.querySelector('[data-pfnone]').onclick=()=>boxes().forEach(b=>b.checked=false);
+  const apply=()=>{const on=boxes().filter(b=>b.checked).map(b=>b.value);if(!on.length)return toast('Tick at least one centre',true);
+    perfSel=on.length===boxes().length?[]:on;try{localStorage.setItem('perf.sel',JSON.stringify(perfSel));}catch(e){}
+    d.open=false;const sm=d.querySelector('summary');if(sm)sm.innerHTML=`${svg(I.location,15)} ${esc(perfIsAll()?(scoped()?'All my centres':'All centres'):perfPicked().length===1?loc(perfPicked()[0]).name:perfPicked().length+' centres')} ▾`;onChange();};
+  d.querySelector('[data-pfgo]').onclick=apply;
+  document.addEventListener('click',function out(e){if(!document.body.contains(d)){document.removeEventListener('click',out);return;}if(d.open&&!d.contains(e.target))d.open=false;});}
 const fyOfYm=ym=>{const p=ym.split('-');const y=+p[0],m=+p[1];return m>=7?y+1:y;};
 const prevYm=ym=>{const p=ym.split('-');return ((+p[0])-1)+'-'+p[1];};
 const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -6191,14 +6219,12 @@ function vPerf(v){
 function vPerfFull(v){
   const cs=perfCentres();
   if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
-  if(cs.length===1)perfCentre=cs[0].id; else if(perfCentre!=='all'&&!cs.find(c=>c.id===perfCentre))perfCentre='all';
-  const opts=`${cs.length>1?`<option value="all">${scoped()?'All my centres':'All centres'}</option>`:''}`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const rf=perfCanRefresh();
   v.innerHTML=`<div class="rep-controls">
-      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Net sales, orders and basket size from <b>Square</b> — rolling last 24 months. ${scoped()?'Showing your centre(s) only.':'All centres, or pick one.'} <b>Live</b> — updates automatically every 10 minutes${perfLiveTxt()}. <b>Refresh sales</b> re-pulls everything${rf?'':' (ask an admin)'}.</div></div>
-      <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Net sales, orders and basket size from <b>Square</b> — rolling last 24 months. ${scoped()?'Showing your centre(s) only — tick one or several.':'All centres, or tick one or several to combine them.'} <b>Live</b> — updates automatically every 10 minutes${perfLiveTxt()}. <b>Refresh sales</b> re-pulls everything${rf?'':' (ask an admin)'}.</div></div>
+      <div class="rep-actions no-print">${perfPickerHtml()}<button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
     </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
-  const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerf();};}
+  perfPickerBind(renderPerf);
   document.getElementById('pf-csv').onclick=()=>perfExport('csv');
   document.getElementById('pf-xls').onclick=()=>perfExport('xlsx');
   const rb=document.getElementById('pf-refresh');if(rb)rb.onclick=runPerfSync;
@@ -6230,7 +6256,7 @@ async function renderPerf(){
   const topItems=Object.entries(vById).sort((a,b)=>b[1]-a[1]).slice(0,15);
   const topCats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
   window._perfData={yms,byYm,byFy,fys};
-  const scope=(!perfCentre||perfCentre==='all')?(scoped()?'All my centres':'All centres'):loc(perfCentre).name;
+  const scope=perfScopeName();
   const bar=(label,val,max)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${money0(val)}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:linear-gradient(90deg,var(--accent),var(--accent-ink));border-radius:6px"></div></div></div>`;
   el.innerHTML=`
     <div class="tiles" style="margin-bottom:14px">
@@ -6269,14 +6295,12 @@ const fyYm=(fy,i)=>{const m=(6+i)%12+1;const y=i<6?fy-1:fy;return y+'-'+String(m
 function vPerfCentre(v){
   const cs=perfCentres();
   if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
-  if(cs.length===1)perfCentre=cs[0].id; else if(perfCentre!=='all'&&!cs.find(c=>c.id===perfCentre))perfCentre='all';
-  const opts=`${cs.length>1?`<option value="all">All my centres</option>`:''}`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   const rf=perfCanRefresh();
   v.innerHTML=`<div class="rep-controls">
-      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Sales from <b>Square</b> for your centre, each month of this financial year (Jul–Jun) compared with the <b>same month last year</b>.</div></div>
-      <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Sales from <b>Square</b> for your centre${cs.length>1?'s (tick one or several to combine them)':''}, each month of this financial year (Jul–Jun) compared with the <b>same month last year</b>.</div></div>
+      <div class="rep-actions no-print">${perfPickerHtml()}<button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
     </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
-  const sel=document.getElementById('pf-c');sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerfCentre();};
+  perfPickerBind(renderPerfCentre);
   document.getElementById('pf-csv').onclick=()=>perfCentreExport('csv');
   document.getElementById('pf-xls').onclick=()=>perfCentreExport('xlsx');
   const rb=document.getElementById('pf-refresh');if(rb)rb.onclick=runPerfSync;
@@ -6299,7 +6323,7 @@ async function renderPerfCentre(){
   const fullLast={s:M.reduce((a,m)=>a+m.l.s,0),o:M.reduce((a,m)=>a+m.l.o,0),u:M.reduce((a,m)=>a+m.l.u,0)};
   const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
   const chg=(a,b)=>{const p=pct(a,b);if(p==null)return '<span style="color:var(--faint)">—</span>';const up=p>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</span>`;};
-  const scope=(!perfCentre||perfCentre==='all')?'All my centres':loc(perfCentre).name;
+  const scope=perfScopeName();
   const cF='FY'+curFy+' (this year)',lF='FY'+lastFy+' (last year)';
   const sh=(n,title,sub)=>`<div class="section-head" style="margin-top:20px"><h2><span class="pf-num">${n}</span>${title}</h2>${sub?`<small>${sub}</small>`:''}</div>`;
   const chartCard=(id,title,h)=>`<div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">${title}</h3><div style="height:${h||240}px"><canvas id="${id}"></canvas></div></div>`;
@@ -6350,14 +6374,14 @@ function perfCentreExport(fmt){const d=window._perfCentre;if(!d)return toast('No
   const avg=(a,b)=>b>0?a/b:0;
   const header=['Month',`Net sales FY${d.curFy}`,`Net sales FY${d.lastFy}`,`Transactions FY${d.curFy}`,`Transactions FY${d.lastFy}`,`Items sold FY${d.curFy}`,`Items sold FY${d.lastFy}`,`Customers FY${d.curFy}`,`Customers FY${d.lastFy}`,`Avg basket FY${d.curFy}`,`Avg basket FY${d.lastFy}`];
   const rows=d.M.map(m=>[m.lbl,m.has?m.c.s.toFixed(2):'',m.l.s.toFixed(2),m.has?m.c.o:'',m.l.o,m.has?Math.round(m.c.u):'',Math.round(m.l.u),m.has?m.cc:'',m.cl,m.has?avg(m.c.s,m.c.o).toFixed(2):'',avg(m.l.s,m.l.o).toFixed(2)]);
-  const name=`sales-by-month_${(!perfCentre||perfCentre==='all')?'my-centres':loc(perfCentre).code}_FY${d.curFy}_${today()}`;
+  const name=`sales-by-month_${perfScopeCode()}_FY${d.curFy}_${today()}`;
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'By month');XLSX.writeFile(wb,name+'.xlsx');}
   else downloadCSV(name+'.csv',header,rows);
 }
 function perfExport(fmt){const d=window._perfData;if(!d||!d.yms||!d.yms.length)return toast('Nothing to export yet',true);
   const header=['Month','Orders','Units','Net sales (AUD)','Avg basket (AUD)','Items per order'];
   const data=d.yms.map(y=>{const a=d.byYm[y];const ab=a.orders>0?a.sales/a.orders:0;const sz=a.orders>0?a.units/a.orders:0;return [y,a.orders,Math.round(a.units*100)/100,a.sales.toFixed(2),ab.toFixed(2),sz.toFixed(2)];});
-  const cn=(!perfCentre||perfCentre==='all')?'all':loc(perfCentre).code;const stamp=today();
+  const cn=perfScopeCode();const stamp=today();
   if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...data]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Sales');XLSX.writeFile(wb,`sales-performance_${cn}_${stamp}.xlsx`);toast('Excel exported');}
   else downloadCSV(`sales-performance_${cn}_${stamp}.csv`,header,data);}
 /* Live reporting (migration 69): the database pulls this month's Square sales every 10 minutes;
@@ -6451,7 +6475,7 @@ function renderPfnCompare(){
   const exp=fmt=>{const header=['Month',`Net sales FY${A}`,`Net sales FY${B||''}`,`Transactions FY${A}`,`Transactions FY${B||''}`,`Items sold FY${A}`,`Items sold FY${B||''}`,`Avg basket FY${A}`,`Avg basket FY${B||''}`];
     const rows=M.map(m=>[m.lbl,m.has?m.a.s.toFixed(2):'',B?m.b.s.toFixed(2):'',m.has?m.a.o:'',B?m.b.o:'',m.has?Math.round(m.a.u):'',B?Math.round(m.b.u):'',m.has?avg(m.a.s,m.a.o).toFixed(2):'',B?avg(m.b.s,m.b.o).toFixed(2):'']);
     rows.push([partial?'Year to date':'Full year',ca.s.toFixed(2),B?cb.s.toFixed(2):'',ca.o,B?cb.o:'',Math.round(ca.u),B?Math.round(cb.u):'',avg(ca.s,ca.o).toFixed(2),B?avg(cb.s,cb.o).toFixed(2):'']);
-    const name=`sales-monthly-compare_FY${A}_vs_FY${B||'none'}_${(!perfCentre||perfCentre==='all')?'all':loc(perfCentre).code}_${today()}`;
+    const name=`sales-monthly-compare_FY${A}_vs_FY${B||'none'}_${perfScopeCode()}_${today()}`;
     if(fmt==='xlsx'&&window.XLSX){const ws=XLSX.utils.aoa_to_sheet([header,...rows]);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Monthly compare');XLSX.writeFile(wb,name+'.xlsx');toast('Excel exported');}
     else downloadCSV(name+'.csv',header,rows);};
   document.getElementById('pfn-cmp-csv').onclick=()=>exp('csv');document.getElementById('pfn-cmp-xls').onclick=()=>exp('xlsx');
@@ -6464,12 +6488,11 @@ function renderPfnCompare(){
 const PAY_LABEL={CARD:'Card',CASH:'Cash',SQUARE_GIFT_CARD:'Gift card',WALLET:'Wallet',BANK_ACCOUNT:'Bank',BUY_NOW_PAY_LATER:'BNPL',THIRD_PARTY_CARD:'3rd-party card',EXTERNAL:'External',OTHER:'Other',NO_SALE:'No sale'};
 function vPerfNational(v){
   const cs=S.locations.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  const opts=`<option value="all">All centres (national)</option>`+cs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
   v.innerHTML=`<div class="rep-controls">
       <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>National sales report from <b>Square</b>, Australian financial years (Jul–Jun) from <b>FY2025</b> (1 Jul 2024). Net sales, transactions, items, payment methods, customers and baskets. <b>Live</b> — updates automatically every 10 minutes${perfLiveTxt()}. <b>Refresh sales</b> re-pulls everything.</div></div>
-      <div class="rep-actions no-print"><select class="filter" id="pf-c">${opts}</select><button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button><button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button></div>
+      <div class="rep-actions no-print">${perfPickerHtml()}<button class="btn" id="pf-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="pf-xls">${svg(I.receipt,15)} Excel</button><button class="btn primary" id="pf-refresh">${svg(I.chart,15)} Refresh sales</button></div>
     </div><div id="pf-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
-  const sel=document.getElementById('pf-c');if(sel){sel.value=perfCentre;sel.onchange=e=>{perfCentre=e.target.value;renderPerfNational();};}
+  perfPickerBind(renderPerfNational);
   document.getElementById('pf-csv').onclick=()=>perfExport('csv');
   document.getElementById('pf-xls').onclick=()=>perfExport('xlsx');
   document.getElementById('pf-refresh').onclick=runPerfSync;
@@ -6477,7 +6500,7 @@ function vPerfNational(v){
 }
 async function renderPerfNational(){
   const el=document.getElementById('pf-body');if(!el)return;destroyCharts();
-  const ids=(!perfCentre||perfCentre==='all')?S.locations.map(l=>l.id):[perfCentre];
+  const ids=perfSelIds();
   const sm=(S.salesMonthly||[]).filter(r=>ids.includes(r.location_id));
   if(!sm.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No sales data yet. Click <b>Refresh sales</b> to pull from Square (from 1 Jul 2024).</div></div>`;return;}
   const byYm={},byFy={},byLocFy={},locSet={};
@@ -6564,7 +6587,7 @@ async function renderPerfNational(){
       ${[['Net sales',f=>byFy[f].s],['Orders',f=>byFy[f].o],['Items sold',f=>byFy[f].u],['Avg order',f=>avg(byFy[f].s,byFy[f].o)],['Unique customers',f=>(custByFy[f]||{}).uniq||0]].map(([lbl,fn])=>`<tr><td>${lbl}</td>${fys.slice(1).map((f,ix)=>chgCell(fn(f),fn(fys[ix]))).join('')}</tr>`).join('')}
     </tbody></table></div>`;
   function chgCell(a,b){const p=b>0?Math.round((a-b)/b*1000)/10:null;if(p==null)return '<td class="num tnum" style="color:var(--faint)">—</td>';const up=p>=0;return `<td class="num tnum" style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(p)}%</td>`;}
-  window._pfnData={byYm,fys,curFy,scope:(!perfCentre||perfCentre==='all')?'All centres':loc(perfCentre).name};renderPfnCompare();
+  window._pfnData={byYm,fys,curFy,scope:perfScopeName()};renderPfnCompare();
   const fyLabels=fys.map(FYL);
   const fyCols=fys.map(fyColor);
   mkChart('pfn-fy',{type:'bar',data:{labels:fyLabels,datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].s)),backgroundColor:fyCols,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
