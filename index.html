@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.14-4';
-const APP_VERSION_NOTE='Stock take: best-before list offers dates already in the system / counted at another spot / at other centres · helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
+const APP_VERSION='2026.10.15-1';
+const APP_VERSION_NOTE='Item history shows every Square stock change + opening balance and running balance · Stock take: best-before list offers dates already in the system / counted at another spot / at other centres · helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -2252,6 +2252,11 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hih1','Checking stock and sales','Item history: where did the stock come from?','Open an item and look at <b>History</b>. It lists every movement — the app’s and Square’s.',[
+      'App movements: transfers, purchases / receipts, stock takes, damage / expiry, reversals.',
+      'Square changes (added within 30 minutes): <b>Sold</b>, <b>Return</b>, <b>Added in Square</b> (e.g. stock received in Square), <b>Removed in Square</b>, <b>Waste in Square</b>, <b>Held for / Released from a Square order</b>, <b>Square transfer</b> and <b>Counted in Square</b> (shows “= 222” and the change it made). The note shows where it was done (Square POS, Dashboard …) and the reason.',
+      'Choose <b>All time</b> to see a running <b>Balance</b>. Stock that was already in Square before records start shows as <b>Opening balance</b>, so the list adds up to today’s on hand.',
+      'Changes the app sent to Square are not shown twice.'],'','',['route:catalog'],ALL),
     T('h5n','Getting started','Finding your way around','Use the menu on the left, the <b>Home</b> button, <b>Back</b>, or <b>Go to…</b> search.',[
       '<b>Home</b> (top bar, or the logo) brings you back to the start page from anywhere. Keyboard: <b>Alt + H</b>.',
       '<b>Back</b> (arrow at top left, the browser’s Back button or <b>Alt + ←</b>) returns to the screen you were on before.',
@@ -5685,7 +5690,11 @@ function importCostCarton(){
   };
 }
 /* ---- per-item stock ledger (history) ---- */
-const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},transit_loss:{l:'Lost in transit',c:'var(--crit)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},stocktake_amend:{l:'Stock take amendment',c:'var(--muted)'},stocktake_var:{l:'Stock take (count variance)',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'}};
+const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},transit_loss:{l:'Lost in transit',c:'var(--crit)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},stocktake_amend:{l:'Stock take amendment',c:'var(--muted)'},stocktake_var:{l:'Stock take (count variance)',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'},
+  sq_added:{l:'Added in Square',c:'var(--good)'},sq_removed:{l:'Removed in Square',c:'var(--crit)'},sq_waste:{l:'Waste in Square',c:'var(--crit)'},
+  sq_reserved:{l:'Held for a Square order',c:'var(--warn)'},sq_released:{l:'Released from a Square order',c:'var(--good)'},
+  sq_transfer:{l:'Square transfer',c:'var(--transit)'},sq_count:{l:'Counted in Square',c:'var(--transit)'},sq_other:{l:'Square change',c:'var(--muted)'},
+  opening:{l:'Opening balance',c:'var(--muted)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null,ihRange='12m';
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -5711,15 +5720,38 @@ async function fetchItemLedger(itemId){let qy=sb.from('stock_ledger').select('*'
 async function renderItemHistory(itemId){
   const el=document.getElementById('ih-list');if(!el)return;
   let rows;try{rows=await fetchItemLedger(itemId);}catch(e){el.innerHTML=`<div style="color:var(--faint);font-size:13px">Could not load history: ${esc(e.message||e)}</div>`;return;}
+  rows=rows.map(r=>({...r}));
+  /* ALL TIME: walk each centre's history oldest → newest so it adds up to today's on hand.
+     A count done in Square shows the change it made; whatever is left over is the stock that was
+     already in Square before records start (opening balance). */
+  const recon=[],openBy={};
+  if(ihRange==='all'){
+    const byLoc={};rows.forEach(r=>{if(r.location_id)(byLoc[r.location_id]=byLoc[r.location_id]||[]).push(r);});
+    visLocs().forEach(lc=>{if(!byLoc[lc]&&onHand(lc,itemId))byLoc[lc]=[];});
+    Object.entries(byLoc).forEach(([lc,list])=>{
+      const asc=list.slice().sort((x,y)=>String(x.ts).localeCompare(String(y.ts)));
+      let bal=0,firstCount=null;
+      asc.forEach(r=>{if(r.kind==='sq_count'&&r.count_to!=null){r._implied=r.count_to-bal;bal=r.count_to;if(!firstCount)firstCount=r;}else bal+=(+r.qty_delta||0);r._bal=bal;});
+      const now=onHand(lc,itemId),diff=now-bal;
+      if(diff&&!firstCount){const t=asc.length?new Date(new Date(asc[0].ts).getTime()-1000).toISOString():null;
+        openBy[lc]=diff;rows.push({id:'open-'+lc,ts:t,location_id:lc,kind:'opening',qty_delta:diff,reference:'Already in Square before records start',note:'',_synthetic:true});}
+      else if(diff)recon.push({lc,diff,now,bal});
+    });
+    rows.sort((x,y)=>String(y.ts||'').localeCompare(String(x.ts||'')));
+  }
   window._ihRows=rows;
   let show=rows;if(ihKind!=='all')show=rows.filter(r=>r.kind===ihKind);
-  if(!show.length){el.innerHTML=`<div style="color:var(--faint);font-size:13px;padding:8px 0">No movements${ihKind!=='all'?' of this type':''} recorded yet. History builds from now on; Square sales appear after a “Update sales history” pull.</div>`;return;}
-  el.innerHTML=`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Type</th><th>Centre</th><th class="num">Qty</th><th>Ref / note</th></tr></thead><tbody>${show.map(r=>{const k=lkind(r.kind);return `<tr><td style="white-space:nowrap;color:var(--muted);font-size:12px">${fmtDT(r.ts)}</td><td><span style="color:${k.c};font-weight:600">${esc(k.l)}</span></td><td style="font-size:12.5px">${r.location_id?esc(loc(r.location_id).code):'—'}</td><td class="num tnum" style="color:${r.qty_delta<0?'var(--crit)':'var(--good)'};font-weight:600">${r.qty_delta>0?'+':''}${r.qty_delta}</td><td style="font-size:12px;color:var(--muted)">${esc(r.reference||'')}${r.note?' · '+esc(r.note):''}</td></tr>`;}).join('')}</tbody></table></div>`;
+  if(!show.length){el.innerHTML=`<div style="color:var(--faint);font-size:13px;padding:8px 0">No movements${ihKind!=='all'?' of this type':''} recorded yet. Square changes appear within 30 minutes; a Super Admin can pull 12 months from Square Sync → “Update Square history”.</div>`;return;}
+  const qtyCell=r=>{if(r.kind==='sq_count'){const im=r._implied;return `<span style="color:var(--transit)">= ${r.count_to}</span>${im!=null&&im!==0?`<div style="font-size:11px;color:${im<0?'var(--crit)':'var(--good)'}">(${im>0?'+':''}${im})</div>`:''}`;}
+    return `<span style="color:${r.qty_delta<0?'var(--crit)':'var(--good)'}">${r.qty_delta>0?'+':''}${r.qty_delta}</span>`;};
+  el.innerHTML=`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>Type</th><th>Centre</th><th class="num">Qty</th>${ihRange==='all'?'<th class="num" title="Running on hand at that centre">Balance</th>':''}<th>Ref / note</th></tr></thead><tbody>${show.map(r=>{const k=lkind(r.kind);return `<tr${r._synthetic?' style="background:var(--surface-2)"':''}><td style="white-space:nowrap;color:var(--muted);font-size:12px">${r._synthetic?'Before '+(r.ts?fmtDate(r.ts):'records'):fmtDT(r.ts)}</td><td><span style="color:${k.c};font-weight:600">${esc(k.l)}</span></td><td style="font-size:12.5px">${r.location_id?esc(loc(r.location_id).code):'—'}</td><td class="num tnum" style="font-weight:600">${qtyCell(r)}</td>${ihRange==='all'?`<td class="num tnum" style="color:var(--muted)">${r._synthetic?r.qty_delta:(r._bal!=null?r._bal+(openBy[r.location_id]||0):'')}</td>`:''}<td style="font-size:12px;color:var(--muted)">${esc(r.reference||'')}${r.note?' · '+esc(r.note):''}</td></tr>`;}).join('')}</tbody></table></div>
+  ${recon.length?`<div class="banner warn" style="margin-top:10px">${svg(I.info,16)}<div>${recon.map(x=>`<b>${esc(loc(x.lc).name)}</b>: history adds up to ${x.bal}, on hand now ${x.now} (${x.diff>0?'+':''}${x.diff}).`).join('<br>')} The difference is usually a Square change from the last 30 minutes not pulled yet, or an app change still on its way to Square.</div></div>`:''}
+  ${ihRange!=='all'?`<div style="font-size:12px;color:var(--faint);margin-top:8px">${svg(I.info,13)} Choose <b>All time</b> to see a running balance and the opening stock, so the history adds up to today’s on hand.</div>`:''}`;
 }
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
   const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)}</td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
-  const kinds=['all','sale','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','return','reversal'];
+  const kinds=['all','sale','return','sq_added','sq_removed','sq_waste','sq_reserved','sq_released','sq_transfer','sq_count','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','reversal','opening'];
   const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
   const isApprover=['national_admin','super_admin'].includes(ROLE);
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
@@ -7499,8 +7531,8 @@ function vSettings(v){
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
     <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks + every 10 minutes). Every stock change made in the app is queued and sent <b>back</b> to Square within about 2 minutes, retried automatically until it succeeds, and recorded in the sync log below.</div></div>
     ${(ROLE==='super_admin'||ROLE==='national_admin')?`<div id="sq-health" style="margin-bottom:16px"><div class="card empty">${svg(I.sync,26)}<div>Loading sync health…</div></div></div>`:''}
-    ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update sales history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
-    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” pulls 12 months of Square sales for Centre Insights and the 2-month transfer recommendations. “Update sales history” adds Square POS sales/waste/returns to each item’s History timeline. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
+    ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update Square history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
+    <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” pulls 12 months of Square sales for Centre Insights and the 2-month transfer recommendations. “Update Square history” adds every Square stock change (sales, returns, stock added / removed, waste, order holds, transfers and counts done in Square) to each item’s History — it also runs by itself every 30 minutes. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
     ${ROLE==='super_admin'?`<div class="card pad" style="margin-top:16px"><div class="sq-title" style="font-size:15px">${svg(I.receipt,18)} Backups</div>
       <div style="font-size:13px;color:var(--muted);margin:10px 0 12px">A full snapshot is saved automatically every night (the last 7 are kept). You can also back up now, and download a copy to your computer for off-site safety.</div>
       <div id="bk-status" style="font-size:13px;margin-bottom:12px;color:var(--muted)">Loading…</div>
@@ -7771,7 +7803,7 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   try{await loadBatches();}catch(e){}try{if(typeof loadBins==='function')await loadBins();}catch(e){}
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
-async function runLedger(){toast('Pulling sales history from Square (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Sales history updated ('+((data&&data.inserted)||0)+' new events)');}catch(e){toast('Failed: '+(e.message||e),true);}}
+async function runLedger(){toast('Pulling Square stock history — sales, stock added / removed, counts (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Square history updated ('+((data&&data.inserted)||0)+' new changes'+(data&&data.cleaned?', '+data.cleaned+' duplicates removed':'')+')');}catch(e){toast('Failed: '+(e.message||e),true);}}
 async function fnErr(error){try{if(error&&error.context&&typeof error.context.json==='function'){const b=await error.context.json();return b.error||JSON.stringify(b);}}catch(e){}return (error&&error.message)||'failed';}
 async function runVelocity(){
   const locs=S.locations.filter(l=>l.square_location_id).map(l=>l.id);
