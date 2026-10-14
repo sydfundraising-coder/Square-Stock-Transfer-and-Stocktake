@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.15-1';
+const APP_VERSION='2026.10.15-2';
 const APP_VERSION_NOTE='Item history shows every Square stock change + opening balance and running balance · Stock take: best-before list offers dates already in the system / counted at another spot / at other centres · helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -7803,7 +7803,23 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
   try{await loadBatches();}catch(e){}try{if(typeof loadBins==='function')await loadBins();}catch(e){}
   await refreshOps((affectedLocs||[]).filter(Boolean));
 }
-async function runLedger(){toast('Pulling Square stock history — sales, stock added / removed, counts (up to 12 months)…');try{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:365}});if(error)throw error;if(data&&data.error){toast(data.error,true);return;}toast('Square history updated ('+((data&&data.inserted)||0)+' new changes'+(data&&data.cleaned?', '+data.cleaned+' duplicates removed':'')+')');}catch(e){toast('Failed: '+(e.message||e),true);}}
+/* Pull 12 months of Square stock history in small windows (one week at a time) so each call finishes well inside the
+   function's time limit; a busy week is split in half automatically. */
+async function runLedger(){
+  if(window._ledgerBusy)return toast('Already pulling Square history — please wait');
+  window._ledgerBusy=true;let ins=0,cl=0,done=0;const total=365,step=7;
+  const pull=async(from,to)=>{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:from,until_days:to}});
+    if(error)throw new Error(await fnErr(error));if(data&&data.error)throw new Error(data.error);
+    ins+=(data&&data.inserted)||0;cl+=(data&&data.cleaned)||0;
+    if(data&&data.partial&&from-to>1){const mid=Math.ceil((from+to)/2);await pull(from,mid);await pull(mid,to);}};
+  try{
+    for(let to=0;to<total;to+=step){const from=Math.min(total,to+step);
+      toast(`Pulling Square stock history… ${Math.round(done/total*100)}% (${ins} new so far)`);
+      await pull(from,to);done=from;}
+    toast('Square history updated: '+ins+' new change'+(ins===1?'':'s')+(cl?', '+cl+' duplicate'+(cl===1?'':'s')+' removed':''));
+  }catch(e){toast('Square history: '+(e.message||e)+(done?` (got ${Math.round(done/total*100)}% — ${ins} new — click again to finish)`:''),true);}
+  finally{window._ledgerBusy=false;}
+}
 async function fnErr(error){try{if(error&&error.context&&typeof error.context.json==='function'){const b=await error.context.json();return b.error||JSON.stringify(b);}}catch(e){}return (error&&error.message)||'failed';}
 async function runVelocity(){
   const locs=S.locations.filter(l=>l.square_location_id).map(l=>l.id);
