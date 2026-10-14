@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.14-2';
-const APP_VERSION_NOTE='Stock take: items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
+const APP_VERSION='2026.10.14-3';
+const APP_VERSION_NOTE='Stock take: helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -898,6 +898,7 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .stn-lock{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;color:var(--faint);margin-left:auto;white-space:nowrap}
   .st-taken{display:flex;flex-direction:column;gap:6px;margin-top:4px}
   .st-miss{margin:12px 0 4px;border:1.5px dashed var(--accent);border-radius:14px;background:var(--accent-soft);padding:10px 12px;text-align:left}
   .st-miss-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--accent-ink);margin-bottom:6px}
@@ -2293,7 +2294,7 @@ HELP.topics.push(
       'Enter the quantity the way you chose, the <b>best-before</b> (pick from the list, “Other date — type it…”, or tick <b>No date on pack</b>) and, if you like, the <b>location / aisle</b> (required at the Central Warehouse). Tap <b>Save my count</b>.',
       'Your line appears under the item: “You · 12 · Front shop · BB 2 Nov 2026”. Other people’s counts show too, but you can’t change them.',
       'Counted the same item somewhere else or with another date? Tap <b>Add another count</b> — each spot/date is kept separately. <b>+1 box</b> adds a box to your latest count.',
-      'Made a mistake? Tap <b>Edit</b> on your own line to change or remove it.',
+      'Made a mistake? Staff: tap <b>Edit</b> on your own line to change or remove it. Helpers: once saved your count is locked — ask a staff member at the centre to fix it, or add another count for anything you missed.',
       'Can’t find an item? If it was added to the catalogue after the count started, search or scan it: it shows under <b>Not in this count yet</b>. Tap <b>Add to this count</b>, then count it as usual. New catalogue items are also added to open counts automatically.',
       'Everything saves straight away (“All saved · live”). With no signal, counts wait on the phone and send automatically.'],
       'Count all spots of the same item close together, especially while the shop is open.','',['panel:stocktake','scan'],ALL),
@@ -2358,12 +2359,14 @@ HELP.topics.push(
       'Open the email “Set your password”, tap <b>Set my password</b>, then <b>Continue to set my password</b>, and choose a password.',
       'Sign in at <b>stock.shayona.com.au</b> with that email and password.',
       'Open the stock take, then scan or search each item and tap <b>Add my count</b>.',
-      'Enter what <b>you</b> counted, the best-before and the location if asked. Tap <b>Done for now</b> when you finish.'],
+      'Enter what <b>you</b> counted, the best-before and the location if asked. <b>Check it before you save</b> — once saved you can’t change or remove it. If something is wrong, tell a staff member at the centre; they can fix it. Missed some? Just add another count.',
+      'Tap <b>Done for now</b> when you finish.'],
       'If the email link says it was already used, tap “Email me a link to set it” on the sign-in page and open the newest email.','',['route:stocktake','panel:stocktake','login'],['user']),
-    T('hst9','Stock takes','Fix or remove someone’s count','Admins and above can correct a wrong count.',[
+    T('hst9','Stock takes','Fix or remove someone’s count','The centre’s staff (Users and Admins) and National / Super Admin can correct a wrong count — including a helper’s.',[
+      'Stock-take helpers can’t change or remove a count once they save it (it shows “saved”). If a helper made a mistake, they tell a staff member at the centre.',
       'On the item, tap <b>Fix</b> on that person’s line.',
       'Change the quantity, date or location, or tap <b>Remove</b>.',
-      'The change is recorded in History with your name.'],'','',['panel:stocktake'],ADM),
+      'The change is recorded in History with your name.'],'','',['panel:stocktake'],ALL),
     T('hst10','Stock takes','Progress & variance so far','National and Super Admin can see the variance before a count is finalised.',[
       'On the Stock Take list tap <b>Progress &amp; variance</b>, or <b>Progress</b> inside the count.',
       '<b>Variance so far</b>: counted, short, over and net $, with each item’s system figure, variance and who counted it.',
@@ -4175,7 +4178,7 @@ function stCardNew(st,l,it){
     <div class="stl-top"><div class="stl-name"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}
         <div class="st-who">${done?`Counted by ${people.map(esc).join(', ')}`:'Not counted yet'}</div></div>
       <div class="stn-tot"><div class="cap">Total</div><div class="n tnum">${done?(cm==='bx'&&per?boxDec(tot,it)+' bx':tot):'–'}</div>${per&&done?`<div class="stl-unit">${cm==='bx'?tot+' pkts':boxDec(tot,it)+' bx'}</div>`:''}</div></div>
-    ${E.length?`<div class="stn-list">${E.map(e=>{const mine=e.counter===me;return `<div class="stn-e${mine?' me':''}"><span class="stn-who">${mine?'You':esc(e.counter_name||'—')}</span><span class="bi-q">${stQtyTxt(+e.qty||0,per,bxv)}</span><span class="bi-m">${[stEntWhere(e),stEntBB(e)].filter(Boolean).join(' · ')}${e._pending?' · saving…':''}</span>${mine||stCanEditAny()?`<button type="button" class="lnk stn-ed" data-steed="${e.id}">${mine?'Edit':'Fix'}</button>`:''}</div>`;}).join('')}</div>`:''}
+    ${E.length?`<div class="stn-list">${E.map(e=>{const mine=e.counter===me;return `<div class="stn-e${mine?' me':''}"><span class="stn-who">${mine?'You':esc(e.counter_name||'—')}</span><span class="bi-q">${stQtyTxt(+e.qty||0,per,bxv)}</span><span class="bi-m">${[stEntWhere(e),stEntBB(e)].filter(Boolean).join(' · ')}${e._pending?' · saving…':''}</span>${stCanEditEntry(e)?`<button type="button" class="lnk stn-ed" data-steed="${e.id}">${mine?'Edit':'Fix'}</button>`:(HELPER&&mine&&!e._pending?'<span class="stn-lock" title="Saved — ask a staff member at this centre to change it">'+svg(I.lock,12)+' saved</span>':'')}</div>`;}).join('')}</div>`:''}
     <div class="stn-act"><button type="button" class="btn primary" data-stadd="${l.id}">${svg(I.plus,16)} ${E.some(e=>e.counter===me)?'Add another count':'Add my count'}</button>${bxv?`<button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per}) to your latest count of this item">+1 box</button>`:''}</div>
     <div class="stl-need">A count has no best-before — tap Edit and enter the date, or tick “No date on pack”.</div></div>`;
 }
@@ -4200,7 +4203,9 @@ function stAskCountMode(st,onPick){
   host.addEventListener('click',e=>{const o=e.target.closest('[data-cm]');if(o)return done(o.dataset.cm);if(e.target.closest('[data-cmx]'))done(null);});
   setTimeout(()=>{const f=host.querySelector('.stcm-o.sel');if(f)f.focus();},40);
 }
-const stCanEditAny=()=>!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
+/* (79) helpers' counts are final once saved; the centre's staff (User / Admin) and National / Super Admin can fix anyone's */
+const stCanEditAny=()=>!HELPER&&['user','admin','national_admin','super_admin'].includes(ROLE);
+const stCanEditEntry=e=>!HELPER&&(stCanEditAny()||e.counter===stMe());
 /* add or edit ONE person's count */
 function openStEntryPanel(st,line,entry,opts){
   opts=opts||{};stScanOpen=true;
@@ -4218,7 +4223,7 @@ function openStEntryPanel(st,line,entry,opts){
   host.innerHTML=`<div class="modal scan-entry" role="dialog" aria-modal="true" aria-labelledby="se-title">
     <div class="panel-head"><div><h2 id="se-title">${esc(it.name)}</h2><div class="sub mono">${esc(it.sku||'')}${it.barcode?' · '+esc(it.barcode):''}</div></div><button class="x" id="se-x" aria-label="Cancel">${svg(I.x,20)}</button></div>
     <div class="panel-body">
-      <div class="se-cur">${entry?(entry.counter===me?'Change <b>your</b> count':'Fix <b>'+esc(entry.counter_name||'')+'</b>’s count'):'Enter <b>only what you counted</b> here'}${others.length?` · others so far: ${others.map(o=>`${o.counter===me?'you':esc(o.counter_name||'—')} ${o.qty}`).join(', ')} (total ${stEntTotal(line.id)})`:''}</div>
+      <div class="se-cur">${entry?(entry.counter===me?'Change <b>your</b> count':'Fix <b>'+esc(entry.counter_name||'')+'</b>’s count'):'Enter <b>only what you counted</b> here'+(HELPER?'. <b>Check it before saving</b> — once saved, only the centre’s staff can change it.':'')}${others.length?` · others so far: ${others.map(o=>`${o.counter===me?'you':esc(o.counter_name||'—')} ${o.qty}`).join(', ')} (total ${stEntTotal(line.id)})`:''}</div>
       <div class="se-qty${showBox&&!showPk?' one':''}">${showBox?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><div class="se-step"><button type="button" class="btn" data-sestep="se-box:-1" aria-label="One box less">−</button><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?Math.floor(q0/per)||'':''}"><button type="button" class="btn" data-sestep="se-box:1" aria-label="One more box">+</button></div></div>`:''}
         ${showPk?`<div class="field"><label for="se-pk">${showBox?'Loose packets':'Packets'}</label><div class="se-step"><button type="button" class="btn" data-sestep="se-pk:-1" aria-label="One packet less">−</button><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?(showBox?(q0%per)||'':q0):''}"><button type="button" class="btn" data-sestep="se-pk:1" aria-label="One more packet">+</button></div></div>`:''}</div>
       ${!per&&cm==='bx'?`<div class="se-hint" style="margin:-4px 0 8px">This item has no box size set, so count it in packets.</div>`:''}
@@ -4260,7 +4265,7 @@ function openStEntryPanel(st,line,entry,opts){
     if(hub&&q>0&&(!a||!b))return err('Central Warehouse: choose a store area and enter an aisle #.');
     // same person, same date + place as one of their earlier counts of this item → add to it instead of a new line
     let target=entry,newQty=q;
-    if(!entry){const same=(stEnt[line.id]||[]).find(x=>x.counter===me&&String(x.expiry||'').slice(0,10)===(ex||'')&&!!x.no_expiry===nd&&(x.area||'')===a&&(x.aisle||'')===b);
+    if(!entry&&!HELPER){const same=(stEnt[line.id]||[]).find(x=>x.counter===me&&String(x.expiry||'').slice(0,10)===(ex||'')&&!!x.no_expiry===nd&&(x.area||'')===a&&(x.aisle||'')===b);
       if(same){target=same;newQty=(+same.qty||0)+q;}}
     const id=target?target.id:(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&3|8)).toString(16);}));
     const rec={...(target||{}),id,line_id:line.id,stocktake_id:st.id,item_id:line.item_id,counter:target?target.counter:me,counter_name:target?target.counter_name:(ME&&(ME.user_metadata&&ME.user_metadata.full_name)||'You'),qty:newQty,area:a||null,aisle:b||null,expiry:ex||null,no_expiry:nd,created_at:target?target.created_at:new Date().toISOString(),_pending:true};
@@ -4473,13 +4478,14 @@ function bindStInputs(root){
   // own count entries: edit / fix
   R.querySelectorAll('[data-steed]').forEach(b=>b.onclick=()=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);if(!st)return;let ent=null,ln=null;
     for(const [lid,a] of Object.entries(stEnt)){const f=a.find(x=>x.id===b.dataset.steed);if(f){ent=f;ln=(st.lines||[]).find(x=>x.id===lid);break;}}
+    if(ent&&!stCanEditEntry(ent))return toast('This count is saved. Ask a staff member at this centre to change it.',true);
     if(ent&&ln)openStEntryPanel(st,ln,ent,{onDone:s=>{if(s)stCardRefresh(ln.id);}});});
   // +1 box: adds one box on the server each tap, so several people can keep adding
   R.querySelectorAll('[data-stbox]').forEach(b=>b.onclick=()=>{const lid=b.dataset.stbox;const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===lid);if(!l)return;
     if(STE&&!stAmending){   // add a box to YOUR latest count of this item (or start one)
       const it=item(l.item_id),per=hasPpc(it)?ppc(it):0;if(!per)return;
       const mine=(stEnt[lid]||[]).filter(e=>e.counter===stMe()).sort((x,y)=>String(x.updated_at||x.created_at||'').localeCompare(String(y.updated_at||y.created_at||''))).slice(-1)[0];
-      if(!mine){openStEntryPanel(st,l,null,{boxes:1,onDone:s=>{if(s)stCardRefresh(lid);}});return;}
+      if(!mine||HELPER){openStEntryPanel(st,l,null,{boxes:1,onDone:s=>{if(s)stCardRefresh(lid);}});return;}
       const nq=(+mine.qty||0)+per;stEntUpsert({...mine,qty:nq,updated_at:new Date().toISOString(),_pending:true});
       stQueue({mode:'entry',line:lid,id:mine.id,qty:nq,area:mine.area||'',aisle:mine.aisle||'',expiry:mine.expiry?String(mine.expiry).slice(0,10):null,noexp:!!mine.no_expiry});
       if(navigator.vibrate)navigator.vibrate(15);stCardRefresh(lid);updateStProgress();
