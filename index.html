@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.12-3';
-const APP_VERSION_NOTE='Easier navigation: Home button, Back button (browser/phone back works), Go-to search (Ctrl K), favourites, Quick access on Home, reopens your screen after refresh';
+const APP_VERSION='2026.10.14-1';
+const APP_VERSION_NOTE='Stock take: each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -879,6 +879,26 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   }
   @media print{.side-foot,.nav-find{display:none!important}}
   .is-helper .nav-find,.is-helper .rail-btn{display:none}
+  /* ---- stock take: each counter's "count in" choice ---- */
+  .stcm-host{position:fixed;inset:0;z-index:10060;background:rgba(10,16,26,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;transition:opacity .15s}
+  .stcm-host.show{opacity:1}
+  .stcm{width:min(520px,100%);background:var(--surface);border-radius:18px;box-shadow:var(--shadow-lg);padding:22px 22px 18px;max-height:92dvh;overflow:auto}
+  .stcm h2{font-size:19px;margin-bottom:6px}
+  .stcm-sub{font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.45}
+  .stcm-opts{display:flex;flex-direction:column;gap:10px}
+  .stcm-o{position:relative;display:flex;align-items:center;gap:14px;text-align:left;padding:14px 16px;border-radius:14px;border:1.5px solid var(--border-strong);background:var(--surface);color:var(--ink);min-height:72px;transition:border-color .12s,background .12s,box-shadow .12s}
+  .stcm-o:hover,.stcm-o:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
+  .stcm-o.sel{border-color:var(--accent);background:var(--accent-soft)}
+  .stcm-ic{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:var(--surface-2);color:var(--accent-ink);font-weight:800;font-size:19px;flex:none;white-space:nowrap}
+  .stcm-o.sel .stcm-ic{background:var(--accent);color:#fff}
+  .stcm-tx{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .stcm-tx b{font-size:15.5px}.stcm-tx small{font-size:12.5px;color:var(--muted)}.stcm-tx i{font-style:normal;font-size:12px;color:var(--faint)}
+  .stcm-tag{position:absolute;top:10px;right:12px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent-ink)}
+  .stcm-foot{display:flex;justify-content:flex-end;margin-top:14px}
+  .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
+  .st-cmw select{padding:6px 10px;font-weight:600}
+  .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .st-taken{display:flex;flex-direction:column;gap:6px;margin-top:4px}
   /* ---- top bar: Back, Home, breadcrumb, Go-to search ---- */
   .tb-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--muted);flex:none;transition:background .14s,color .14s,border-color .14s}
   .tb-icon:hover{background:var(--surface-2);color:var(--ink)}
@@ -2259,11 +2279,13 @@ HELP.topics.push(
       'Super Admin: <b>Spot check (by movement)</b>, <b>Undo a deleted count</b>, and the banner for <b>typed best-before dates to check</b>.'],'','',['route:stocktake'],ALL),
     T('h24','Stock takes','Start a stock take','On <b>Stock Take</b>, tap <b>Start stock take</b> (Admin and above).',[
       'Choose the <b>centre</b> and <b>scope</b> (all categories or one), then <b>Start counting</b>.',
+      'Only <b>one open count per category</b> is allowed at a centre. If someone has already started one, the scope shows “open in ST-…” and you can open that count to join it. Different categories can be counted at the same time; an <b>all categories</b> count covers everything, so nothing else can start at that centre while it is open.',
       'Tell everyone counting — staff and helpers — to open it. Many people can count at once.',
       'You can count while the shop is open (see “Counting while trading”).'],'','',['modal:newstock'],['admin','national_admin']),
     T('h25','Stock takes','Count the stock (your own count)','Each person enters <b>only what they counted</b>. The item’s <b>Total</b> adds everyone’s counts together automatically. Counts are blind — the system figure is hidden.',[
       'Scan a barcode (USB scanner or <b>Camera</b>) or search, or tap <b>Add my count</b> on the item.',
-      'Enter <b>boxes and loose packets</b>, the <b>best-before</b> (pick from the list, “Other date — type it…”, or tick <b>No date on pack</b>) and, if you like, the <b>location / aisle</b> (required at the Central Warehouse). Tap <b>Save my count</b>.',
+      'Before your first count you choose <b>how you count</b>: <b>Packets only</b>, <b>Boxes + packets</b> or <b>Boxes only</b>. It is your own choice (others pick theirs) and you can change it any time from <b>Count in</b> at the top of the stock take.',
+      'Enter the quantity the way you chose, the <b>best-before</b> (pick from the list, “Other date — type it…”, or tick <b>No date on pack</b>) and, if you like, the <b>location / aisle</b> (required at the Central Warehouse). Tap <b>Save my count</b>.',
       'Your line appears under the item: “You · 12 · Front shop · BB 2 Nov 2026”. Other people’s counts show too, but you can’t change them.',
       'Counted the same item somewhere else or with another date? Tap <b>Add another count</b> — each spot/date is kept separately. <b>+1 box</b> adds a box to your latest count.',
       'Made a mistake? Tap <b>Edit</b> on your own line to change or remove it.',
@@ -3961,7 +3983,7 @@ function vStock(v){
     (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+
     (!HELPER&&['national_admin','super_admin'].includes(ROLE)&&S.helperReqN?`<div class="banner warn" style="align-items:center">${svg(I.users||I.alert,17)}<div style="flex:1"><b>${S.helperReqN} stock-take helper request${S.helperReqN===1?'':'s'}</b> waiting for your approval.</div><button class="btn sm" id="st-hreq">Review requests</button></div>`:'')+`
     <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
-    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span></td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span>${stScopeLbl(st)?`<div class="st-scope">${esc(stScopeLbl(st))}</div>`:''}</td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
   const hq=document.getElementById('st-hreq');if(hq)hq.onclick=openStHelpers;
@@ -3982,13 +4004,31 @@ function vStock(v){
   clearTimeout(window._stListT);if(v.querySelector('[data-stpc]'))window._stListT=setTimeout(()=>{if(route==='stocktake'&&!document.querySelector('.scrim'))renderView();},30000);
   v.querySelectorAll('[data-stprog]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=S.stocktakes.find(x=>x.id===b.dataset.stprog);if(s)openStProgressReport(s);});
 }
+/* scope of a stock take: a category, all categories, or a spot check (migration 76) */
+const stIsSpot=s=>s.kind==='spot'||/^CC-/.test(s.code||'');
+function stScopeLbl(s){if(!s)return '';if(stIsSpot(s))return 'Spot check';if(!('category' in s))return '';return s.category||'All categories';}
+/* an open count at this centre that already covers this category (null = all categories) */
+function stScopeConflict(locId,cat){const c=cat||null;
+  return S.stocktakes.find(s=>s.location_id===locId&&s.status==='open'&&!stIsSpot(s)&&('category' in s)&&(s.category==null||c==null||String(s.category).toLowerCase()===String(c).toLowerCase()));}
 function newStock(){
-  const cats=['(all categories)',...new Set(S.items.map(i=>i.category).filter(Boolean))];
+  const cats=['(all categories)',...[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category).filter(Boolean))].sort()];
   const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat">${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select></div></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
+  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat"></select></div></div><div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
   restrictLocSelect('st-loc');
-  document.getElementById('go').onclick=async()=>{
-    const lc=document.getElementById('st-loc').value,cat=document.getElementById('st-cat').value;
+  const ls=document.getElementById('st-loc'),cs=document.getElementById('st-cat'),go=document.getElementById('go'),info=document.getElementById('st-open-info');
+  const draw=keep=>{const lc=ls.value,prev=keep?cs.value:cs.value||cats[0];
+    cs.innerHTML=cats.map(c=>{const k=stScopeConflict(lc,c.startsWith('(all')?null:c);return `<option value="${esc(c)}"${c===prev?' selected':''}>${esc(c)}${k?' — open in '+esc(k.code):''}</option>`;}).join('');
+    if(!cs.value)cs.value=cats[0];
+    const openHere=S.stocktakes.filter(s=>s.location_id===lc&&s.status==='open'&&!stIsSpot(s));
+    const cat=cs.value.startsWith('(all')?null:cs.value,k=stScopeConflict(lc,cat);
+    info.innerHTML=k?`<div class="banner crit">${svg(I.alert,17)}<div><b>${esc(k.code)}</b> is already open for ${esc(loc(lc).name)} · <b>${esc(stScopeLbl(k))}</b>${k.started_at?', started '+fmtDT(k.started_at):''}. Join that count instead, finish or delete it, or pick a different category.<div style="margin-top:8px"><button type="button" class="btn sm" data-stjoin="${k.id}">Open ${esc(k.code)}</button></div></div></div>`
+      :openHere.length?`<div class="banner warn">${svg(I.info,17)}<div>Already open at ${esc(loc(lc).name)}: ${openHere.map(s=>`<b>${esc(s.code)}</b> (${esc(stScopeLbl(s)||'scope unknown')})`).join(', ')}. You can count a different category alongside.</div></div>`:'';
+    go.disabled=!!k;
+    const j=info.querySelector('[data-stjoin]');if(j)j.onclick=()=>{const id=j.dataset.stjoin;closeOverlay();setTimeout(()=>openStock(id),60);};};
+  ls.onchange=()=>draw(true);cs.onchange=()=>draw(true);draw(false);
+  go.onclick=async()=>{
+    const lc=ls.value,cat=cs.value;
+    if(stScopeConflict(lc,cat.startsWith('(all')?null:cat))return draw(true);
     await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
   };
 }
@@ -4050,7 +4090,7 @@ function openStock(id,amend){
       <div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${camOk?`<button class="btn" id="st-cam" title="Scan with the camera">${svg(I.box,16)}<span class="hide-sm"> Camera</span></button>`:''}</div>
       <div class="st-prog"><div class="bar"><div id="st-prog-bar"></div></div><span class="txt"><span id="st-prog-txt">0 of 0 counted</span> · <span id="st-prog-pct" class="tnum">0%</span></span></div>
       <div class="st-chips" id="st-chips"></div>
-      <div class="st-tools" style="margin-top:8px"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><div class="spacer"></div>${(st.lines||[]).some(l=>hasPpc(item(l.item_id)))?`<select class="filter st-bxm" id="st-bxm" title="How to enter quantities on this device" aria-label="Count in"><option value="1"${stBoxMode(st.location_id)?' selected':''}>Boxes + packets</option><option value="0"${stBoxMode(st.location_id)?'':' selected'}>Packets only</option></select>`:''}<button class="btn sm" id="st-rep" title="Progress" aria-label="Progress">${svg(I.chart||I.stocktake,15)}<span class="hide-sm"> Progress</span></button><button class="btn sm" id="st-hist" title="Count history" aria-label="Count history">${svg(I.audit||I.receipt,15)}<span class="hide-sm"> History</span></button></div>
+      <div class="st-tools" style="margin-top:8px"><span class="st-sync" id="st-sync"><i></i>All counts saved · live</span><div class="spacer"></div>${(st.lines||[]).some(l=>hasPpc(item(l.item_id)))?`<label class="st-cmw" title="How YOU enter quantities — change any time"><span>Count in</span><select class="filter st-bxm" id="st-bxm" aria-label="Count in">${Object.entries(ST_CM).map(([k,v])=>`<option value="${k}"${stCountModeOr(st)===k?' selected':''}>${v[0]}</option>`).join('')}</select></label>`:''}<button class="btn sm" id="st-rep" title="Progress" aria-label="Progress">${svg(I.chart||I.stocktake,15)}<span class="hide-sm"> Progress</span></button><button class="btn sm" id="st-hist" title="Count history" aria-label="Count history">${svg(I.audit||I.receipt,15)}<span class="hide-sm"> History</span></button></div>
     </div>
     <div style="font-size:12.5px;color:var(--muted);margin:0 0 10px"><b>Blind count</b> — type what you see, or tap <b>+</b> to add a count with its location and best-before. Everything saves straight away.</div>`;
   } else if(editable){ head=`<div class="st-head"><div class="banner warn" style="margin-bottom:8px">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div></div><div class="st-chips" id="st-chips" style="margin-top:8px"></div></div>`; }
@@ -4065,7 +4105,7 @@ function openStock(id,amend){
   else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
   else if(st.status==='completed'&&ROLE==='super_admin') foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
   const info=editable?'':`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd>${st.completed_at?`<dt>Finalised</dt><dd>${fmtDT(st.completed_at)}</dd>`:''}</dl></div>`;
-  slideover(st.code,loc(st.location_id).name+(open?' · started '+fmtDate(st.started_at):''),`${head}${info}<div id="stList">${renderStRows(st,editable,'')}</div>`,foot,editable?'stp':'');
+  slideover(st.code,loc(st.location_id).name+(stScopeLbl(st)?' · '+stScopeLbl(st):'')+(open?' · started '+fmtDate(st.started_at):''),`${head}${info}<div id="stList">${renderStRows(st,editable,'')}</div>`,foot,editable?'stp':'');
   if(editable){
     const scan=document.getElementById('st-scan');
     if(scan){ scan.oninput=()=>renderStList(st); scan.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const code=scan.value.trim();if(!code)return;const hit=stFindLine(st,code);if(!hit&&!/^\d{6,}$/.test(code))return;scan.value='';stScanCode(st,code,{onDone:()=>{renderStList(st);const sc=document.getElementById('st-scan');if(sc)sc.focus();}});renderStList(st);}}; if(open)setTimeout(()=>scan.focus(),60); }
@@ -4083,7 +4123,9 @@ function openStock(id,amend){
   }
   const hi=document.getElementById('st-hist')||document.getElementById('st-hist2'); if(hi)hi.onclick=()=>openStHistory(st);
   const rp=document.getElementById('st-rep'); if(rp)rp.onclick=()=>openStProgressReport(st);
-  const bm=document.getElementById('st-bxm'); if(bm)bm.onchange=e=>{stSetBoxMode(st.location_id,e.target.value==='1');renderStList(st);};
+  const bm=document.getElementById('st-bxm'); if(bm)bm.onchange=e=>{stSetCountMode(st,e.target.value);toast('Counting in '+ST_CM[e.target.value][0].toLowerCase());renderStList(st);};
+  // first time this person opens this count: ask how they want to count (only matters when items have a box size)
+  if(open&&!amend&&editable&&!stCountMode(st)&&(st.lines||[]).some(l=>hasPpc(item(l.item_id))))setTimeout(()=>{if(stCurrentId===st.id&&document.getElementById('stList'))stAskCountMode(st,m=>{if(!m)stSetCountMode(st,stCmDefault(st));renderStList(st);});},250);
   const vr=document.getElementById('st-var'); if(vr)vr.onclick=()=>openStVarianceReport(st);
   const f2=document.getElementById('st-flags2'); if(f2)f2.onclick=()=>openStDateFlags(st.id);
   const ch=document.getElementById('st-chips'); if(ch){ ch.onclick=e=>{const b=e.target.closest('[data-stf]');if(!b)return;stFilt=b.dataset.stf;renderStList(st);const pb=document.querySelector('.panel.stp .panel-body');if(pb)pb.scrollTop=0;}; stChips(st); }
@@ -4122,13 +4164,35 @@ function stCardNew(st,l,it){
   const E=stEnt[l.id]||[],done=E.length>0,tot=stEntTotal(l.id),per=hasPpc(it)?ppc(it):0,me=stMe();
   const needs=E.some(e=>(+e.qty||0)>0&&!e.expiry&&!e.no_expiry);
   const people=[...new Set(E.map(e=>e.counter===me?'you':(e.counter_name||'someone')))];
+  const cm=stCountModeOr(st),bxv=per&&cm!=='pk';
   return `<div class="stl stn${done?' done':''}${needs?' needdate':''}" data-stl="${l.id}">
     <div class="stl-top"><div class="stl-name"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}
         <div class="st-who">${done?`Counted by ${people.map(esc).join(', ')}`:'Not counted yet'}</div></div>
-      <div class="stn-tot"><div class="cap">Total</div><div class="n tnum">${done?tot:'–'}</div>${per&&done?`<div class="stl-unit">${boxDec(tot,it)} bx</div>`:''}</div></div>
-    ${E.length?`<div class="stn-list">${E.map(e=>{const mine=e.counter===me;return `<div class="stn-e${mine?' me':''}"><span class="stn-who">${mine?'You':esc(e.counter_name||'—')}</span><span class="bi-q">${e.qty}</span><span class="bi-m">${[stEntWhere(e),stEntBB(e)].filter(Boolean).join(' · ')}${e._pending?' · saving…':''}</span>${mine||stCanEditAny()?`<button type="button" class="lnk stn-ed" data-steed="${e.id}">${mine?'Edit':'Fix'}</button>`:''}</div>`;}).join('')}</div>`:''}
-    <div class="stn-act"><button type="button" class="btn primary" data-stadd="${l.id}">${svg(I.plus,16)} ${E.some(e=>e.counter===me)?'Add another count':'Add my count'}</button>${per?`<button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per}) to your latest count of this item">+1 box</button>`:''}</div>
+      <div class="stn-tot"><div class="cap">Total</div><div class="n tnum">${done?(cm==='bx'&&per?boxDec(tot,it)+' bx':tot):'–'}</div>${per&&done?`<div class="stl-unit">${cm==='bx'?tot+' pkts':boxDec(tot,it)+' bx'}</div>`:''}</div></div>
+    ${E.length?`<div class="stn-list">${E.map(e=>{const mine=e.counter===me;return `<div class="stn-e${mine?' me':''}"><span class="stn-who">${mine?'You':esc(e.counter_name||'—')}</span><span class="bi-q">${stQtyTxt(+e.qty||0,per,bxv)}</span><span class="bi-m">${[stEntWhere(e),stEntBB(e)].filter(Boolean).join(' · ')}${e._pending?' · saving…':''}</span>${mine||stCanEditAny()?`<button type="button" class="lnk stn-ed" data-steed="${e.id}">${mine?'Edit':'Fix'}</button>`:''}</div>`;}).join('')}</div>`:''}
+    <div class="stn-act"><button type="button" class="btn primary" data-stadd="${l.id}">${svg(I.plus,16)} ${E.some(e=>e.counter===me)?'Add another count':'Add my count'}</button>${bxv?`<button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per}) to your latest count of this item">+1 box</button>`:''}</div>
     <div class="stl-need">A count has no best-before — tap Edit and enter the date, or tick “No date on pack”.</div></div>`;
+}
+/* ---- each counter's way of entering quantities (asked before their first count, changeable any time) ---- */
+const ST_CM={pk:['Packets only','Type the total number of packets','e.g. 37'],bxpk:['Boxes + packets','Full boxes, plus any loose packets','e.g. 3 boxes + 1'],bx:['Boxes only','Whole boxes only — quickest for cartons','e.g. 3 boxes']};
+function stCmKey(id){return 'st-cmode-'+(stMe()||'x')+'-'+id;}
+function stCountMode(st){try{const v=localStorage.getItem(stCmKey(st.id));if(ST_CM[v])return v;}catch(e){}return null;}
+function stCmDefault(st){try{const v=localStorage.getItem('st-cmode-last-'+(stMe()||'x'));if(ST_CM[v])return v;}catch(e){}return isHub(st.location_id)?'bxpk':'pk';}
+function stCountModeOr(st){return (st&&stCountMode(st))||(st?stCmDefault(st):'pk');}
+function stSetCountMode(st,m){if(!ST_CM[m])return;try{localStorage.setItem(stCmKey(st.id),m);localStorage.setItem('st-cmode-last-'+(stMe()||'x'),m);}catch(e){}
+  const sel=document.getElementById('st-bxm');if(sel)sel.value=m;}
+function stQtyTxt(q,per,bxv){if(!per||!bxv)return String(q);const b=Math.floor(q/per),k=q%per;if(!b)return k+' pkts';return k?`${b} bx + ${k}`:`${b} bx`;}
+function stAskCountMode(st,onPick){
+  const cur=stCountMode(st),def=cur||stCmDefault(st);
+  const host=document.createElement('div');host.className='stcm-host';
+  host.innerHTML=`<div class="stcm" role="dialog" aria-modal="true" aria-labelledby="stcm-t"><h2 id="stcm-t">How do you want to count?</h2>
+    <div class="stcm-sub">${esc(st.code)} · ${esc(loc(st.location_id).name)}. This is just for you — other counters choose their own. You can change it any time from <b>Count in</b> at the top.</div>
+    <div class="stcm-opts">${Object.entries(ST_CM).map(([k,v])=>`<button type="button" class="stcm-o${k===def?' sel':''}" data-cm="${k}"><span class="stcm-ic">${k==='pk'?'#':k==='bx'?svg(I.box,20):svg(I.box,16)+'+'}</span><span class="stcm-tx"><b>${v[0]}</b><small>${v[1]}</small><i>${v[2]}</i></span>${k===def?'<span class="stcm-tag">'+(cur?'Current':'Suggested')+'</span>':''}</button>`).join('')}</div>
+    ${cur?`<div class="stcm-foot"><button type="button" class="btn" data-cmx>Keep ${esc(ST_CM[cur][0].toLowerCase())}</button></div>`:''}</div>`;
+  document.body.appendChild(host);requestAnimationFrame(()=>host.classList.add('show'));
+  const done=m=>{host.remove();if(m){stSetCountMode(st,m);toast('Counting in '+ST_CM[m][0].toLowerCase());}if(onPick)onPick(m);};
+  host.addEventListener('click',e=>{const o=e.target.closest('[data-cm]');if(o)return done(o.dataset.cm);if(e.target.closest('[data-cmx]'))done(null);});
+  setTimeout(()=>{const f=host.querySelector('.stcm-o.sel');if(f)f.focus();},40);
 }
 const stCanEditAny=()=>!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
 /* add or edit ONE person's count */
@@ -4138,6 +4202,8 @@ function openStEntryPanel(st,line,entry,opts){
   const mineLast=(stEnt[line.id]||[]).filter(e=>e.counter===me).slice(-1)[0];
   const e0=entry||{qty:'',area:(mineLast&&mineLast.area)||stArea[line.id]||'',aisle:(mineLast&&mineLast.aisle)||stAisle[line.id]||'',expiry:'',no_expiry:false};
   const q0=entry?+entry.qty:(opts.boxes&&per?opts.boxes*per:null);
+  /* how THIS counter enters quantities (their choice, changeable any time): packets only · boxes + packets · boxes only */
+  const cm=stCountModeOr(st),showBox=!!per&&cm!=='pk',showPk=!per||cm!=='bx'||(q0!=null&&q0%per!==0);
   const kn=stKnown[line.id]||[],exp=e0.expiry?String(e0.expiry).slice(0,10):'',typed=!!(exp&&kn.length&&!kn.includes(exp));
   const others=(stEnt[line.id]||[]).filter(x=>!entry||x.id!==entry.id);
   const areaCtl=hub?`<select id="se-area"><option value="">— select area —</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===e0.area?' selected':''}>${esc(a)}</option>`).join('')}</select>`
@@ -4147,8 +4213,9 @@ function openStEntryPanel(st,line,entry,opts){
     <div class="panel-head"><div><h2 id="se-title">${esc(it.name)}</h2><div class="sub mono">${esc(it.sku||'')}${it.barcode?' · '+esc(it.barcode):''}</div></div><button class="x" id="se-x" aria-label="Cancel">${svg(I.x,20)}</button></div>
     <div class="panel-body">
       <div class="se-cur">${entry?(entry.counter===me?'Change <b>your</b> count':'Fix <b>'+esc(entry.counter_name||'')+'</b>’s count'):'Enter <b>only what you counted</b> here'}${others.length?` · others so far: ${others.map(o=>`${o.counter===me?'you':esc(o.counter_name||'—')} ${o.qty}`).join(', ')} (total ${stEntTotal(line.id)})`:''}</div>
-      <div class="se-qty">${per?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><div class="se-step"><button type="button" class="btn" data-sestep="se-box:-1" aria-label="One box less">−</button><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?Math.floor(q0/per)||'':''}"><button type="button" class="btn" data-sestep="se-box:1" aria-label="One more box">+</button></div></div>`:''}
-        <div class="field"><label for="se-pk">${per?'Loose packets':'Packets'}</label><div class="se-step"><button type="button" class="btn" data-sestep="se-pk:-1" aria-label="One packet less">−</button><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?(per?(q0%per)||'':q0):''}"><button type="button" class="btn" data-sestep="se-pk:1" aria-label="One more packet">+</button></div></div></div>
+      <div class="se-qty${showBox&&!showPk?' one':''}">${showBox?`<div class="field"><label for="se-box">Boxes <span class="se-hint">(${per} per box)</span></label><div class="se-step"><button type="button" class="btn" data-sestep="se-box:-1" aria-label="One box less">−</button><input id="se-box" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?Math.floor(q0/per)||'':''}"><button type="button" class="btn" data-sestep="se-box:1" aria-label="One more box">+</button></div></div>`:''}
+        ${showPk?`<div class="field"><label for="se-pk">${showBox?'Loose packets':'Packets'}</label><div class="se-step"><button type="button" class="btn" data-sestep="se-pk:-1" aria-label="One packet less">−</button><input id="se-pk" type="number" min="0" step="1" inputmode="numeric" placeholder="0" value="${q0!=null?(showBox?(q0%per)||'':q0):''}"><button type="button" class="btn" data-sestep="se-pk:1" aria-label="One more packet">+</button></div></div>`:''}</div>
+      ${!per&&cm==='bx'?`<div class="se-hint" style="margin:-4px 0 8px">This item has no box size set, so count it in packets.</div>`:''}
       <div class="se-total" id="se-total"></div>
       <div class="field"><label for="${kn.length?'se-exps':'se-exp'}">Best before *</label>
         ${kn.length?`<select id="se-exps"${e0.no_expiry?' disabled':''}><option value="">Choose date…</option>${kn.map(d=>`<option value="${d}"${d===exp&&!typed?' selected':''}>${fmtDate(d)}</option>`).join('')}<option value="__other"${typed?' selected':''}>Other date — type it…</option></select>`:''}
@@ -4164,8 +4231,8 @@ function openStEntryPanel(st,line,entry,opts){
     <div class="panel-foot">${entry?`<button class="btn" id="se-del" style="color:var(--crit);border-color:var(--crit);margin-right:auto">Remove</button>`:''}<button class="btn" id="se-cancel">Cancel</button><button class="btn primary" id="se-save">${svg(I.check,16)} ${entry?'Save':'Save my count'}</button></div></div>`;
   document.body.appendChild(host);
   const $=id=>host.querySelector('#'+id);
-  const qty=()=>{const b=per?Math.max(0,parseInt($('se-box').value,10)||0):0;const k=Math.max(0,parseInt($('se-pk').value,10)||0);return b*per+k;};
-  const upd=()=>{const q=qty();$('se-total').innerHTML=`Your count here: <b>${q}</b> packet${q===1?'':'s'}${per?` (${boxDec(q,it)} bx)`:''}`;};
+  const qty=()=>{const bi=$('se-box'),ki=$('se-pk');const b=bi&&per?Math.max(0,parseInt(bi.value,10)||0):0;const k=ki?Math.max(0,parseInt(ki.value,10)||0):0;return b*per+k;};
+  const upd=()=>{const q=qty();$('se-total').innerHTML=showBox&&!showPk?`Your count here: <b>${q/per}</b> box${q/per===1?'':'es'} (${q} packets)`:`Your count here: <b>${q}</b> packet${q===1?'':'s'}${per?` (${boxDec(q,it)} bx)`:''}`;};
   host.querySelectorAll('input').forEach(i=>i.addEventListener('input',upd));upd();
   host.querySelectorAll('[data-sestep]').forEach(b=>b.onclick=()=>{const[id,d]=b.dataset.sestep.split(':');const el=$(id);if(!el)return;el.value=Math.max(0,(parseInt(el.value,10)||0)+(+d));upd();});
   const expVal=()=>{const s=$('se-exps');if(s&&s.value!=='__other')return s.value;return $('se-exp').value;};
@@ -4180,7 +4247,7 @@ function openStEntryPanel(st,line,entry,opts){
   const save=()=>{
     for(const id of ['se-box','se-pk']){const el=$(id);if(el&&String(el.value).trim().length>=6&&(+el.value>99999||stFindLine(st,el.value.trim()))){el.value='';upd();return err('That looked like a barcode, not a quantity. Type the quantity.');}}
     const q=qty(),nd=$('se-nd').checked,ex=nd?'':expVal(),a=$('se-area').value.trim(),b=$('se-aisle').value.trim();
-    if($('se-pk').value===''&&(!per||$('se-box').value==='')&&!entry)return err('Enter the quantity you counted (0 if none here).');
+    if((!$('se-pk')||$('se-pk').value==='')&&(!$('se-box')||$('se-box').value==='')&&!entry)return err('Enter the quantity you counted (0 if none here).');
     if(ex&&!validBB(ex))return err('Check the best-before date — the year must be 4 digits (e.g. 2027).');
     if(ex&&ex<today())return err(`Best-before ${fmtDate(ex)} is in the past — check the date on the pack.`);
     if(q>0&&!ex&&!nd)return err('Enter the best-before date, or tick “No date on pack”.');
@@ -4202,7 +4269,7 @@ function openStEntryPanel(st,line,entry,opts){
     stEnt[line.id]=(stEnt[line.id]||[]).filter(x=>x.id!==entry.id);stEntSync(line.id);
     stQueue({mode:'entry_del',line:line.id,id:entry.id});stCardRefresh(line.id);updateStProgress();toast('Count removed');close(true);};
   host.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.tagName!=='SELECT'&&ev.target.tagName!=='BUTTON'&&ev.target.tagName!=='SUMMARY'){ev.preventDefault();save();}if(ev.key==='Escape'){ev.preventDefault();close(false);}});
-  setTimeout(()=>{const f=per?$('se-box'):$('se-pk');if(f){f.focus();try{f.select();}catch(_){}}},60);
+  setTimeout(()=>{const f=$('se-box')||$('se-pk');if(f){f.focus();try{f.select();}catch(_){}}},60);
 }
 /* phones: shrink the top bar while scrolling, and hide the extras + footer while typing a count */
 function stPhoneLayout(){
@@ -4358,9 +4425,9 @@ function renderStRows(st,editable,filter){
       const areaCtl=hubS?`<select data-starea="${l.id}"><option value="">Choose…</option>${storeAreasAt(st.location_id).map(a=>`<option value="${esc(a)}"${a===(stArea[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`
                        :`<input list="st-areas" data-starea="${l.id}" value="${esc(stArea[l.id]||'')}" placeholder="e.g. Front shop" autocomplete="off">`;
       const nd=!!stNoExp[l.id];
-      return `<div class="stl${done?' done':''}${hubS?' req':''}${per&&stBoxMode(st.location_id)?' bxm':''}${stNeedsDate(l.id)?' needdate':''}" data-stl="${l.id}">
+      return `<div class="stl${done?' done':''}${hubS?' req':''}${per&&stCountModeOr(st)!=='pk'?' bxm':''}${stNeedsDate(l.id)?' needdate':''}" data-stl="${l.id}">
         <div class="stl-top"><div class="stl-name"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}<div class="st-who" data-stwho="${l.id}">${stWhoHtml(l.id)}</div></div>
-          ${per&&stBoxMode(st.location_id)
+          ${per&&stCountModeOr(st)!=='pk'
             ?`<div><div class="stl-qty bx"><label class="stl-q"><span>Boxes</span><input type="number" min="0" inputmode="numeric" value="${done?Math.floor(+c/per):''}" placeholder="0" data-cb="${l.id}" aria-label="Boxes of ${esc(it.name)}"></label><label class="stl-q"><span>Pkts</span><input type="number" min="0" inputmode="numeric" value="${done?(+c%per):''}" placeholder="0" data-ck="${l.id}" aria-label="Loose packets of ${esc(it.name)}"></label></div>
                <div class="stl-qty bx" style="margin-top:6px"><button type="button" class="btn" data-stbox="${l.id}" title="Add one box (${per} packets) to the count">+1 box</button><button type="button" class="btn primary" data-stadd="${l.id}" title="Add a count with location and best-before" aria-label="Add a count">${svg(I.plus,18)}</button></div>
                <div class="stl-unit" data-stunit="${l.id}">${done?`= <b>${+c}</b> packets · `:''}${per} per box</div></div></div>`
