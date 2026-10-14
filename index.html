@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.15-2';
+const APP_VERSION='2026.10.15-3';
 const APP_VERSION_NOTE='Item history shows every Square stock change + opening balance and running balance · Stock take: best-before list offers dates already in the system / counted at another spot / at other centres · helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -6612,6 +6612,8 @@ async function loadSalesData(){
   invCredits=crd.error?[]:(crd.data||[]);window._creditsSetupMissing=!!crd.error;
   invList=inv.data||[];slAllCust=cust.data||[];invCustomers=slAllCust.filter(c=>c.active!==false);invSettings=setg.data||{};
   invPayments=pay.error?[]:(pay.data||[]);invStatements=stm.error?[]:(stm.data||[]);
+  // which saved statements changed after they were emailed (migration 82)
+  try{const{data:rv,error:re}=await sb.from('customer_statements').select('id,revised_at').not('revised_at','is',null);if(!re)(rv||[]).forEach(r=>{const x=invStatements.find(y=>y.id===r.id);if(x)x.revised_at=r.revised_at;});}catch(e){}
   window._salesSetupMissing=!!(pay.error||stm.error);window._slLoaded=true;
   S.invoices=invList;
 }
@@ -6926,7 +6928,7 @@ function slStFiltered(){return invStatements.filter(s=>(!slStCust||s.customer_id
 function slStList(){
   const el=document.getElementById('st-list');if(!el)return;
   const rows=slStFiltered();
-  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} statement${rows.length===1?'':'s'} · click one to view, download or email</div><div class="tablewrap"><table><thead><tr><th>Statement</th><th>Customer</th><th>Period</th><th>Type</th><th class="num">Opening</th><th class="num">Invoiced</th><th class="num">Received</th><th class="num">Closing</th><th>Emailed</th></tr></thead><tbody>${rows.map(s=>`<tr class="clickable" data-stm="${s.id}"><td class="mono">${esc(s.code||'—')}</td><td><b>${esc((custById(s.customer_id)||{}).name||'—')}</b></td><td style="white-space:nowrap;font-size:12.5px">${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}</td><td>${s.kind==='monthly'?'<span class="pill p-req">Monthly</span>':'<span class="pill p-draft">Custom</span>'}</td><td class="num tnum">${money(s.opening)}</td><td class="num tnum">${money(s.invoiced)}</td><td class="num tnum">${money(s.received)}</td><td class="num tnum" style="font-weight:700">${money(s.closing)}</td><td style="font-size:12px;color:var(--muted);white-space:nowrap">${s.emailed_at?fmtDate(s.emailed_at)+(s.emailed_to?`<div style="font-size:11px">${esc(s.emailed_to)}</div>`:''):'—'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.receipt,34)}<div>No statements yet. Click <b>Generate statement</b> for a custom one, or <b>Generate monthly now</b>.</div></div>`;
+  el.innerHTML=rows.length?`<div style="font-size:12px;color:var(--faint);margin-bottom:8px">${rows.length} statement${rows.length===1?'':'s'} · click one to view, download or email</div><div class="tablewrap"><table><thead><tr><th>Statement</th><th>Customer</th><th>Period</th><th>Type</th><th class="num">Opening</th><th class="num">Invoiced</th><th class="num">Received</th><th class="num">Closing</th><th>Emailed</th></tr></thead><tbody>${rows.map(s=>`<tr class="clickable" data-stm="${s.id}"><td class="mono">${esc(s.code||'—')}</td><td><b>${esc((custById(s.customer_id)||{}).name||'—')}</b></td><td style="white-space:nowrap;font-size:12.5px">${fmtDate(s.period_start)} – ${fmtDate(s.period_end)}</td><td>${s.kind==='monthly'?'<span class="pill p-req">Monthly</span>':'<span class="pill p-draft">Custom</span>'}</td><td class="num tnum">${money(s.opening)}</td><td class="num tnum">${money(s.invoiced)}</td><td class="num tnum">${money(s.received)}</td><td class="num tnum" style="font-weight:700">${money(s.closing)}</td><td style="font-size:12px;color:var(--muted);white-space:nowrap">${s.emailed_at?fmtDate(s.emailed_at)+(s.emailed_to?`<div style="font-size:11px">${esc(s.emailed_to)}</div>`:''):'—'}${s.revised_at?`<div><span class="pill p-req" title="An invoice, payment or credit note changed after this was emailed — the statement has been updated">Updated since emailed — send again</span></div>`:''}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.receipt,34)}<div>No statements yet. Click <b>Generate statement</b> for a custom one, or <b>Generate monthly now</b>.</div></div>`;
   el.querySelectorAll('[data-stm]').forEach(r=>r.onclick=()=>openStatement(r.dataset.stm));
 }
 function slStatementForm(custId){
