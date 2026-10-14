@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.14-1';
-const APP_VERSION_NOTE='Stock take: each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
+const APP_VERSION='2026.10.14-2';
+const APP_VERSION_NOTE='Stock take: items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -899,6 +899,11 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
   .st-taken{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+  .st-miss{margin:12px 0 4px;border:1.5px dashed var(--accent);border-radius:14px;background:var(--accent-soft);padding:10px 12px;text-align:left}
+  .st-miss-h{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--accent-ink);margin-bottom:6px}
+  .st-miss-r{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13.5px;font-weight:600;color:var(--ink)}
+  .st-miss-r:first-of-type{border-top:0}
+  .st-miss-r .btn{flex:none}
   /* ---- top bar: Back, Home, breadcrumb, Go-to search ---- */
   .tb-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--muted);flex:none;transition:background .14s,color .14s,border-color .14s}
   .tb-icon:hover{background:var(--surface-2);color:var(--ink)}
@@ -2289,6 +2294,7 @@ HELP.topics.push(
       'Your line appears under the item: “You · 12 · Front shop · BB 2 Nov 2026”. Other people’s counts show too, but you can’t change them.',
       'Counted the same item somewhere else or with another date? Tap <b>Add another count</b> — each spot/date is kept separately. <b>+1 box</b> adds a box to your latest count.',
       'Made a mistake? Tap <b>Edit</b> on your own line to change or remove it.',
+      'Can’t find an item? If it was added to the catalogue after the count started, search or scan it: it shows under <b>Not in this count yet</b>. Tap <b>Add to this count</b>, then count it as usual. New catalogue items are also added to open counts automatically.',
       'Everything saves straight away (“All saved · live”). With no signal, counts wait on the phone and send automatically.'],
       'Count all spots of the same item close together, especially while the shop is open.','',['panel:stocktake','scan'],ALL),
     T('hx1','Stock takes','A spot stock take was started for my centre','A Super Admin can start a <b>spot check</b> (code CC-…) for a few items, chosen by how fast they sell.',[
@@ -4418,7 +4424,7 @@ function renderStRows(st,editable,filter){
   else if(editable&&stFilt==='done')lines=lines.filter(l=>stIsDone(l.id));
   else if(editable&&stFilt==='mine')lines=lines.filter(stIsMine);
   else if(editable&&stFilt==='nodate')lines=lines.filter(l=>stNeedsDate(l.id));
-  if(!lines.length)return `<div class="empty" style="padding:24px">${svg(editable&&stFilt==='todo'&&!q?I.check:I.search,30)}<div>${editable&&stFilt==='todo'&&!q?'Everything has been counted.':editable&&stFilt==='mine'&&!q?'You haven’t counted anything yet.':editable&&stFilt==='nodate'&&!q?'Every counted item has a best-before (or “No date on pack”).':'No items match.'}</div></div>`;
+  if(!lines.length)return `<div class="empty" style="padding:24px">${svg(editable&&stFilt==='todo'&&!q?I.check:I.search,30)}<div>${editable&&stFilt==='todo'&&!q?'Everything has been counted.':editable&&stFilt==='mine'&&!q?'You haven’t counted anything yet.':editable&&stFilt==='nodate'&&!q?'Every counted item has a best-before (or “No date on pack”).':'No items match.'}</div></div>`+(editable&&q&&!stAmending&&st.status==='open'?stMissingHtml(st,filter):'');
   return lines.map(l=>{const it=item(l.item_id);
     if(editable&&STE&&!stAmending)return stCardNew(st,l,it);
     if(editable){const c=stCounts[l.id];const done=stIsDone(l.id);const hubS=isHub(st.location_id);const sp=stSplit[l.id]&&stSplit[l.id].length;const per=hasPpc(it)?ppc(it):0;
@@ -4446,12 +4452,13 @@ function renderStRows(st,editable,filter){
         <div class="stl-need">Best before needed — enter the date or tick “No date on pack”.</div></div>`;}
     const sys=l.system_qty,cc=l.counted_qty,vv=(cc==null)?null:cc-(sys||0);
     return `<div class="recv-row" style="grid-template-columns:1fr 56px 56px 52px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div><div class="cap">System</div><div class="tnum" style="font-weight:600">${sys==null?'—':sys}</div></div><div><div class="cap">Counted</div><div class="tnum" style="font-weight:600">${cc==null?'—':cc}</div></div><div><div class="cap">Var</div><div class="tnum" style="font-weight:700;color:${vv==null?'var(--faint)':(vv===0?'var(--good)':(vv>0?'var(--transit)':'var(--crit)'))}">${vv==null?'—':(vv>0?'+'+vv:vv)}</div></div></div>`;
-  }).join('');
+  }).join('')+(editable&&q&&!stAmending&&st.status==='open'&&!['todo','done','mine','nodate'].includes(stFilt)?stMissingHtml(st,filter):'');
 }
 function renderStList(st){const el=document.getElementById('stList');if(!el)return;const f=(document.getElementById('st-scan')||{}).value||'';el.innerHTML=renderStRows(st,stEditable,f)+(stEditable?`<datalist id="st-areas">${areasAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="st-aisles">${aislesAt(st.location_id).map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`:'');bindStInputs();updateStProgress();}
 function bindStInputs(root){
   const R=root||document.getElementById('stList');if(!R)return;
   const live=!stAmending&&!window._stLegacy;   // amending a finalised count keeps the old "save all" behaviour
+  R.querySelectorAll('[data-staddit]').forEach(b=>b.onclick=async()=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);if(!st)return;b.disabled=true;await stAddItemToCount(st,b.dataset.staddit,true);});
   R.querySelectorAll('[data-stadd]').forEach(b=>b.onclick=()=>{const st=S.stocktakes.find(x=>x.id===stCurrentId);const l=st&&(st.lines||[]).find(x=>x.id===b.dataset.stadd);if(!l)return;
     openScanEntry(st,l,{onDone:saved=>{if(saved){stCardRefresh(l.id);}}});});
   // boxes + loose packets: the count is saved in packets (boxes × per box + loose)
@@ -4516,6 +4523,35 @@ function bindStInputs(root){
     if(live)stQueue({line:lid,mode:'set',qty:stCounts[lid],area:stArea[lid]||'',aisle:stAisle[lid]||'',splits:rows.filter(r=>r.qty>0&&r.exp).map(r=>({qty:+r.qty,exp:r.exp})),noexp:rows.some(r=>r.exp)?false:undefined});else saveStProgress({id:stCurrentId},false);});});}
 /* ---- stock take scanning: one scan = one entry (quantity, location, best-before) ---- */
 let stScanLast={code:'',t:0}, stScanOpen=false;
+/* ---- an item that isn't in the count (e.g. added to the catalogue after the count started): add it (migration 77) ---- */
+function stItemInScope(st,it){if(stIsSpot(st))return ROLE==='super_admin'&&!HELPER;return !st.category||it.category===st.category;}
+function stMissingMatches(st,q){const ql=String(q||'').trim().toLowerCase();if(ql.length<2)return [];const have=new Set((st.lines||[]).map(l=>l.item_id));
+  return S.items.filter(i=>!have.has(i.id)&&(String(i.sku||'').toLowerCase()===ql||String(i.barcode||'').toLowerCase()===ql||(i.name||'').toLowerCase().includes(ql)||String(i.sku||'').toLowerCase().includes(ql))).slice(0,6);}
+function stMissingHtml(st,q){const m=stMissingMatches(st,q);if(!m.length)return '';
+  return `<div class="st-miss"><div class="st-miss-h">${svg(I.info,15)} Not in this count yet — found in the catalogue:</div>${m.map(it=>{const ok=stItemInScope(st,it);return `<div class="st-miss-r"><div><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}<div class="st-scope">${esc(it.category||'No category')}${it.active===false?' · inactive in catalogue':''}</div></div>${ok?`<button type="button" class="btn sm primary" data-staddit="${it.id}">${svg(I.plus,14)} Add to this count</button>`:`<span class="st-scope">${stIsSpot(st)?'Spot check — ask the Super Admin':'Different category — not part of this count'}</span>`}</div>`;}).join('')}</div>`;}
+async function stAddItemToCount(st,itemId,thenOpen){
+  const it=item(itemId);
+  const{data:lid,error}=await sb.rpc('st_add_item',{p_id:st.id,p_item:itemId});
+  if(error){toast(/st_add_item/.test(error.message||'')?'Ask the Super Admin to run database update 77 first':error.message,true);return null;}
+  const{data:row}=await sb.from('stocktake_lines').select('*').eq('id',lid).maybeSingle();
+  const l=row||{id:lid,stocktake_id:st.id,item_id:itemId,system_qty:0,counted_qty:null};
+  if(!(st.lines||[]).some(x=>x.id===l.id)){(st.lines=st.lines||[]).push(l);}
+  stCounts[l.id]='';stArea[l.id]=areaOf(st.location_id,itemId);stAisle[l.id]=aisleOf(st.location_id,itemId);stExp[l.id]='';stNoExp[l.id]=false;stSig[l.id]=stLineSig(l);
+  toast(`${it.name} added to ${st.code}`);
+  const sc=document.getElementById('st-scan');if(sc)sc.value='';
+  renderStList(st);
+  if(thenOpen)openScanEntry(st,l,{onDone:s=>{if(s)stCardRefresh(l.id);}});
+  return l;
+}
+function stOfferAdd(st,code,opts){
+  const cl=String(code||'').trim().toLowerCase();
+  const it=S.items.find(i=>String(i.sku||'').toLowerCase()===cl||String(i.barcode||'').toLowerCase()===cl);
+  if(!it){toast('Not in this count or the catalogue: '+code,true);if(navigator.vibrate)navigator.vibrate([40,60,40]);if(opts&&opts.onDone)opts.onDone(false);return;}
+  if(!stItemInScope(st,it)){toast(`${it.name} isn’t part of this count (${stIsSpot(st)?'spot check':'category '+(it.category||'none')})`,true);if(opts&&opts.onDone)opts.onDone(false);return;}
+  stackConfirm('Add this item to the count?',it.name,`<div><b>${esc(it.name)}</b> (${esc(it.sku||'')}) isn’t in ${esc(st.code)} yet — it was probably added to the catalogue after the count started. Add it and enter your count now?</div>`,
+    {okLabel:'Add and count',onOk:()=>stAddItemToCount(st,it.id,true)});
+  if(opts&&opts.onDone)opts.onDone(false);
+}
 function stFindLine(st,code){const cl=String(code||'').trim().toLowerCase();if(!cl)return null;return (st.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;})||null;}
 function stScanCode(st,code,opts){
   opts=opts||{};code=String(code||'').trim();if(!code)return false;
@@ -4523,7 +4559,7 @@ function stScanCode(st,code,opts){
   const now=Date.now();if(!opts.force&&code===stScanLast.code&&now-stScanLast.t<1500)return false;   // scanner fired the same barcode twice
   stScanLast={code,t:now};
   const line=stFindLine(st,code);
-  if(!line){toast('Not in this count: '+code,true);if(navigator.vibrate)navigator.vibrate([40,60,40]);if(opts.onDone)opts.onDone(false);return false;}
+  if(!line){if(stEditable&&!stAmending){const st0=S.stocktakes.find(x=>x.id===stCurrentId)||st;if(st0.status==='open'){stOfferAdd(st0,code,opts);return false;}}toast('Not in this count: '+code,true);if(navigator.vibrate)navigator.vibrate([40,60,40]);if(opts.onDone)opts.onDone(false);return false;}
   openScanEntry(st,line,opts);return true;
 }
 function openScanEntry(st,line,opts){
