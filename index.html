@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.15-3';
-const APP_VERSION_NOTE='Item history shows every Square stock change + opening balance and running balance · Stock take: best-before list offers dates already in the system / counted at another spot / at other centres · helpers can’t change a count once saved (centre staff can fix it) · items missing from an open count can be added (search / scan → Add to this count) · each counter picks Packets only / Boxes + packets / Boxes only (change any time) · only one open count per category per centre';
+const APP_VERSION='2026.10.16-1';
+const APP_VERSION_NOTE='Stronger camera scanning: sharper camera, autofocus + tap to focus, zoom, torch, reads small / distant barcodes, check-digit verified · beep on scan';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -52,10 +52,10 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
       const w=src.videoWidth||src.naturalWidth||src.width,hh=src.videoHeight||src.naturalHeight||src.height;if(!w||!hh)return [];
       // alternate between the full frame and a centre strip (where people aim) — keeps it quick on phones
       const crop=(this.n++%2)===1;const sx=crop?0:0,sy=crop?Math.round(hh*0.3):0,sw=w,sh=crop?Math.round(hh*0.4):hh;
-      const sc=Math.min(1,1000/Math.max(sw,sh));this.cv.width=Math.round(sw*sc);this.cv.height=Math.round(sh*sc);
+      const sc=Math.min(1,1400/Math.max(sw,sh));this.cv.width=Math.round(sw*sc);this.cv.height=Math.round(sh*sc);
       this.ctx.drawImage(src,sx,sy,sw,sh,0,0,this.cv.width,this.cv.height);
       try{const r=this.reader.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(this.cv))));
-        return r?[{rawValue:r.getText(),format:String(r.getBarcodeFormat())}]:[];}catch(e){return [];}   // nothing in view this frame
+        return r?[{rawValue:r.getText(),format:String(Z.BarcodeFormat[r.getBarcodeFormat()]||r.getBarcodeFormat()).toLowerCase()}]:[];}catch(e){return [];}   // nothing in view this frame
     }
   }
   if(!('BarcodeDetector' in window)){window.BarcodeDetector=ShimDetector;return;}
@@ -457,7 +457,29 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .se-mode{display:flex;gap:16px;margin-bottom:12px;font-size:13.5px;font-weight:600}.se-mode label{display:flex;gap:6px;align-items:center;cursor:pointer}
   .se-total{background:var(--accent-soft);color:var(--accent-ink);border-radius:10px;padding:9px 12px;font-size:13.5px;margin:2px 0 14px}
   .se-err{margin-top:12px;background:var(--crit-soft);color:var(--crit);border-radius:9px;padding:9px 12px;font-size:13px;font-weight:600}
-  .scan-msg{margin-top:10px;color:var(--muted);font-size:13px;font-weight:600}.scan-msg.ok{color:var(--good)}.scan-msg.bad{color:var(--crit)}
+  .scan-msg{margin-top:10px;color:var(--muted);font-size:13px;font-weight:600}
+  /* ---- strong camera scanner ---- */
+  .cam-wrap{position:relative;width:100%;aspect-ratio:3/4;max-height:62dvh;border-radius:14px;overflow:hidden;background:#000;cursor:crosshair;touch-action:manipulation}
+  .cam-wrap video{width:100%;height:100%;object-fit:cover;display:block;transform-origin:center;transition:transform .15s}
+  .cam-box{position:absolute;left:8%;right:8%;top:32%;bottom:32%;pointer-events:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.35);border-radius:10px}
+  .cam-box i{position:absolute;width:26px;height:26px;border:3px solid #2dd4bf}
+  .cam-box i:nth-child(1){left:-2px;top:-2px;border-right:0;border-bottom:0;border-radius:10px 0 0 0}
+  .cam-box i:nth-child(2){right:-2px;top:-2px;border-left:0;border-bottom:0;border-radius:0 10px 0 0}
+  .cam-box i:nth-child(3){left:-2px;bottom:-2px;border-right:0;border-top:0;border-radius:0 0 0 10px}
+  .cam-box i:nth-child(4){right:-2px;bottom:-2px;border-left:0;border-top:0;border-radius:0 0 10px 0}
+  .cam-laser{position:absolute;left:6%;right:6%;top:50%;height:2px;background:rgba(239,68,68,.9);box-shadow:0 0 8px rgba(239,68,68,.9);animation:camLaser 1.6s ease-in-out infinite}
+  @keyframes camLaser{0%,100%{transform:translateY(-34px)}50%{transform:translateY(34px)}}
+  .cam-ctl{position:absolute;left:8px;right:8px;bottom:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:12px;background:rgba(10,16,26,.62);backdrop-filter:blur(4px);color:#fff}
+  .cam-ctl:empty{display:none}
+  .cam-zr{flex:1;accent-color:#2dd4bf;height:28px;min-height:0!important}
+  .cam-zl{font-size:12px;font-weight:700;min-width:34px;text-align:right}
+  .cam-b{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:18px;font-weight:700;flex:none}
+  .cam-torch.on{background:#fbbf24;color:#111;border-color:#fbbf24}
+  .cam-tip{position:absolute;top:8px;left:0;right:0;text-align:center;font-size:11.5px;color:rgba(255,255,255,.8);pointer-events:none;text-shadow:0 1px 2px #000}
+  .cam-wrap.cam-focus::after{content:"";position:absolute;left:var(--fx);top:var(--fy);width:64px;height:64px;margin:-32px 0 0 -32px;border:2px solid #fbbf24;border-radius:10px;animation:camFocus .8s ease-out forwards;pointer-events:none}
+  @keyframes camFocus{0%{transform:scale(1.4);opacity:1}70%{transform:scale(1);opacity:1}100%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.cam-laser{animation:none}}
+ .scan-msg.ok{color:var(--good)}.scan-msg.bad{color:var(--crit)}
   /* ---- password sign-in ---- */
   .sq-note{display:flex;gap:11px;align-items:flex-start;background:var(--warn-soft);color:var(--ink);border:1.5px solid var(--warn);border-left:6px solid var(--warn);border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.45;margin:4px 0 14px;box-shadow:0 2px 10px rgba(178,106,0,.14)}.sq-note svg{flex:0 0 auto;margin-top:1px;color:var(--warn);width:20px;height:20px}.sq-note b{color:var(--ink)}
   .pw-wrap{position:relative}.pw-wrap input{padding-right:64px}
@@ -2269,7 +2291,8 @@ HELP.topics.push(
       'The bottom bar has <b>Home</b> and the main pages; <b>Menu</b> (or ☰ at top left) opens the full menu.',
       'The phone’s own <b>Back</b> button (or swipe back) returns to the previous screen. An open window stays open until you save or cancel it.',
       'In a stock take the top bar shrinks while you scroll and hides while you type a count, so the item stays in view.',
-      'Camera scanning works on iPhone and Android — allow camera access the first time.'],'','',['route:dashboard'],ALL),
+      'Camera scanning works on iPhone and Android — allow camera access the first time. Hold the barcode inside the green box; it beeps when read.',
+      'Barcode far away or small (high shelf)? Use the <b>zoom</b> slider instead of walking closer, tap the picture to <b>focus</b>, and use the <b>torch</b> button in dark aisles (on phones that have one).'],'','',['route:dashboard'],ALL),
     T('h16','Stock transfers','Receive a transfer when it arrives','Open the transfer and tap <b>Receive stock</b>. Record what actually arrived.',[
       'For each item enter the <b>boxes received</b>, <b>store area</b>, <b>aisle</b> and <b>best-before</b>. Use <b>+ Add location / best-before</b> to split a line.',
       'Best-before is required and <b>can’t be in the past</b>; check the date on the pack.',
@@ -3593,11 +3616,12 @@ function savePicks(t,announce){const picks=pkArray();if(!picks.length&&!announce
 async function openPkScanner(t){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
   window._scanReturn=()=>openPicking(t.id);
-  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan to pick</h2><div class="sub">Each scan adds 1</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center"><video id="scanVid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="scanMsg" style="margin-top:10px;color:var(--muted);font-size:13px">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
-  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let stream=null,running=true,last='',lastT=0;const det=new window.BarcodeDetector();
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();msg.textContent='Point the camera at a barcode';}catch(err){msg.textContent='Could not open camera: '+(err.message||err);}
-  window._stopScan=()=>{running=false;if(stream)stream.getTracks().forEach(x=>x.stop());};
-  const loop=async()=>{if(!running)return;try{const codes=await det.detect(vid);if(codes&&codes.length){const val=String(codes[0].rawValue||'').trim();const now=Date.now();if(val&&(val!==last||now-lastT>1400)){last=val;lastT=now;pkScan(t,val);if(navigator.vibrate)navigator.vibrate(60);msg.textContent='Scanned: '+val;}}}catch(e){}if(running)requestAnimationFrame(loop);};
+  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan to pick</h2><div class="sub">Each scan adds 1</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center">${camViewHtml('scanVid')}<div id="scanMsg" style="margin-top:10px;color:var(--muted);font-size:13px">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
+  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let cam=null,running=true,last='',lastT=0;
+  window._stopScan=()=>{running=false;if(cam)cam.stop();};
+  try{cam=await camStart(vid);msg.textContent='Point the camera at a barcode — zoom in for high shelves';}catch(err){msg.textContent='Could not open camera: '+(err.message||err);return;}
+  if(!running){cam.stop();return;}
+  const loop=async()=>{if(!running)return;try{const codes=await cam.read();if(codes&&codes.length){const val=codes[0].rawValue;const now=Date.now();if(val&&(val!==last||now-lastT>1400)){last=val;lastT=now;pkScan(t,val);camBeep();msg.textContent='Scanned: '+val;}}}catch(e){}if(running)setTimeout(()=>requestAnimationFrame(loop),40);};
   requestAnimationFrame(loop);
 }
 /* New transfer */
@@ -5128,32 +5152,108 @@ function stHelperForm(mode){
     toast(data.emailed?`${name} added — they’ve been emailed a link to set their password`:`${name} added, but the email didn’t send — use Resend email`,!data.emailed);
     openStHelpers();};
 }
+/* =====================================================================
+   STRONG CAMERA SCANNER (shared by stock take, picking and item finder)
+   * asks for the sharpest camera feed the phone has (up to 1080p) with
+     continuous autofocus; tap the picture to refocus
+   * zoom slider (the phone's own zoom when it has one, otherwise digital
+     zoom) and a torch button where the phone supports it
+   * reads the whole frame AND an enlarged copy of the scan box, so small or
+     distant barcodes still read
+   * checks the barcode's check digit, so a half-read barcode is never used
+   ===================================================================== */
+const CAM_FORMATS=['ean_13','ean_8','upc_a','upc_e','code_128','code_39','code_93','itf','qr_code','data_matrix'];
+function camViewHtml(id){return `<div class="cam-wrap" id="${id}-wrap"><video id="${id}" playsinline muted autoplay></video><div class="cam-box"><i></i><i></i><i></i><i></i><b class="cam-laser"></b></div><div class="cam-ctl" id="${id}-ctl"></div><div class="cam-tip">Tap the picture to focus</div></div>`;}
+function camGtinOk(v){ // EAN-8 / UPC-A / EAN-13 / GTIN-14 check digit
+  if(!/^\d+$/.test(v)||![8,12,13,14].includes(v.length))return true;
+  const d=v.split('').map(Number),chk=d.pop();let s=0;d.reverse().forEach((x,i)=>{s+=x*(i%2===0?3:1);});return (10-s%10)%10===chk;}
+let _camAC=null;
+function camBeep(){try{_camAC=_camAC||new (window.AudioContext||window.webkitAudioContext)();const o=_camAC.createOscillator(),g=_camAC.createGain();o.type='sine';o.frequency.value=1650;g.gain.setValueAtTime(0.0001,_camAC.currentTime);g.gain.exponentialRampToValueAtTime(0.25,_camAC.currentTime+0.01);g.gain.exponentialRampToValueAtTime(0.0001,_camAC.currentTime+0.12);o.connect(g);g.connect(_camAC.destination);o.start();o.stop(_camAC.currentTime+0.13);}catch(e){}if(navigator.vibrate)navigator.vibrate(60);}
+async function camStart(vid){
+  // detector limited to retail barcode types (faster, fewer false reads)
+  let det;try{const sup=await window.BarcodeDetector.getSupportedFormats();const f=CAM_FORMATS.filter(x=>(sup||[]).includes(x));det=f.length?new window.BarcodeDetector({formats:f}):new window.BarcodeDetector();}catch(e){det=new window.BarcodeDetector();}
+  const tries=[
+    {video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30}}},
+    {video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}},
+    {video:{facingMode:'environment'}},{video:true}];
+  let stream=null,err=null;
+  for(const c of tries){try{stream=await navigator.mediaDevices.getUserMedia(c);break;}catch(e){err=e;if(e&&(e.name==='NotAllowedError'||e.name==='SecurityError'))break;}}
+  if(!stream)throw err||new Error('No camera');
+  vid.srcObject=stream;vid.muted=true;vid.setAttribute('playsinline','');await vid.play();
+  const track=stream.getVideoTracks()[0];let caps={};try{caps=track.getCapabilities?track.getCapabilities():{};}catch(e){}
+  const fm=caps.focusMode||[];
+  try{if(fm.includes('continuous'))await track.applyConstraints({advanced:[{focusMode:'continuous'}]});}catch(e){}
+  const wrap=document.getElementById(vid.id+'-wrap'),ctl=document.getElementById(vid.id+'-ctl');
+  // ---- zoom: hardware if the phone offers it, otherwise digital ----
+  let dz=1;const hw=!!(caps.zoom&&caps.zoom.max>caps.zoom.min);
+  const zMin=hw?caps.zoom.min:1,zMax=hw?Math.min(caps.zoom.max,8):4,zStep=hw?(caps.zoom.step||0.1):0.1;
+  let zCur=hw?((track.getSettings&&track.getSettings().zoom)||zMin):1;
+  const setZoom=async z=>{z=Math.max(zMin,Math.min(zMax,+z||zMin));zCur=z;
+    if(hw){try{await track.applyConstraints({advanced:[{zoom:z}]});}catch(e){}}
+    else{dz=z;vid.style.transform=`scale(${z})`;}
+    const r=ctl&&ctl.querySelector('.cam-zr');if(r)r.value=z;const l=ctl&&ctl.querySelector('.cam-zl');if(l)l.textContent=(Math.round(z*10)/10)+'×';};
+  let torchOn=false;
+  if(ctl){
+    ctl.innerHTML=`<button type="button" class="cam-b" data-cz="-" aria-label="Zoom out">−</button><input type="range" class="cam-zr" min="${zMin}" max="${zMax}" step="${zStep}" value="${zCur}" aria-label="Zoom"><button type="button" class="cam-b" data-cz="+" aria-label="Zoom in">+</button><span class="cam-zl">${Math.round(zCur*10)/10}×</span>${caps.torch?`<button type="button" class="cam-b cam-torch" aria-label="Torch" title="Torch">${svg(I.bolt||I.sync,16)}</button>`:''}`;
+    ctl.querySelector('.cam-zr').oninput=e=>setZoom(e.target.value);
+    ctl.querySelectorAll('[data-cz]').forEach(b=>b.onclick=e=>{e.stopPropagation();setZoom(zCur+(b.dataset.cz==='+'?1:-1)*Math.max(0.5,(zMax-zMin)/8));});
+    const tb=ctl.querySelector('.cam-torch');if(tb)tb.onclick=async e=>{e.stopPropagation();torchOn=!torchOn;try{await track.applyConstraints({advanced:[{torch:torchOn}]});tb.classList.toggle('on',torchOn);}catch(_){toast('Torch not available on this phone',true);}};
+    ctl.addEventListener('click',e=>e.stopPropagation());
+  }
+  // ---- tap to focus ----
+  if(wrap)wrap.addEventListener('click',async e=>{if(e.target.closest('.cam-ctl'))return;
+    const r=wrap.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+    wrap.classList.remove('cam-focus');void wrap.offsetWidth;wrap.style.setProperty('--fx',(x*100)+'%');wrap.style.setProperty('--fy',(y*100)+'%');wrap.classList.add('cam-focus');
+    try{const adv={};if(caps.pointsOfInterest)adv.pointsOfInterest=[{x,y}];if(fm.includes('single-shot'))adv.focusMode='single-shot';else if(fm.includes('manual')&&!adv.pointsOfInterest)return;
+      if(Object.keys(adv).length)await track.applyConstraints({advanced:[adv]});
+      if(fm.includes('continuous'))setTimeout(()=>{track.applyConstraints({advanced:[{focusMode:'continuous'}]}).catch(()=>{});},1500);}catch(_){}});
+  // ---- reading: whole frame, and the scan box enlarged (small / distant barcodes) ----
+  const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});let n=0,pend='',pendN=0,pendT=0;
+  const grab=async(scaleUp)=>{const w=vid.videoWidth,h=vid.videoHeight;if(!w||!h)return [];
+    const bw=Math.round(w*0.86/dz),bh=Math.round(h*0.5/dz),sx=Math.round((w-bw)/2),sy=Math.round((h-bh)/2);
+    const s=Math.max(1,Math.min(scaleUp,1400/bw));cv.width=Math.round(bw*s);cv.height=Math.round(bh*s);
+    cx.imageSmoothingEnabled=true;cx.drawImage(vid,sx,sy,bw,bh,0,0,cv.width,cv.height);return det.detect(cv);};
+  const read=async()=>{
+    if(!vid.videoWidth)return [];n++;let codes=[];
+    try{const p=n%3;codes=(p===0&&dz<=1.01)?await det.detect(vid):await grab(p===1?1:2.2);}catch(e){codes=[];}
+    const RETAIL=['ean_13','ean_8','upc_a','upc_e'];
+    const c=(codes||[]).map(x=>({...x,rawValue:String(x.rawValue||'').trim(),format:String(x.format||'').toLowerCase()}))
+      .filter(x=>x.rawValue&&(!RETAIL.includes(x.format)||camGtinOk(x.rawValue)));     // a half-read EAN / UPC fails its check digit
+    if(!c.length)return [];
+    // retail barcodes with a valid check digit are trusted at once; anything else (your own labels, QR …) must read the same twice
+    const v=c[0].rawValue;if(RETAIL.includes(c[0].format))return [c[0]];
+    const now=Date.now();if(v===pend&&now-pendT<1200){pendN++;}else{pend=v;pendN=1;}pendT=now;return pendN>=2?[c[0]]:[];};
+  const stop=()=>{try{if(torchOn)track.applyConstraints({advanced:[{torch:false}]}).catch(()=>{});}catch(e){}stream.getTracks().forEach(t=>t.stop());};
+  if(!hw&&ctl)setZoom(1);
+  return {stream,track,read,stop,setZoom};
+}
 async function openScanner(st){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
   window._scanReturn=()=>openStock(st.id);
-  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan barcodes</h2><div class="sub">Scan one item, then enter its quantity, location and best-before</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center"><video id="scanVid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="scanMsg" class="scan-msg">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
-  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let stream=null,running=true;const det=new window.BarcodeDetector();
+  overlayEl().innerHTML=`<div class="scrim center show" id="scrim"><div class="modal" style="max-width:420px"><div class="panel-head"><div><h2>Scan barcodes</h2><div class="sub">Scan one item, then enter its quantity, location and best-before</div></div><button class="x" data-scan-close>${svg(I.x,20)}</button></div><div class="panel-body" style="text-align:center">${camViewHtml('scanVid')}<div id="scanMsg" class="scan-msg">Starting camera…</div></div><div class="panel-foot"><button class="btn primary" data-scan-close>Done</button></div></div></div>`;
+  const vid=document.getElementById('scanVid'),msg=document.getElementById('scanMsg');let cam=null,running=true;
   // state: 'ready' → accept a scan; 'entry' → entry panel open (camera paused); 'clear' → wait until no barcode is in view
   let state='ready',lastCode='',clearSince=0;
   const say=(t,kind)=>{msg.textContent=t;msg.className='scan-msg'+(kind?' '+kind:'');};
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();say('Point the camera at a barcode');}catch(err){say('Could not open camera: '+(err.message||err),'bad');}
-  window._stopScan=()=>{running=false;if(stream)stream.getTracks().forEach(t=>t.stop());};
+  window._stopScan=()=>{running=false;if(cam)cam.stop();};
+  try{cam=await camStart(vid);say('Point the camera at a barcode — zoom in for high shelves');}catch(err){say('Could not open camera: '+(err.message||err),'bad');return;}
+  if(!running){cam.stop();return;}
   const loop=async()=>{
     if(!running)return;
     if(state!=='entry'){
-      try{const codes=await det.detect(vid);const val=codes&&codes.length?String(codes[0].rawValue||'').trim():'';const now=Date.now();
+      try{const codes=await cam.read();const val=codes&&codes.length?codes[0].rawValue:'';const now=Date.now();
         if(state==='clear'){
           if(!val||val!==lastCode){ if(!clearSince)clearSince=now; if(now-clearSince>600||(val&&val!==lastCode)){state='ready';clearSince=0;lastCode='';say('Ready — scan the next item');} }
           else clearSince=0;
         }
         if(state==='ready'&&val){
-          state='entry';lastCode=val;if(navigator.vibrate)navigator.vibrate(60);say('Scanned: '+val);
+          state='entry';lastCode=val;camBeep();say('Scanned: '+val);
           const ok=stScanCode(st,val,{force:true,onDone:saved=>{state='clear';clearSince=0;say(saved?'Saved. Move the barcode away to scan the next item':'Move the barcode away to scan again','ok');}});
           if(!ok&&state==='entry'){state='clear';clearSince=0;}
         }
       }catch(e){}
     }
-    if(running)requestAnimationFrame(loop);
+    if(running)setTimeout(()=>requestAnimationFrame(loop),40);
   };
   requestAnimationFrame(loop);
 }
@@ -7715,21 +7815,21 @@ async function openCamFinder(title,onCode){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
   const host=document.createElement('div');host.className='scan-entry-host';
   host.innerHTML=`<div class="modal scan-entry" style="max-width:420px"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">Point the camera at the barcode</div></div><button class="x" id="cf-x" aria-label="Close camera">${svg(I.x,20)}</button></div>
-    <div class="panel-body" style="text-align:center"><video id="cf-vid" playsinline muted style="width:100%;border-radius:12px;background:#000;aspect-ratio:3/4;object-fit:cover"></video><div id="cf-msg" class="scan-msg">Starting camera…</div></div>
+    <div class="panel-body" style="text-align:center">${camViewHtml('cf-vid')}<div id="cf-msg" class="scan-msg">Starting camera…</div></div>
     <div class="panel-foot"><button class="btn" id="cf-close">Close</button></div></div>`;
   document.body.appendChild(host);
-  const vid=host.querySelector('#cf-vid'),msg=host.querySelector('#cf-msg');let stream=null,running=true,state='ready',last='',clearSince=0;
+  const vid=host.querySelector('#cf-vid'),msg=host.querySelector('#cf-msg');let cam=null,running=true,state='ready',last='',clearSince=0;
   const say=(t,k)=>{msg.textContent=t;msg.className='scan-msg'+(k?' '+k:'');};
-  const stop=()=>{running=false;if(stream)stream.getTracks().forEach(t=>t.stop());host.remove();};
+  const stop=()=>{running=false;if(cam)cam.stop();host.remove();};
   host.querySelector('#cf-x').onclick=stop;host.querySelector('#cf-close').onclick=stop;
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});vid.srcObject=stream;await vid.play();say('Point the camera at a barcode');}catch(err){say('Could not open camera: '+(err.message||err),'bad');}
-  const det=new window.BarcodeDetector();
+  try{cam=await camStart(vid);say('Point the camera at a barcode — zoom in for high shelves');}catch(err){say('Could not open camera: '+(err.message||err),'bad');return;}
+  if(!running){cam.stop();return;}
   const loop=async()=>{if(!running)return;
-    try{const codes=await det.detect(vid);const val=codes&&codes.length?String(codes[0].rawValue||'').trim():'';const now=Date.now();
+    try{const codes=await cam.read();const val=codes&&codes.length?codes[0].rawValue:'';const now=Date.now();
       if(state==='clear'){if(!val||val!==last){if(!clearSince)clearSince=now;if(now-clearSince>600||(val&&val!==last)){state='ready';clearSince=0;say('Ready — scan an item');}}else clearSince=0;}
-      if(state==='ready'&&val){state='clear';last=val;clearSince=0;if(onCode(val)){stop();return;}say('Not found: '+val+' — move it away and try another','bad');}
+      if(state==='ready'&&val){state='clear';last=val;clearSince=0;camBeep();if(onCode(val)){stop();return;}say('Not found: '+val+' — move it away and try another','bad');}
     }catch(e){}
-    if(running)requestAnimationFrame(loop);};
+    if(running)setTimeout(()=>requestAnimationFrame(loop),40);};
   requestAnimationFrame(loop);
 }
 /* ---- PO receipt by upload ---- */
