@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-2';
+const APP_VERSION='2026.10.16-3';
 const APP_VERSION_NOTE='Stronger camera scanning: sharper camera, autofocus + tap to focus, zoom, torch, reads small / distant barcodes, check-digit verified · beep on scan';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -920,6 +920,7 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .tile .val{font-size:clamp(19px,2.1vw,26px);overflow-wrap:anywhere;line-height:1.15}
   .pf-pick-pop{position:absolute;z-index:60;right:0;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:250px;max-height:60vh;overflow:auto;box-shadow:var(--shadow-lg)}
   .pf-pick-h{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;padding:0 2px 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
   .pf-pick-h .lnk{font-size:12.5px;border:0;background:none;padding:0;color:var(--accent-ink);font-weight:700;cursor:pointer}
@@ -1133,8 +1134,8 @@ Object.assign(I,{
   panel:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
 });
 const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="${w}" height="${w}">${p}</svg>`;
-const money=n=>'$'+(Number(n)||0).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
-const money0=n=>'$'+Math.round(Number(n)||0).toLocaleString('en-AU');
+const money=n=>{const v=Number(n)||0;return (v<0?'−$':'$')+Math.abs(v).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});};
+const money0=n=>{const v=Math.round(Number(n)||0);return (v<0?'−$':'$')+Math.abs(v).toLocaleString('en-AU');};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeUrl=u=>{u=String(u||'').trim();return /^https?:\/\//i.test(u)?u:'';};   /* only http(s) links — never javascript: */
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -4851,6 +4852,7 @@ async function openStHistory(st){
 /* Supabase returns at most 1000 rows per request, so read in pages. mk() must return a fresh, ordered query. */
 async function sbAll(mk){let out=[],from=0;for(let i=0;i<60;i++){const{data,error}=await mk().range(from,from+999);if(error)return{error,data:out};out=out.concat(data||[]);if(!data||data.length<1000)break;from+=1000;}return{data:out,error:null};}
 /* ---------- live progress report: how much each person has counted ---------- */
+const stUnits=(n,sign)=>(sign&&n>0?'+':'')+(n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('en-AU')+' pkts';
 async function stLoadReportData(stId,lineCols){
   const all=sbAll;
   const [a,b,c]=await Promise.all([
@@ -4911,9 +4913,9 @@ function stByItemView(el,rows,opts){
     const n={counted:cn.length,var:va.length,multi:rows.filter(r=>r.counters.length>1).length,todo:rows.length-cn.length,all:rows.length};
     el.innerHTML=(opts.showVar?`<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:12px">
         <div class="tile"><div class="lbl">Counted so far</div><div class="val tnum">${cn.length} <span style="font-size:14px;color:var(--muted)">of ${rows.length}</span></div><div class="meta">${va.length} with a variance</div></div>
-        <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${sum(sh,r=>r.v)}</div><div class="meta">${money(sum(sh,r=>r.val))} · ${sh.length} item(s)</div></div>
-        <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${sum(ov,r=>r.v)}</div><div class="meta">${money(sum(ov,r=>r.val))} · ${ov.length} item(s)</div></div>
-        <div class="tile"><div class="lbl">Net variance</div><div class="val tnum">${money(sum(va,r=>r.val))}</div><div class="meta">gross ${money(sum(va,r=>Math.abs(r.val)))}</div></div></div>
+        <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${money(sum(sh,r=>r.val))}</div><div class="meta">${stUnits(sum(sh,r=>r.v))} · ${sh.length} item(s)</div></div>
+        <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${money(sum(ov,r=>r.val))}</div><div class="meta">+${stUnits(sum(ov,r=>r.v))} · ${ov.length} item(s)</div></div>
+        <div class="tile"><div class="lbl">Net variance</div><div class="val tnum" style="color:${sum(va,r=>r.val)<0?'var(--crit)':'inherit'}">${money(sum(va,r=>r.val))}</div><div class="meta">= short ${money(sum(sh,r=>r.val))} + over ${money(sum(ov,r=>r.val))} · ${stUnits(sum(va,r=>r.v),true)} net</div></div></div>
       ${opts.live?`<div class="banner info" style="margin-bottom:10px">${svg(I.info,17)}<div>Live, before finalising. Variance = counted − system stock <b>when each item was counted</b> (or today’s stock for items counted before trading-safe counts were switched on). Counters don’t see this — the count stays blind.</div></div>`:''}`:'')+
       `<div class="st-chips" data-bif style="margin-bottom:8px">${Object.keys(lab).filter(k=>opts.showVar||k!=='var').map(k=>`<button type="button" class="st-chip${f===k?' on':''}" data-bf="${k}">${lab[k]}<b>${n[k]}</b></button>`).join('')}</div>
       <div class="toolbar" style="margin-bottom:8px"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input data-biq placeholder="Search item, code or counter" value="${esc(q)}" autocomplete="off"></div>${opts.showVar?`<select class="filter" data-bis><option value="val"${sort==='val'?' selected':''}>Biggest $ variance</option><option value="name"${sort==='name'?' selected':''}>Item name</option></select>`:''}<button class="btn sm" data-bicsv>Export CSV</button></div>
@@ -5019,9 +5021,9 @@ async function openStVarianceReport(st){
   box.id='svr-print-area';
   box.innerHTML=`<div class="print-only" style="margin-bottom:10px"><h2 style="margin:0">Stock take variance — ${esc(st.code)}</h2><div>${esc(loc(st.location_id).name)} · finalised ${fmtDT(st.completed_at)}</div></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:14px">
       <div class="tile"><div class="lbl">Items counted</div><div class="val tnum">${cnted.length} <span style="font-size:14px;color:var(--muted)">of ${R.length}</span></div><div class="meta">${vars.length} with a variance</div></div>
-      <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${sum(sh,r=>r.v)}</div><div class="meta">${money2(sum(sh,r=>r.val))} · ${sh.length} item(s)</div></div>
-      <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${sum(ov,r=>r.v)}</div><div class="meta">${money2(sum(ov,r=>r.val))} · ${ov.length} item(s)</div></div>
-      <div class="tile"><div class="lbl">Net variance</div><div class="val tnum">${money2(sum(vars,r=>r.val))}</div><div class="meta">gross ${money2(sum(vars,r=>Math.abs(r.val)))} · at unit cost</div></div></div>
+      <div class="tile"><div class="lbl">Short</div><div class="val tnum" style="color:var(--crit)">${money2(sum(sh,r=>r.val))}</div><div class="meta">${stUnits(sum(sh,r=>r.v))} · ${sh.length} item(s)</div></div>
+      <div class="tile"><div class="lbl">Over</div><div class="val tnum" style="color:var(--transit)">+${money2(sum(ov,r=>r.val))}</div><div class="meta">+${stUnits(sum(ov,r=>r.v))} · ${ov.length} item(s)</div></div>
+      <div class="tile"><div class="lbl">Net variance</div><div class="val tnum" style="color:${sum(vars,r=>r.val)<0?'var(--crit)':'inherit'}">${money2(sum(vars,r=>r.val))}</div><div class="meta">= short ${money2(sum(sh,r=>r.val))} + over ${money2(sum(ov,r=>r.val))} · ${stUnits(sum(vars,r=>r.v),true)} net · at unit cost</div></div></div>
     ${Object.keys(C).length?`<h3 style="font-size:14px;margin:4px 0 8px">By counter</h3><div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Counter</th><th class="num">Items counted</th><th class="num">With variance</th><th class="num">Variance rate</th><th class="num">Variance value (gross)</th></tr></thead><tbody>${Object.entries(C).sort((a,b)=>b[1].val-a[1].val).map(([n,c])=>`<tr class="clickable" data-svc="${esc(n)}"><td><b>${esc(n)}</b>${c.helper?' <span class="tag">helper</span>':''}</td><td class="num tnum">${c.n}</td><td class="num tnum">${c.v}</td><td class="num tnum">${c.n?Math.round(c.v/c.n*100):0}%</td><td class="num tnum">${money2(c.val)}</td></tr>`).join('')}</tbody></table></div>`:''}
     <div class="seg no-print" id="svr-view" style="display:flex;gap:6px;margin:6px 0 12px"><button type="button" class="btn sm primary" data-svv="ent">Variance with every entry</button><button type="button" class="btn sm" data-svv="item">By item &amp; counter</button></div>
     <div id="svr-entries">
