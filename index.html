@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-6';
-const APP_VERSION_NOTE='Stronger camera scanning: sharper camera, autofocus + tap to focus, zoom, torch, reads small / distant barcodes, check-digit verified · beep on scan';
+const APP_VERSION='2026.10.16-8';
+const APP_VERSION_NOTE='Stock takes over 1,000 items load in full · not-counted items are set to 0 on submit (with warning + list) · centres add up to 4 helpers without approval · cash: back-dating, $0, shared drawer, void any entry';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1451,7 +1451,7 @@ async function loadAll(){
       q(sb.from('sales_payment').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.allItems=items; S.items=items.filter(itemInMyRange); S.transfers=transfers; S.receipts=receipts;
-    S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit;
+    S.suppliers=suppliers; S.orders=orders; S.stocktakes=stocktakes;await stFillLines(S.stocktakes); S.profiles=profiles; S.audit=audit;
     S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
     if(!S.stock)S.stock={}; if(!S.vel)S.vel={};
     S.plocs=plocs||[];
@@ -1488,7 +1488,7 @@ async function loadOps(){
       q(sb.from('sales_payment').select('*')).catch(()=>[]),
     ]);
     S.locations=locations.map(l=>({...l})); S.transfers=transfers; S.receipts=receipts;// loadOps
-    S.orders=orders; S.stocktakes=stocktakes; S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
+    S.orders=orders; S.stocktakes=stocktakes;await stFillLines(S.stocktakes); S.profiles=profiles; S.audit=audit; S.plocs=plocs||[]; S.adjReq=adjreq||[]; S.invoices=invoices2||[]; S.consignments=consign||[]; S.storeAreas=sareas||[]; S.recvDrafts=recvd||[]; S.salesMonthly=smonth||[]; S.salesPayment=spay||[];
     return true;
   }catch(e){ toast('Could not refresh: '+(e.message||e),true); console.error(e); return false; }
 }
@@ -2787,7 +2787,7 @@ function openCashMove(L,kind){
     if(error){b.disabled=false;return toast(error.message,true);}
     closeOverlay();toast(t[0].replace('Record ','')+' saved: '+money(amt));if(kind==='opening')await cashBackfill(L,at);vCash(document.getElementById('view'));};
 }
-function cashVoid(id){stackConfirm('Void this cash entry?','It stays in the register, crossed out','<div class="field"><label>Reason</label><input id="cv-r"></div>',{okLabel:'Void',danger:true,onOk:()=>{const r=(document.getElementById('cv-r')||{}).value||'';if(!r.trim()){toast('Enter a reason',true);const f=document.getElementById('cv-r');if(f)f.focus();return false;}(async()=>{const{error}=await sb.rpc('void_cash_movement',{p_id:id,p_reason:r.trim()});if(error)return toast(error.message,true);toast('Entry voided');vCash(document.getElementById('view'));})();}});}
+function cashVoid(id){stackConfirm('Void this cash entry?','It stays in the register, crossed out','<div class="field"><label>Reason</label><input id="cv-r"></div><div class="hint">Any later counts are worked out again without this entry, so their expected cash and short / over may change.</div>',{okLabel:'Void',danger:true,onOk:()=>{const r=(document.getElementById('cv-r')||{}).value||'';if(!r.trim()){toast('Enter a reason',true);const f=document.getElementById('cv-r');if(f)f.focus();return false;}(async()=>{const{error}=await sb.rpc('void_cash_movement',{p_id:id,p_reason:r.trim()});if(error)return toast(error.message,true);toast('Entry voided — later counts re-checked');vCash(document.getElementById('view'));})();}});}
 async function cashAll(el){
   const r=cashRange();const cs=cashCentres();
   el.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Cash on hand across <b>all centres</b>: Square cash sales, banking, paid outs and the short / over from each centre's counts. Tap a centre to see its register.</div></div>
@@ -4418,12 +4418,18 @@ async function reviewStocktake(st){
   const body=`<div class="banner warn">${svg(I.alert,17)}<div><b>Review before submitting.</b> Once submitted, this updates ${esc(loc(st.location_id).name)}'s stock, pushes to Square, and can only be changed afterwards by a Super Admin.</div></div>
     <dl class="kv" style="margin-bottom:12px"><dt>Items counted</dt><dd>${doneN} of ${total}</dd><dt>Not counted</dt><dd>${uncounted}</dd><dt>Lines with variance</dt><dd>${varN}</dd><dt>Total variance</dt><dd class="tnum">${varUnits} units · ${money(varVal)}</dd>${movedN?`<dt>Sold / moved during the count</dt><dd>${movedN} item(s) — kept, not lost</dd>`:''}</dl>
     ${movedN?`<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Counted while trading.</b> Variance is measured against the system stock <b>at the moment each item was counted</b>. Sales and other movements since then are kept: final stock = today’s stock + variance.</div></div>`:''}
-    ${uncounted>0?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px"><input type="checkbox" id="st-zero" style="margin-top:3px"><span>Treat the ${uncounted} not-counted item(s) as <b>0</b> (full count). Leave unticked to keep their current stock.</span></label>`:''}
+    ${uncounted>0?(()=>{const nc=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v===''||v==null;});const ncStock=nc.reduce((a,l)=>a+Math.max(0,onHand(st.location_id,l.item_id)),0),ncVal=nc.reduce((a,l)=>a+Math.max(0,onHand(st.location_id,l.item_id))*(+item(l.item_id).unit_cost||0),0);const withStock=nc.filter(l=>onHand(st.location_id,l.item_id)>0);
+      return `<div class="banner crit" style="margin-bottom:10px">${svg(I.alert,17)}<div><b>${uncounted} item(s) were not counted and will be set to 0.</b> ${withStock.length?`${withStock.length} of them have stock on the system now (${ncStock.toLocaleString()} pkts · ${money(ncVal)}) — that stock will be written off.`:'None of them have stock on the system.'} If some were missed, go back and count them first.</div></div>
+      <details class="st-nc" style="margin-bottom:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px">See the ${uncounted} not-counted item(s)</summary><div class="tablewrap" style="max-height:40vh;overflow:auto;margin-top:8px"><table style="min-width:0"><thead><tr><th>Item</th><th>Code</th><th class="num">On the system</th><th class="num">Value</th></tr></thead><tbody>${nc.slice().sort((a,b)=>onHand(st.location_id,b.item_id)-onHand(st.location_id,a.item_id)).map(l=>{const it=item(l.item_id),oh=onHand(st.location_id,l.item_id);return `<tr><td>${esc(it.name)}</td><td class="mono" style="font-size:12px">${esc(it.sku||'')}</td><td class="num tnum"${oh>0?' style="font-weight:700;color:var(--crit)"':''}>${oh}</td><td class="num tnum">${oh>0?money(oh*(+it.unit_cost||0)):'—'}</td></tr>`;}).join('')}</tbody></table></div></details>`;})():''}
     ${rows.length?`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">System at count</th><th class="num">Counted</th><th class="num">Variance</th><th class="num">Sold / moved since</th><th class="num">Final stock</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="banner info">${svg(I.check,17)}<div>No variances — everything matches.</div></div>`}`;
-  modal('Submit '+st.code,'Final review — cannot be undone',body,`<button class="btn" data-close>Back</button><button class="btn primary" id="st-confirm">Submit count</button>`);
-  document.getElementById('st-confirm').onclick=async()=>{
-    let counts=stCountsArray();const zero=document.getElementById('st-zero');
-    if(zero&&zero.checked){(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});}
+  modal('Submit '+st.code,'Final review — cannot be undone',body,`<button class="btn" id="st-back">Back to counting</button>${uncounted>0?`<button class="btn" id="st-shownc">Count the missing items</button>`:''}<button class="btn primary" id="st-confirm">Submit count</button>`);
+  // back to the count screen (optionally showing only what isn't counted yet)
+  const backTo=f=>{closeOverlay();setTimeout(()=>{openStock(st.id);if(f){stFilt=f;const s2=S.stocktakes.find(x=>x.id===st.id);if(s2)renderStList(s2);}},60);};
+  document.getElementById('st-back').onclick=()=>backTo(null);
+  const snc=document.getElementById('st-shownc');if(snc)snc.onclick=()=>backTo('todo');
+  const submitNow=async()=>{
+    // every item not counted counts as 0 (a full count)
+    let counts=stCountsArray();(st.lines||[]).forEach(l=>{const v=stCounts[l.id];if(v===''||v==null)counts.push({line:l.id,counted:0});});
     if(isHub(st.location_id)){const miss=counts.filter(c=>{const cnt=+c.counted;return cnt>0&&(!(stArea[c.line]||'').trim()||!(stAisle[c.line]||'').trim());});if(miss.length)return toast('Central Warehouse: enter a storage area and aisle # for every counted item ('+miss.length+' missing)',true);}
     persistStLocations(st);
     {const{error:fe}=await sb.rpc('finalize_stocktake',{p_id:st.id,p_counts:counts});
@@ -4440,6 +4446,10 @@ async function reviewStocktake(st){
     try{await sb.rpc('st_log_finalise',{p_id:st.id});}catch(e){}
     try{localStorage.removeItem(stQKey(st.id));}catch(e){}stPending=[];clearTimeout(stPollT);
     renderView();
+  };
+  document.getElementById('st-confirm').onclick=()=>{
+    if(uncounted>0)return stackConfirm('Set '+uncounted+' not-counted item(s) to 0?',st.code+' · '+loc(st.location_id).name,`<div>Every item that wasn’t counted will be recorded as <b>0</b> and its stock in the app and in Square set to 0.</div><div style="margin-top:8px">Missed some? Choose <b>Go back</b>, then <b>Count the missing items</b>.</div>`,{okLabel:'Submit — set them to 0',cancelLabel:'Go back',danger:true,onOk:()=>{submitNow();}});
+    submitNow();
   };
 }
 /* Amend a submitted count (Super Admin). Migration 57 applies the DIFFERENCE (new − old count) on top of
@@ -4866,6 +4876,11 @@ async function openStHistory(st){
   bind();document.getElementById('sth-back').onclick=()=>{if(S.stocktakes.find(x=>x.id===st.id))openStock(st.id);else if(st._archived)openUndoDeletedStocktakes();else closeOverlay();};
 }
 /* Supabase returns at most 1000 rows per request, so read in pages. mk() must return a fresh, ordered query. */
+/* A stock take's items come embedded with the list, but the server returns at most 1,000 per stock take.
+   Counts with more items (e.g. 1,169) are loaded in full here — otherwise items past the first 1,000
+   were missing from the count screen and the submit review. */
+async function stFillLines(list){const big=(list||[]).filter(s=>(s.lines||[]).length>=1000);
+  await Promise.all(big.map(async st=>{const{data,error}=await sbAll(()=>sb.from('stocktake_lines').select('*').eq('stocktake_id',st.id).order('id'));if(!error&&data&&data.length>=(st.lines||[]).length)st.lines=data;}));}
 async function sbAll(mk){let out=[],from=0;for(let i=0;i<60;i++){const{data,error}=await mk().range(from,from+999);if(error)return{error,data:out};out=out.concat(data||[]);if(!data||data.length<1000)break;from+=1000;}return{data:out,error:null};}
 /* ---------- live progress report: how much each person has counted ---------- */
 const stUnits=(n,sign)=>(sign&&n>0?'+':'')+(n<0?'−':'')+Math.abs(Math.round(n)).toLocaleString('en-AU')+' pkts';
@@ -5105,19 +5120,18 @@ async function openStDateFlags(stId){
 }
 /* ---------- stock-take helpers (people not in Square who only count) ---------- */
 async function openStHelpers(){
-  const isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE),isAdm=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE);
-  modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-req"></div><div id="sh-body">${isAdm?`<div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div>`:''}</div>`,
-    `<button class="btn" data-close>Close</button>${isAppr?`<button class="btn" id="sh-reqbtn">${svg(I.plus,16)} Request a helper</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add helper</button>`:`<button class="btn primary" id="sh-reqbtn">${svg(I.plus,16)} Request a helper</button>`}`,'full form');
-  const ba=document.getElementById('sh-add');if(ba)ba.onclick=()=>stHelperForm('add');
-  document.getElementById('sh-reqbtn').onclick=()=>stHelperForm('request');
+  const isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE),isAdm=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE),isStaff=!HELPER&&!!ROLE;
+  modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-req"></div><div id="sh-body">${isStaff?`<div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div>`:''}</div>`,
+    `<button class="btn" data-close>Close</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add a helper</button>`,'full form');
+  document.getElementById('sh-add').onclick=()=>stHelperForm(isAppr?'add':'centre');
   stHelperRequests(isAppr);
-  if(!isAdm)return;
+  if(!isStaff)return;
   const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'list'}});
   const box=document.getElementById('sh-body');if(!box)return;
   if(error||(data&&data.error)){box.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${esc((data&&data.error)||await fnErr(error))}. Make sure <b>54_stocktake_team.sql</b> is run and the <b>stocktake-helpers</b> function is deployed.</div></div>`;return;}
   const hs=data.helpers||[];const now=Date.now();
-  box.innerHTML=`<h3 style="font-size:14px;margin:14px 0 8px">Helpers</h3><div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Helpers sign in with their own email and password (they get an email to set it). They see <b>only the open stock takes</b> of their centre — no stock figures, prices, transfers or reports — and can’t start, finalise or delete a count. Access ends automatically on the last day you choose. Everything they count is in each stock take’s <b>Count history</b>.</div></div>
-    ${hs.length?`<div class="tablewrap"><table><thead><tr><th>Helper</th><th>Centre</th><th>Access until</th><th>Status</th><th>Last count</th><th></th></tr></thead><tbody>${hs.map(h=>{const exp=h.expires_at?new Date(h.expires_at):null;const live=h.active!==false&&(!exp||exp>now);return `<tr><td><b>${esc(h.full_name||'')}</b><div style="font-size:12px;color:var(--muted)">${esc(h.email||'')}${h.helper_note?' · '+esc(h.helper_note):''}</div></td><td>${esc(loc(h.home_centre).name)}</td><td style="white-space:nowrap">${exp?fmtDate(exp):'—'}</td><td>${live?'<span class="pill p-done">Active</span>':`<span class="pill p-cancel">${h.active===false?'Removed':'Ended'}</span>`}</td><td style="font-size:12.5px;white-space:nowrap">${h.last_count?fmtDT(h.last_count)+` · ${h.entries} entr${h.entries===1?'y':'ies'}`:'—'}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-shext="${h.id}">${live?'Extend':'Restore'}</button> ${live?`<button class="btn sm" data-shmail="${h.id}">Resend email</button> <button class="btn sm" data-shrm="${h.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button>`:''}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users||I.stocktake,30)}<div>No helpers yet.${isAppr?' Approve a request above or click <b>Add helper</b>.':' Use <b>Request a helper</b> — a National or Super Admin approves it.'}</div></div>`}`;
+  box.innerHTML=`<h3 style="font-size:14px;margin:14px 0 8px">Helpers</h3>${isAppr?'':`<div class="banner ${hs.filter(h=>h.active!==false&&(!h.expires_at||new Date(h.expires_at)>now)).length>=4?'warn':'info'}" style="margin-bottom:10px">${svg(I.users||I.info,17)}<div>Your centre can add <b>up to 4 active helpers</b> straight away. A 5th or more goes to a National or Super Admin for approval.</div></div>`}<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Helpers sign in with their own email and password (they get an email to set it). They see <b>only the open stock takes</b> of their centre — no stock figures, prices, transfers or reports — and can’t start, finalise or delete a count. Access ends automatically on the last day you choose. Everything they count is in each stock take’s <b>Count history</b>.</div></div>
+    ${hs.length?`<div class="tablewrap"><table><thead><tr><th>Helper</th><th>Centre</th><th>Access until</th><th>Status</th><th>Last count</th><th></th></tr></thead><tbody>${hs.map(h=>{const exp=h.expires_at?new Date(h.expires_at):null;const live=h.active!==false&&(!exp||exp>now);return `<tr><td><b>${esc(h.full_name||'')}</b><div style="font-size:12px;color:var(--muted)">${esc(h.email||'')}${h.helper_note?' · '+esc(h.helper_note):''}</div></td><td>${esc(loc(h.home_centre).name)}</td><td style="white-space:nowrap">${exp?fmtDate(exp):'—'}</td><td>${live?'<span class="pill p-done">Active</span>':`<span class="pill p-cancel">${h.active===false?'Removed':'Ended'}</span>`}</td><td style="font-size:12.5px;white-space:nowrap">${h.last_count?fmtDT(h.last_count)+` · ${h.entries} entr${h.entries===1?'y':'ies'}`:'—'}</td><td style="white-space:nowrap;text-align:right">${isAdm?`<button class="btn sm" data-shext="${h.id}">${live?'Extend':'Restore'}</button> ${live?`<button class="btn sm" data-shmail="${h.id}">Resend email</button> <button class="btn sm" data-shrm="${h.id}" style="color:var(--crit);border-color:var(--crit)">Remove</button>`:''}`:''}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users||I.stocktake,30)}<div>No helpers yet.${isAppr?' Approve a request above or click <b>Add a helper</b>.':' Click <b>Add a helper</b> — up to 4 are added straight away.'}</div></div>`}`;
   const app_url=location.origin+location.pathname.replace(/[^/]*$/,'');
   box.querySelectorAll('[data-shext]').forEach(b=>b.onclick=()=>{const h=hs.find(x=>x.id===b.dataset.shext);const d=new Date(Date.now()+7*864e5);let until=slYmdSafe(d);
     stackConfirm('Access until',h.full_name,`<div class="field"><label>Last day ${esc(h.full_name)} can count</label><input type="date" id="shx-d" value="${until}" min="${slYmdSafe(new Date())}"></div>`,{okLabel:'Save',onOk:async()=>{const{data:r,error:e}=await sb.functions.invoke('stocktake-helpers',{body:{action:'extend',id:h.id,until}});if(e||(r&&r.error))return toast((r&&r.error)||await fnErr(e),true);toast('Access updated');openStHelpers();}});
@@ -5154,12 +5168,12 @@ async function stHelperRequests(isAppr){
   box.querySelectorAll('[data-hrcx]').forEach(b=>b.onclick=async()=>{if(!window.confirm('Cancel this request?'))return;const{error:e}=await sb.rpc('cancel_helper_request',{p_id:b.dataset.hrcx});if(e)return toast(e.message,true);toast('Request cancelled');openStHelpers();});
 }
 function stHelperForm(mode){
-  const isReq=mode!=='add';
+  const isReq=mode==='request',isCentre=mode==='centre';
   const cs=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.filter(l=>l.active!==false)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const d7=slYmdSafe(new Date(Date.now()+7*864e5)),max=slYmdSafe(new Date(Date.now()+90*864e5));
-  modal(isReq?'Request a stock-take helper':'Add stock-take helper',isReq?'A National or Super Admin approves it, then the helper is emailed':'For people who are not in the Square team',`<div class="grid2"><div class="field"><label>Full name *</label><input id="shf-name" autocomplete="off"></div><div class="field"><label>Email *</label><input id="shf-email" type="email" autocomplete="off" placeholder="they’ll get a link to set a password"></div></div>
+  modal(isReq?'Request a stock-take helper':'Add a stock-take helper',isReq?'A National or Super Admin approves it, then the helper is emailed':isCentre?'Up to 4 active helpers per centre are added straight away; more need approval':'For people who are not in the Square team',`<div class="grid2"><div class="field"><label>Full name *</label><input id="shf-name" autocomplete="off"></div><div class="field"><label>Email *</label><input id="shf-email" type="email" autocomplete="off" placeholder="they’ll get a link to set a password"></div></div>
     <div class="grid2"><div class="field"><label>Centre *</label><select id="shf-loc">${cs.map(l=>`<option value="${l.id}"${l.id===HOME?' selected':''}>${esc(l.name)}</option>`).join('')}</select></div><div class="field"><label>Can count until (last day) *</label><input id="shf-until" type="date" value="${d7}" min="${slYmdSafe(new Date())}" max="${max}"></div></div>
-    <div class="field"><label>${isReq?'Why is this helper needed? *':'Note'}</label><input id="shf-note" placeholder="e.g. volunteer for the October stock take"></div>
+    <div class="field"><label>${isReq?'Why is this helper needed? *':isCentre?'Why is this helper needed? (needed if approval is required)':'Note'}</label><input id="shf-note" placeholder="e.g. volunteer for the October stock take"></div>
     <div class="banner info">${svg(I.lock,17)}<div>${isReq?'Once approved, they get an email to set a password. ':''}They can only count the open stock takes at this centre — no stock figures, prices or reports. Access ends automatically at the end of the last day (Sydney time).</div></div>`,
     `<button class="btn" id="shf-back">Back</button><button class="btn primary" id="shf-go">${svg(I.check,16)} ${isReq?'Send request':'Add helper &amp; send email'}</button>`);
   document.getElementById('shf-back').onclick=openStHelpers;
@@ -5174,6 +5188,13 @@ function stHelperForm(mode){
       toast('Request sent — a National or Super Admin will approve it');openStHelpers();return;}
     const{data,error}=await sb.functions.invoke('stocktake-helpers',{body:{action:'add',name,email,location_id,until,note}});b.disabled=false;
     if(error||(data&&data.error))return toast((data&&data.error)||await fnErr(error),true);
+    if(data&&data.needs_approval){   // the centre already has 4 active helpers: send it for approval instead
+      let why=note;
+      stackConfirm('Approval needed',loc(location_id).name+' already has '+data.active+' active helpers',`<div style="margin-bottom:10px">Up to <b>${data.limit}</b> helpers can be added straight away. Send <b>${esc(name)}</b> to a National or Super Admin for approval?</div><div class="field" style="margin:0"><label>Why is this helper needed? *</label><input id="shf-why" value="${esc(note)}"></div>`,
+        {okLabel:'Send for approval',onOk:()=>{why=((document.getElementById('shf-why')||{}).value||'').trim();if(!why){toast('Say briefly why the helper is needed',true);return false;}
+          (async()=>{const{error:e2}=await sb.rpc('request_helper',{p_loc:location_id,p_name:name,p_email:email,p_until:until,p_note:why});
+            if(e2)return toast(e2.message,true);toast('Request sent — a National or Super Admin will approve it');openStHelpers();})();}});
+      return;}
     toast(data.emailed?`${name} added — they’ve been emailed a link to set their password`:`${name} added, but the email didn’t send — use Resend email`,!data.emailed);
     openStHelpers();};
 }
