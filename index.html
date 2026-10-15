@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-8';
-const APP_VERSION_NOTE='Stock takes over 1,000 items load in full · not-counted items are set to 0 on submit (with warning + list) · centres add up to 4 helpers without approval · cash: back-dating, $0, shared drawer, void any entry';
+const APP_VERSION='2026.10.16-9';
+const APP_VERSION_NOTE='Shared stock: SYDKD, Shayona Cafe, Shayona and Food Van sell from Sydney stock · stock takes over 1,000 items load in full · not-counted items set to 0 on submit · up to 4 helpers without approval · cash: back-dating, $0, shared drawer';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1351,6 +1351,15 @@ const pname=id=>{const p=S.profiles.find(x=>x.id===id);return p?(p.full_name||p.
 function reservedAt(l,it){const tr=S.transfers.filter(t=>t.from_location===l&&(t.status==='requested'||t.status==='approved')).reduce((s,t)=>{const ln=(t.lines||[]).find(x=>x.item_id===it);return s+(ln?Math.max(0,ln.qty_requested-ln.qty_dispatched):0);},0);const adj=(S.adjReq||[]).filter(r=>r.location_id===l&&r.item_id===it&&r.status==='pending').reduce((s,r)=>s+(r.qty||0),0);return tr+adj;}
 const availAt=(l,it)=>onHand(l,it)-reservedAt(l,it);
 /* demand-based recommendation: hold 2 months + cover the gap until next receipt (~20th next month) */
+/* shared stock (migration 86): locations that sell from another location's stock */
+const poolFeeders=m=>S.locations.filter(l=>l.stock_from_loc===m);
+const isPoolSeller=id=>!!(S.locations.find(l=>l.id===id)||{}).stock_from_loc;
+/* add the selling locations' sales to their main location, so reorder / stock status / velocity for Sydney
+   reflect everything sold from Sydney's stock (run each time sales data is loaded) */
+function poolMerge(){const fe=(S.locations||[]).filter(l=>l.stock_from_loc);if(!fe.length)return;const fm={};fe.forEach(f=>fm[f.id]=f.stock_from_loc);
+  if(S.vel&&!S.vel.__pooled){const add={};Object.entries(S.vel).forEach(([k,v])=>{const i=k.indexOf('__');const lc=k.slice(0,i),it=k.slice(i+2);if(fm[lc]){const mk=fm[lc]+'__'+it;add[mk]=(add[mk]||0)+(+v||0);}});Object.entries(add).forEach(([k,v])=>S.vel[k]=(S.vel[k]||0)+v);Object.defineProperty(S.vel,'__pooled',{value:true,enumerable:false});}
+  if(S.win&&!S.win.__pooled){const F=['u60','u180','u365','u_last90','u_prev90'];const add={};Object.entries(S.win).forEach(([k,w])=>{const i=k.indexOf('__');const lc=k.slice(0,i),it=k.slice(i+2);if(!fm[lc])return;const mk=fm[lc]+'__'+it;const a=add[mk]=add[mk]||{};F.forEach(f=>a[f]=(a[f]||0)+(+w[f]||0));if(w.last_sale_date&&(!a.last_sale_date||w.last_sale_date>a.last_sale_date))a.last_sale_date=w.last_sale_date;});
+    Object.entries(add).forEach(([k,a])=>{const b=S.win[k]?{...S.win[k]}:{location_id:k.split('__')[0],item_id:k.split('__')[1],u60:0,u180:0,u365:0,u_last90:0,u_prev90:0,last_sale_date:null};F.forEach(f=>b[f]=(+b[f]||0)+a[f]);if(a.last_sale_date&&(!b.last_sale_date||a.last_sale_date>b.last_sale_date))b.last_sale_date=a.last_sale_date;S.win[k]=b;});Object.defineProperty(S.win,'__pooled',{value:true,enumerable:false});}}
 const monthlyAvg=(l,it)=>(S.vel&&S.vel[l+'__'+it])||0;
 function leadMonths(){const now=new Date();const arr=new Date(now.getFullYear(),now.getMonth()+1,20);return Math.max(0,(arr-now)/864e5)/30;}
 function recTarget(l,it){const mv=monthlyAvg(l,it);return mv>0?Math.ceil(mv*(2+leadMonths())):0;}
@@ -1412,7 +1421,7 @@ async function loadHeavyBg(){
   try{
     // Load PER CENTRE, filtered by the indexed location_id — never whole-table OFFSET paging,
     // which times out (500) on a 34k-row table. Mirrors the fast targeted refresh.
-    const locs=(scoped()&&MYLOCS.length)?MYLOCS.slice():S.locations.map(l=>l.id);
+    const locs=(scoped()&&MYLOCS.length)?[...new Set([...MYLOCS,...S.locations.filter(l=>l.stock_from_loc&&MYLOCS.includes(l.stock_from_loc)).map(l=>l.id)])]:S.locations.map(l=>l.id);
     const st={},bn={},vl={};const size=1000,CONC=4;
     const pageAllFor=async(table,sel,locId,onRow)=>{let from=0;for(;;){const{data,error}=await sb.from(table).select(sel).eq('location_id',locId).range(from,from+size-1);if(error){console.error(table+' '+locId+':',error.message||error);break;}(data||[]).forEach(onRow);if(!data||data.length<size)break;from+=size;}};
     const loadOne=async(locId)=>{
@@ -1420,7 +1429,7 @@ async function loadHeavyBg(){
       await pageAllFor('velocity','location_id,item_id,monthly_avg',locId,r=>{vl[r.location_id+'__'+r.item_id]=Number(r.monthly_avg)||0;});
     };
     for(let i=0;i<locs.length;i+=CONC){await Promise.all(locs.slice(i,i+CONC).map(loadOne));}
-    S.stock=st;S.bin=bn;S.vel=vl;
+    S.stock=st;S.bin=bn;S.vel=vl;poolMerge();
     recomputeItemTotals();
     _heavyLoading=false;
     const app=document.getElementById('app');if(app&&!app.hidden){renderSq();renderView();}
@@ -1725,7 +1734,7 @@ async function loadStockStatusData(){try{
   const [cfgR,ovR,win,tlR]=await Promise.all([cfgP,ovP,ssFetchAll('item_sales_windows'),tlP]);
   if(cfgR&&cfgR.data)S.rptCfg=cfgR.data;
   S.itemOv={};((ovR&&ovR.data)||[]).forEach(o=>S.itemOv[o.item_id]=o);
-  S.win={};(win||[]).forEach(w=>{S.win[w.location_id+'__'+w.item_id]=w;});
+  S.win={};(win||[]).forEach(w=>{S.win[w.location_id+'__'+w.item_id]=w;});poolMerge();
   S.tlog=((tlR&&tlR.data)||[]);
 }catch(e){console.error('loadStockStatusData',e);}}
 function ssDaysBetween(a,b){return Math.floor((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5);}
@@ -2284,6 +2293,12 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hpool1','Checking stock and sales','Locations that sell another location’s stock','SYDKD, Shayona Cafe, Shayona and Shayona Food Van sell from <b>Sydney’s</b> stock.',[
+      'Every Square sale at those locations is taken off <b>Sydney’s</b> stock (in the app and in Square) within about 30 minutes. The selling location is put back, so its own stock doesn’t move.',
+      'Each item’s History shows <b>Sold at another location</b> at Sydney (e.g. “Sold at SYDKD (from Sydney stock)”).',
+      'Count, transfer and reorder for <b>Sydney</b> only — reorder and stock status for Sydney include what the other four sold.',
+      'Sales & Performance still reports each location’s own sales.',
+      'Super Admin sets this per location: Locations → Areas / settings → <b>Sells from the stock at</b>. It only applies to sales from the moment it is switched on.'],'','',['route:catalog','route:stockstatus'],ALL),
     T('hih1','Checking stock and sales','Item history: where did the stock come from?','Open an item and look at <b>History</b>. It lists every movement — the app’s and Square’s.',[
       'App movements: transfers, purchases / receipts, stock takes, damage / expiry, reversals.',
       'Square changes (added within 30 minutes): <b>Sold</b>, <b>Return</b>, <b>Added in Square</b> (e.g. stock received in Square), <b>Removed in Square</b>, <b>Waste in Square</b>, <b>Held for / Released from a Square order</b>, <b>Square transfer</b> and <b>Counted in Square</b> (shows “= 222” and the change it made). The note shows where it was done (Square POS, Dashboard …) and the reason.',
@@ -3677,7 +3692,7 @@ function newTransfer(presetItem){
   dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=tfFromLocs().map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
-  const destLocs=scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false);
+  const destLocs=(scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false)).filter(l=>!l.stock_from_loc);   // selling-only locations use their main location's stock
   if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Where the stock comes from and where it goes</span></div><div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div></section>
@@ -4075,7 +4090,7 @@ function stScopeConflict(locId,cat){const c=cat||null;
   return S.stocktakes.find(s=>s.location_id===locId&&s.status==='open'&&!stIsSpot(s)&&('category' in s)&&(s.category==null||c==null||String(s.category).toLowerCase()===String(c).toLowerCase()));}
 function newStock(){
   const cats=['(all categories)',...[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category).filter(Boolean))].sort()];
-  const lo=S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  const lo=S.locations.filter(l=>l.active!==false&&!l.stock_from_loc).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat"></select></div></div><div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
   restrictLocSelect('st-loc');
   const ls=document.getElementById('st-loc'),cs=document.getElementById('st-cat'),go=document.getElementById('go'),info=document.getElementById('st-open-info');
@@ -5840,7 +5855,8 @@ const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfe
   sq_added:{l:'Added in Square',c:'var(--good)'},sq_removed:{l:'Removed in Square',c:'var(--crit)'},sq_waste:{l:'Waste in Square',c:'var(--crit)'},
   sq_reserved:{l:'Held for a Square order',c:'var(--warn)'},sq_released:{l:'Released from a Square order',c:'var(--good)'},
   sq_transfer:{l:'Square transfer',c:'var(--transit)'},sq_count:{l:'Counted in Square',c:'var(--transit)'},sq_other:{l:'Square change',c:'var(--muted)'},
-  opening:{l:'Opening balance',c:'var(--muted)'}};
+  opening:{l:'Opening balance',c:'var(--muted)'},
+  pooled_sale:{l:'Sold at another location',c:'var(--transit)'},pooled_restock:{l:'Sale taken from main stock',c:'var(--muted)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null,ihRange='12m';
 const canAdjust=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -5897,7 +5913,7 @@ async function renderItemHistory(itemId){
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
   const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)}</td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
-  const kinds=['all','sale','return','sq_added','sq_removed','sq_waste','sq_reserved','sq_released','sq_transfer','sq_count','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','reversal','opening'];
+  const kinds=['all','sale','return','sq_added','sq_removed','sq_waste','sq_reserved','sq_released','sq_transfer','sq_count','pooled_sale','pooled_restock','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','reversal','opening'];
   const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
   const isApprover=['national_admin','super_admin'].includes(ROLE);
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
@@ -6064,11 +6080,13 @@ function openStoreAreas(locId){
     return `<div class="banner info">${svg(I.info,17)}<div>Storage areas for <b>${esc(loc(locId).name)}</b>${isHub(locId)?' (Central Warehouse — users must pick from this list, so keep it accurate).':' (optional; other centres also allow free-text locations).'}</div></div>
     <div class="field"><label>Centre address (shown on the dispatch / picking slip)</label><div style="display:flex;gap:8px;align-items:flex-start"><textarea id="sa-addr" rows="2" placeholder="Street, suburb, state, postcode" style="flex:1">${esc(loc(locId).address||'')}</textarea><button class="btn" id="sa-addrsave">Save</button></div></div>
     ${ROLE==='super_admin'?`<div class="field"><label>Cash goes into the drawer at</label><div style="display:flex;gap:8px"><select id="sa-drawer" style="flex:1"><option value="">${esc(loc(locId).name)} (its own drawer)</option>${S.locations.filter(x=>x.id!==locId&&!x.cash_drawer_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).cash_drawer_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-drawersave">Save</button></div><div class="hint">For locations that share one cash drawer (e.g. Shayona Cafe and SYDKD → Sydney). Their Square cash sales are added to that drawer’s expected cash.</div></div>`:''}
+    ${ROLE==='super_admin'?`<div class="field"><label>Sells from the stock at</label><div style="display:flex;gap:8px"><select id="sa-stockfrom" style="flex:1"><option value="">${esc(loc(locId).name)} (its own stock)</option>${S.locations.filter(x=>x.id!==locId&&!x.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).stock_from_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-stockfromsave">Save</button></div><div class="hint">For locations that sell another location’s stock (e.g. SYDKD, Shayona Cafe, Shayona, Food Van → Sydney). From the moment you save, every Square sale here is taken off that location’s stock instead — in the app and in Square. Existing stock isn’t moved.${loc(locId).stock_from_since?` <b>On since ${fmtDT(loc(locId).stock_from_since)}.</b>`:''}</div></div>`:''}
     <div class="field"><label>Add an area</label><div style="display:flex;gap:8px"><input id="sa-new" placeholder="e.g. Shayona Store, Storage, Basement" style="flex:1"><button class="btn" id="sa-add">${svg(I.plus,15)} Add</button></div></div>
     <div id="sa-list">${areas.length?areas.map(a=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(a.name)}</span><button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-sadel="${a.id}">Remove</button></div>`).join(''):'<div style="color:var(--faint);font-size:13px;padding:8px 0">No areas yet.</div>'}</div>`;};
   modal('Storage areas',loc(locId).code,render(),`<button class="btn primary" data-close>Done</button>`);
   const wire=()=>{
     const add=document.getElementById('sa-add');if(add)add.onclick=async()=>{const nm=document.getElementById('sa-new').value.trim();if(!nm)return;const{error}=await sb.from('store_areas').insert({location_id:locId,name:nm});if(error)return toast(error.message||'Failed',true);await loadOps();refreshStoreAreasModal(locId,render,wire);};
+    const ssv=document.getElementById('sa-stockfromsave');if(ssv)ssv.onclick=async()=>{const m=document.getElementById('sa-stockfrom').value||null;const{error}=await sb.rpc('set_stock_from',{p_loc:locId,p_main:m});if(error)return toast(/set_stock_from/.test(error.message)?'Run 86_shared_stock_locations.sql first':error.message,true);const lo=S.locations.find(x=>x.id===locId);if(lo){lo.stock_from_loc=m;lo.stock_from_since=m?(lo.stock_from_since||new Date().toISOString()):null;}toast(m?'Sales here now come off '+loc(m).name+' stock':'Uses its own stock again');};
     const dsv=document.getElementById('sa-drawersave');if(dsv)dsv.onclick=async()=>{const d=document.getElementById('sa-drawer').value||null;const{error}=await sb.rpc('set_cash_drawer',{p_loc:locId,p_drawer:d});if(error)return toast(/set_cash_drawer/.test(error.message)?'Run 84_shared_cash_drawer.sql first':error.message,true);const lo=S.locations.find(x=>x.id===locId);if(lo)lo.cash_drawer_loc=d;toast(d?'Cash now goes into the '+loc(d).name+' drawer':'Uses its own cash drawer');};
     const asv=document.getElementById('sa-addrsave');if(asv)asv.onclick=async()=>{const ad=document.getElementById('sa-addr').value;const{error}=await sb.rpc('set_location_address',{p_loc:locId,p_address:ad});if(error)return toast(error.message||'Failed',true);const lo=S.locations.find(x=>x.id===locId);if(lo)lo.address=ad.trim()||null;toast('Address saved');};
     document.querySelectorAll('[data-sadel]').forEach(b=>b.onclick=async()=>{const{error}=await sb.from('store_areas').delete().eq('id',b.dataset.sadel);if(error)return toast(error.message,true);await loadOps();refreshStoreAreasModal(locId,render,wire);});
