@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-5';
+const APP_VERSION='2026.10.16-6';
 const APP_VERSION_NOTE='Stronger camera scanning: sharper camera, autofocus + tap to focus, zoom, torch, reads small / distant barcodes, check-digit verified · beep on scan';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -1342,7 +1342,8 @@ function stackConfirm(title,sub,html,opts){
   host.innerHTML=`<div class="modal sc-modal" role="alertdialog" aria-modal="true" style="max-width:540px;width:100%;background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-lg)"><div class="panel-head"><div><h2>${esc(title)}</h2><div class="sub">${esc(sub||'')}</div></div><button class="x" id="sc-x">${svg(I.x,20)}</button></div><div class="panel-body">${html}</div><div class="panel-foot">${opts.okOnly?'':`<button class="btn" id="sc-cancel">${esc(opts.cancelLabel||'Go back')}</button>`}<button class="btn ${opts.danger?'':'primary'}" id="sc-ok"${opts.danger?' style="background:var(--crit);border-color:var(--crit);color:#fff"':''}>${esc(opts.okLabel||'Confirm')}</button></div></div>`;
   document.body.appendChild(host);
   host.querySelector('#sc-x').onclick=close;const cc=host.querySelector('#sc-cancel');if(cc)cc.onclick=close;
-  host.querySelector('#sc-ok').onclick=()=>{close();if(opts.onOk)opts.onOk();};
+  // run the action FIRST (so it can read anything typed in this box), then close; returning false keeps the box open
+  host.querySelector('#sc-ok').onclick=()=>{let r;try{r=opts.onOk?opts.onOk():undefined;}catch(e){console.error(e);}if(r===false)return;close();};
 }
 // Write a set of dated batches for one item at a centre (clears existing, then adds each).
 async function batchesSet(loc,item,rows){try{const rs=(rows||[]).filter(r=>r.qty>0&&r.exp);if(!rs.length){return;}await sb.rpc('batch_reset',{p_loc:loc,p_item:item,p_qty:rs[0].qty,p_expiry:rs[0].exp});for(let i=1;i<rs.length;i++){await sb.rpc('batch_add',{p_loc:loc,p_item:item,p_qty:rs[i].qty,p_expiry:rs[i].exp,p_source:'stocktake',p_ref:null});}}catch(e){console.error('batchesSet',e);}}
@@ -2786,7 +2787,7 @@ function openCashMove(L,kind){
     if(error){b.disabled=false;return toast(error.message,true);}
     closeOverlay();toast(t[0].replace('Record ','')+' saved: '+money(amt));if(kind==='opening')await cashBackfill(L,at);vCash(document.getElementById('view'));};
 }
-function cashVoid(id){stackConfirm('Void this cash entry?','It stays in the register, crossed out','<div class="field"><label>Reason</label><input id="cv-r"></div>',{okLabel:'Void',danger:true,onOk:async()=>{const r=(document.getElementById('cv-r')||{}).value||'';if(!r.trim())return toast('Enter a reason',true);const{error}=await sb.rpc('void_cash_movement',{p_id:id,p_reason:r.trim()});if(error)return toast(error.message,true);toast('Entry voided');vCash(document.getElementById('view'));}});}
+function cashVoid(id){stackConfirm('Void this cash entry?','It stays in the register, crossed out','<div class="field"><label>Reason</label><input id="cv-r"></div>',{okLabel:'Void',danger:true,onOk:()=>{const r=(document.getElementById('cv-r')||{}).value||'';if(!r.trim()){toast('Enter a reason',true);const f=document.getElementById('cv-r');if(f)f.focus();return false;}(async()=>{const{error}=await sb.rpc('void_cash_movement',{p_id:id,p_reason:r.trim()});if(error)return toast(error.message,true);toast('Entry voided');vCash(document.getElementById('view'));})();}});}
 async function cashAll(el){
   const r=cashRange();const cs=cashCentres();
   el.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div>Cash on hand across <b>all centres</b>: Square cash sales, banking, paid outs and the short / over from each centre's counts. Tap a centre to see its register.</div></div>
