@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.16-9';
+const APP_VERSION='2026.10.16-10';
 const APP_VERSION_NOTE='Shared stock: SYDKD, Shayona Cafe, Shayona and Food Van sell from Sydney stock · stock takes over 1,000 items load in full · not-counted items set to 0 on submit · up to 4 helpers without approval · cash: back-dating, $0, shared drawer';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -4060,12 +4060,13 @@ function vStock(v){
     :`<div class="banner info">${svg(I.stocktake,17)}<div><b>You can count while trading.</b> Each item’s variance is measured against the system stock at the moment it was counted, so anything sold (or received) before you finalise is kept — not lost. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+
     (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+
     (!HELPER&&['national_admin','super_admin'].includes(ROLE)&&S.helperReqN?`<div class="banner warn" style="align-items:center">${svg(I.users||I.alert,17)}<div style="flex:1"><b>${S.helperReqN} stock-take helper request${S.helperReqN===1?'':'s'}</b> waiting for your approval.</div><button class="btn sm" id="st-hreq">Review requests</button></div>`:'')+`
-    <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
+    <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-excl">${svg(I.catalog||I.stocktake,16)} Excluded categories</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
     ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span>${stScopeLbl(st)?`<div class="st-scope">${esc(stScopeLbl(st))}</div>`:''}</td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
   const hq=document.getElementById('st-hreq');if(hq)hq.onclick=openStHelpers;
   const ub=document.getElementById('st-undo');if(ub)ub.onclick=openUndoDeletedStocktakes;
+  const xb=document.getElementById('st-excl');if(xb)xb.onclick=openStExcluded;
   // live "x / y counted" for open counts (the list's own copy of the lines isn't refreshed while people count)
   {const ids=[...v.querySelectorAll('[data-stpc]')].map(x=>x.dataset.stpc);
    if(ids.length)Promise.all([
@@ -4088,10 +4089,24 @@ function stScopeLbl(s){if(!s)return '';if(stIsSpot(s))return 'Spot check';if(!('
 /* an open count at this centre that already covers this category (null = all categories) */
 function stScopeConflict(locId,cat){const c=cat||null;
   return S.stocktakes.find(s=>s.location_id===locId&&s.status==='open'&&!stIsSpot(s)&&('category' in s)&&(s.category==null||c==null||String(s.category).toLowerCase()===String(c).toLowerCase()));}
-function newStock(){
-  const cats=['(all categories)',...[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category).filter(Boolean))].sort()];
+/* categories left out of stock takes (migration 87) */
+async function stExclLoad(){try{const{data,error}=await sb.from('stocktake_excluded_categories').select('category');if(!error){S.stExcl=new Set((data||[]).map(r=>String(r.category).trim().toLowerCase()));return S.stExcl;}}catch(e){}S.stExcl=S.stExcl||new Set();return S.stExcl;}
+const stCatExcl=c=>!!(S.stExcl&&c&&S.stExcl.has(String(c).trim().toLowerCase()));
+async function openStExcluded(){
+  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  await stExclLoad();const cats=[...new Set(S.items.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  modal('Categories left out of stock takes','Ticked categories are never counted',`<div class="banner info">${svg(I.info,17)}<div>Ticked categories are not added to new stock takes or spot checks, and can’t be added by hand. Open counts keep anything already counted.</div></div>
+    <div style="columns:2 220px;column-gap:18px">${cats.map(c=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13.5px;break-inside:avoid"><input type="checkbox" value="${esc(c)}"${stCatExcl(c)?' checked':''}> ${esc(c)}</label>`).join('')}</div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="sx-save">${svg(I.check,16)} Save</button>`);
+  document.getElementById('sx-save').onclick=async()=>{const on=[...document.querySelectorAll('#scrim input[type=checkbox]:checked')].map(b=>b.value);
+    const{error}=await sb.rpc('set_stocktake_excluded',{p_cats:on});if(error)return toast(/set_stocktake_excluded/.test(error.message)?'Run 87_stocktake_excluded_categories.sql first':error.message,true);
+    await stExclLoad();closeOverlay();toast(on.length?on.length+' categor'+(on.length===1?'y':'ies')+' left out of stock takes':'All categories are counted');};
+}
+async function newStock(){
+  await stExclLoad();
+  const cats=['(all categories)',...[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category).filter(c=>c&&!stCatExcl(c)))].sort()];
   const lo=S.locations.filter(l=>l.active!==false&&!l.stock_from_loc).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat"></select></div></div><div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
+  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat"></select></div></div><div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.${S.stExcl&&S.stExcl.size?` Not counted: <b>${[...new Set(S.items.map(i=>i.category).filter(c=>c&&stCatExcl(c)))].map(esc).join(', ')}</b>.`:''}</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
   restrictLocSelect('st-loc');
   const ls=document.getElementById('st-loc'),cs=document.getElementById('st-cat'),go=document.getElementById('go'),info=document.getElementById('st-open-info');
   const draw=keep=>{const lc=ls.value,prev=keep?cs.value:cs.value||cats[0];
@@ -4114,7 +4129,7 @@ function newStock(){
 function ssMovement(locId,id){const mv=(S.vel&&S.vel[locId+'__'+id])||0;if(mv>0)return mv;const w=(S.win&&S.win[locId+'__'+id]);return w?((+w.u60||0)/2):0;}
 /* weighted random sample (favours movers) of items that have stock at the centre */
 function pickByMovement(locId,n){
-  const pool=S.items.filter(i=>i.active!==false&&onHand(locId,i.id)>0).map(i=>({id:i.id,w:Math.max(0.1,ssMovement(locId,i.id))+0.15}));
+  const pool=S.items.filter(i=>i.active!==false&&!stCatExcl(i.category)&&onHand(locId,i.id)>0).map(i=>({id:i.id,w:Math.max(0.1,ssMovement(locId,i.id))+0.15}));
   const chosen=[];const arr=pool.slice();
   while(chosen.length<n&&arr.length){
     let tot=0;for(const x of arr)tot+=x.w;let r=Math.random()*tot,idx=0;
@@ -4124,8 +4139,9 @@ function pickByMovement(locId,n){
   return chosen;
 }
 /* Super Admin: auto-generate a spot-check stock take of N items chosen by movement */
-function cycleCountModal(){
+async function cycleCountModal(){
   if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  await stExclLoad();
   const lo=`<option value="__all">All centres</option>`+S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('Spot-check stock take','System picks items weighted by movement',`<div class="grid2">
       <div class="field"><label>Centre</label><select id="cc-loc">${lo}</select></div>
@@ -4152,6 +4168,7 @@ function persistStLocations(st){const rows=(st.lines||[]).filter(l=>(stArea[l.id
 function stCountsArray(){return Object.entries(stCounts).filter(([k,v])=>v!==''&&v!=null).map(([k,v])=>({line:k,counted:Math.max(0,+v)}));}
 function updateStProgress(){const st=S.stocktakes.find(x=>x.id===stCurrentId);if(st)stChips(st);const t=document.getElementById('st-prog-txt');if(!st||!t)return;const total=(st.lines||[]).length;const done=(st.lines||[]).filter(l=>{const v=stCounts[l.id];return v!==''&&v!=null;}).length;const pct=total?Math.round(done/total*100):0;t.textContent=done+' of '+total+' counted';document.getElementById('st-prog-pct').textContent=pct+'%';document.getElementById('st-prog-bar').style.width=pct+'%';}
 function openStock(id,amend){
+  if(!S.stExcl)stExclLoad();
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
   const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
   stEditable=editable;stAmending=!!amend;
@@ -4622,11 +4639,11 @@ function bindStInputs(root){
 /* ---- stock take scanning: one scan = one entry (quantity, location, best-before) ---- */
 let stScanLast={code:'',t:0}, stScanOpen=false;
 /* ---- an item that isn't in the count (e.g. added to the catalogue after the count started): add it (migration 77) ---- */
-function stItemInScope(st,it){if(stIsSpot(st))return ROLE==='super_admin'&&!HELPER;return !st.category||it.category===st.category;}
+function stItemInScope(st,it){if(stCatExcl(it.category))return false;if(stIsSpot(st))return ROLE==='super_admin'&&!HELPER;return !st.category||it.category===st.category;}
 function stMissingMatches(st,q){const ql=String(q||'').trim().toLowerCase();if(ql.length<2)return [];const have=new Set((st.lines||[]).map(l=>l.item_id));
   return S.items.filter(i=>!have.has(i.id)&&(String(i.sku||'').toLowerCase()===ql||String(i.barcode||'').toLowerCase()===ql||(i.name||'').toLowerCase().includes(ql)||String(i.sku||'').toLowerCase().includes(ql))).slice(0,6);}
 function stMissingHtml(st,q){const m=stMissingMatches(st,q);if(!m.length)return '';
-  return `<div class="st-miss"><div class="st-miss-h">${svg(I.info,15)} Not in this count yet — found in the catalogue:</div>${m.map(it=>{const ok=stItemInScope(st,it);return `<div class="st-miss-r"><div><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}<div class="st-scope">${esc(it.category||'No category')}${it.active===false?' · inactive in catalogue':''}</div></div>${ok?`<button type="button" class="btn sm primary" data-staddit="${it.id}">${svg(I.plus,14)} Add to this count</button>`:`<span class="st-scope">${stIsSpot(st)?'Spot check — ask the Super Admin':'Different category — not part of this count'}</span>`}</div>`;}).join('')}</div>`;}
+  return `<div class="st-miss"><div class="st-miss-h">${svg(I.info,15)} Not in this count yet — found in the catalogue:</div>${m.map(it=>{const ok=stItemInScope(st,it);return `<div class="st-miss-r"><div><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}<div class="st-scope">${esc(it.category||'No category')}${it.active===false?' · inactive in catalogue':''}</div></div>${ok?`<button type="button" class="btn sm primary" data-staddit="${it.id}">${svg(I.plus,14)} Add to this count</button>`:`<span class="st-scope">${stCatExcl(it.category)?'Not counted in stock takes':stIsSpot(st)?'Spot check — ask the Super Admin':'Different category — not part of this count'}</span>`}</div>`;}).join('')}</div>`;}
 async function stAddItemToCount(st,itemId,thenOpen){
   const it=item(itemId);
   const{data:lid,error}=await sb.rpc('st_add_item',{p_id:st.id,p_item:itemId});
@@ -4645,7 +4662,7 @@ function stOfferAdd(st,code,opts){
   const cl=String(code||'').trim().toLowerCase();
   const it=S.items.find(i=>String(i.sku||'').toLowerCase()===cl||String(i.barcode||'').toLowerCase()===cl);
   if(!it){toast('Not in this count or the catalogue: '+code,true);if(navigator.vibrate)navigator.vibrate([40,60,40]);if(opts&&opts.onDone)opts.onDone(false);return;}
-  if(!stItemInScope(st,it)){toast(`${it.name} isn’t part of this count (${stIsSpot(st)?'spot check':'category '+(it.category||'none')})`,true);if(opts&&opts.onDone)opts.onDone(false);return;}
+  if(!stItemInScope(st,it)){toast(stCatExcl(it.category)?`${it.name} is in “${it.category}”, which isn’t counted in stock takes`:`${it.name} isn’t part of this count (${stIsSpot(st)?'spot check':'category '+(it.category||'none')})`,true);if(opts&&opts.onDone)opts.onDone(false);return;}
   stackConfirm('Add this item to the count?',it.name,`<div><b>${esc(it.name)}</b> (${esc(it.sku||'')}) isn’t in ${esc(st.code)} yet — it was probably added to the catalogue after the count started. Add it and enter your count now?</div>`,
     {okLabel:'Add and count',onOk:()=>stAddItemToCount(st,it.id,true)});
   if(opts&&opts.onDone)opts.onDone(false);
