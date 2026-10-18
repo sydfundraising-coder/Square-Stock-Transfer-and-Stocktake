@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.18-1';
-const APP_VERSION_NOTE='Upload error report for purchase orders, transfers and PO receiving (what failed, why, how to fix, CSV) · Excel files accepted · cash in / paid out removed';
+const APP_VERSION='2026.10.18-3';
+const APP_VERSION_NOTE='Uploads fill in a missing pack size / cost from the file · centres can order items they don’t sell yet · upload error report';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,8 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .new-at{display:inline-flex;align-items:center;gap:5px;margin:2px 0 8px;padding:3px 9px;border-radius:999px;background:var(--transit-soft);color:var(--transit);font-size:11.5px;font-weight:600}
+  td .new-at{margin:4px 0 0}
   .cash-when{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.cash-when .btn{font-size:12px}
   .tile .val{font-size:clamp(19px,2.1vw,26px);overflow-wrap:anywhere;line-height:1.15}
   .pf-pick-pop{position:absolute;z-index:60;right:0;margin-top:6px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;min-width:250px;max-height:60vh;overflow:auto;box-shadow:var(--shadow-lg)}
@@ -1162,7 +1164,7 @@ function parseCSV(text){
   if(f.length||row.length){row.push(f);rows.push(row);}
   return rows;
 }
-function itemBySku(){const m={};S.items.forEach(it=>{if(it.sku)m[String(it.sku).trim().toLowerCase()]=it.id;});return m;}
+function itemBySku(){const m={};(S.allItems||S.items).forEach(it=>{if(it.sku&&!it.hidden)m[String(it.sku).trim().toLowerCase()]=it.id;});return m;}
 /* ---- reading an uploaded sheet: CSV or Excel (.xlsx / .xls), first sheet ---- */
 function readSheetRows(file,cb){
   if(!file)return;
@@ -1188,15 +1190,31 @@ function showUploadReport(title,file,res){
   // the Cancel button doubles as "Download & close"
   const host=b&&b.closest('.modal');const cc=host&&host.querySelector('#sc-cancel');if(cc){const old=cc.onclick;cc.onclick=e=>{csv();if(old)old(e);};}
 }
+/* An item with NO pack size or NO cost in the system takes them from the uploaded file (migration 91).
+   Values already set are never changed here. Returns {itemId: ['pack size 12','cost $1.85']}. */
+async function fillMissingFromFile(rows,map,ci,pi,ki,P){
+  const want={};
+  for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim();const id=code&&map[code.toLowerCase()];if(!id||want[id])continue;const it=item(id);if(!it||it.active===false)continue;
+    const w={item:id};
+    if(pi>=0&&!hasPpc(it)){const t=String(row[pi]||'').trim();if(/^\d+(\.0+)?$/.test(t)){const v=parseInt(t,10);if(v>=1&&v<=1000)w.ppc=v;}}
+    if(ki>=0&&!(+it.unit_cost>0)){const t=String(row[ki]||'').replace(/[$,\s]/g,'');const c=parseFloat(t);if(t&&!isNaN(c)&&c>0)w.cost=c;}
+    if(w.ppc||w.cost)want[id]=w;}
+  const list=Object.values(want);if(!list.length)return {};
+  const{data,error}=await sb.rpc('fill_missing_item_details',{p_rows:list});
+  if(error){P.push({problem:/fill_missing_item_details|schema cache/i.test(error.message||'')?'Pack sizes / costs in the file could not be saved (database update 91 not run yet)':'Pack sizes / costs in the file could not be saved: '+error.message,fix:'Ask the Super Admin to run 91_fill_missing_item_details.sql',level:'warn'});return {};}
+  const note={};(data||[]).forEach(d=>{[S.allItems||[],S.items||[]].forEach(arr=>arr.forEach(i=>{if(i.id===d.item){if(+d.ppc>0)i.pack_per_carton=+d.ppc;if(d.cost!=null)i.unit_cost=+d.cost;}}));note[d.item]=d.set||[];});
+  return note;
+}
 function readTemplate(file,needCost,cb,title){
   if(!file)return;
-  readSheetRows(file,raw=>{const rows=(raw||[]).filter(x=>x&&x.some(c=>String(c||'').trim()));if(rows.length<2){toast('That file looks empty',true);return;}
+  readSheetRows(file,async raw=>{const rows=(raw||[]).filter(x=>x&&x.some(c=>String(c||'').trim()));if(rows.length<2){toast('That file looks empty',true);return;}
     // header names are matched loosely, ignoring case, spaces, units in brackets and the byte-order mark Excel adds
     const norm=x=>String(x||'').replace(/^﻿/,'').toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z]/g,'');
     const h=rows[0].map(norm);const col=(...names)=>h.findIndex(x=>names.includes(x));
     const ci=col('productcode','code','sku','stockcode','itemcode'),qi=col('quantity','qty','boxes','quantityboxes','orderboxes'),ki=col('unitcost','cost','costperpacket','unitcostperpacket'),ni=col('item','itemname','name','product','productname','description');
     if(ci<0||qi<0){showUploadReport(title||'Upload',file,{loaded:0,problems:[{row:1,problem:'Missing column: '+(ci<0?'"Product Code"':'')+(ci<0&&qi<0?' and ':'')+(qi<0?'"Quantity (boxes)"':''),fix:'Download the template again and keep its column headings. Columns found: '+rows[0].filter(Boolean).join(', ')}]});return;}
     const map=itemBySku();const byId={},order=[],P=[];
+    const fillNote=await fillMissingFromFile(rows,map,ci,col('packetsperbox','packetspercarton','packspercarton','packsperbox','ppc','packsize','unitsperbox','packetsperpack'),ki,P);
     for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim(),nm=ni>=0?String(row[ni]||'').trim():'',rawQ=String(row[qi]||'').trim();const R=n+1;
       if(!code&&!rawQ)continue;
       if(!code){P.push({row:R,name:nm,qty:rawQ,problem:'No product code',fix:'Enter the item’s product code (SKU) from the catalogue'});continue;}
@@ -1209,7 +1227,8 @@ function readTemplate(file,needCost,cb,title){
       if(!id){P.push({row:R,code,name:nm,qty:rawQ,problem:'Product code not found in the catalogue',fix:'Check the code (no extra spaces or missing leading zeros). If it’s a new Square item, run a Square sync first'});continue;}
       const it=item(id);
       if(it.active===false){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Item is inactive / hidden in the catalogue',fix:'Re-activate it in the Catalogue, or remove the row'});continue;}
-      if(!hasPpc(it)){P.push({row:R,code,name:it.name,qty:rawQ,problem:'No pack size (packets per box) set',fix:'A National / Super Admin sets the pack size on the item, then upload again'});continue;}
+      if(fillNote[id]&&!fillNote[id]._shown){fillNote[id]._shown=1;P.push({row:R,code,name:it.name,qty:rawQ,problem:'Saved to the item from the file: '+fillNote[id].join(', '),fix:'It had no '+(fillNote[id].some(x=>/pack/.test(x))?'pack size':'cost')+' in the system — check it’s right',level:'warn'});}
+      if(!hasPpc(it)){P.push({row:R,code,name:it.name,qty:rawQ,problem:'No pack size (packets per box) set',fix:'Enter the packets per box in the file’s “Packets per box” column and upload again — it is saved to the item'});continue;}
       let qty=Math.round(qn);if(qty!==qn)P.push({row:R,code,name:it.name,qty:rawQ,problem:`Part box rounded to ${qty} box(es)`,fix:'Orders and transfers are in whole boxes',level:'warn'});
       if(qty<1){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Less than one box',fix:'Enter at least 1 whole box',});continue;}
       let cost;if(needCost){const rc=ki>=0?String(row[ki]||'').trim():'';if(rc!==''){const cv=parseFloat(rc.replace(/[$,]/g,''));if(isNaN(cv)||cv<0){cost=it.unit_cost;P.push({row:R,code,name:it.name,qty:rawQ,problem:`Cost “${rc}” not understood — catalogue cost ${money(it.unit_cost||0)} used`,fix:'Enter the cost per packet as a number, e.g. 1.85',level:'warn'});}else cost=cv;}else cost=it.unit_cost;}
@@ -1254,6 +1273,12 @@ const item=id=>S.items.find(i=>i.id===id)||(S.allItems||[]).find(i=>i.id===id)||
 /* Catalogue range: is this item available for sale at a centre in Square? Hubs (Central Warehouse) carry the full range.
    sale_locs is filled by square-sync (migration 51); until then (null) every item counts as available. */
 function sellsAt(it,locId){if(!it||!locId)return true;const l=S.locations.find(x=>x.id===locId);if(l&&l.is_hub)return true;if(!Array.isArray(it.sale_locs))return true;return it.sale_locs.includes(locId);}
+/* Ordering items a centre doesn't sell yet: transfer requests and purchase orders offer the WHOLE catalogue
+   (not just the centre's range). Items Square hasn't switched on there are marked; receiving them switches them
+   on in Square for that centre automatically (migration 90). */
+function orderableItems(){return (S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&hasPpc(i));}
+const newAt=(it,locId)=>!!(it&&locId&&!sellsAt(it,locId));
+const newAtTag=(it,locId)=>newAt(it,locId)?`<div class="new-at" title="Square doesn’t sell this at ${esc(loc(locId).name)} yet. It is switched on there automatically when the stock is received.">${svg(I.plus,11)} New for ${esc(loc(locId).name)} — switched on in Square when received</div>`:'';
 /* What this person sees in the app: hidden (cleaned-up) items never; centre users only their centres' range. */
 function itemInMyRange(it){
   if(it.hidden)return false;
@@ -2331,6 +2356,12 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hnew1','Stock transfers','Ordering an item your centre doesn’t sell yet','Transfer requests and purchase orders list the whole catalogue — not only your centre’s range.',[
+      'Items Square hasn’t switched on at your centre are at the end of the list, marked <b>NEW</b> / “not sold at (centre) yet”.',
+      'Add them as usual. The line shows <b>New for (centre) — switched on in Square when received</b>, so the approver can see it too.',
+      'Approval works as before: the transfer is approved before dispatch, and a purchase order needs a National or Super Admin before it goes to the supplier.',
+      'When the stock is received, the item is switched on for sale at your centre in Square automatically (within about 5 minutes).',
+      'The upload templates also include these items.'],'','',['route:transfers','route:orders'],ALL),
     T('hpool1','Checking stock and sales','Locations that sell another location’s stock','SYDKD, Shayona Cafe, Shayona and Shayona Food Van sell from <b>Sydney’s</b> stock.',[
       'Every Square sale at those locations is taken off <b>Sydney’s</b> stock (in the app and in Square) within about 30 minutes. The selling location is put back, so its own stock doesn’t move.',
       'Each item’s History shows <b>Sold at another location</b> at Sydney (e.g. “Sold at SYDKD (from Sydney stock)”).',
@@ -3542,7 +3573,7 @@ async function openTransfer(id){
   const fbHtml=(t.freight_booking_date&&['approved','picked','in_transit'].includes(t.status))?`<div class="banner info" style="margin-top:10px">${svg(I.truck,17)}<div><b>Freight booked for ${new Date(t.freight_booking_date+'T00:00:00').toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'short',year:'numeric'})}</b>${t.freight_booking_note?' — '+esc(t.freight_booking_note):''}</div></div>`:(t.status==='picked'?`<div class="banner warn" style="margin-top:10px">${svg(I.truck,17)}<div><b>Picked and set aside</b> — freight not booked yet.</div></div>`:'');
   const picking=t.status==='approved'&&!!t.picking_started_at;
   const pickedLines=(t.lines||[]).filter(l=>(l.qty_picked||0)>0).length;
-  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);const B=pk=>ppc(it)?pk2boxWhole(pk,it):pk;const sh=Math.max(0,l.qty_dispatched-l.qty_received);const shown=['received','partially_received'].includes(t.status);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum">${B(l.qty_requested)}</td><td class="num tnum">${picking?B(l.qty_picked||0):'—'}</td><td class="num tnum">${l.qty_dispatched?B(l.qty_dispatched):'—'}</td><td class="num tnum">${shown?B(l.qty_received):(t.status==='in_transit'?'—':'')}</td><td class="num tnum" style="color:${sh>0&&shown?'var(--crit)':'var(--faint)'}">${sh>0&&shown?'−'+B(sh):'—'}</td></tr>`;}).join('');
+  const rows=(t.lines||[]).map(l=>{const it=item(l.item_id);const B=pk=>ppc(it)?pk2boxWhole(pk,it):pk;const sh=Math.max(0,l.qty_dispatched-l.qty_received);const shown=['received','partially_received'].includes(t.status);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>${shown?'':newAtTag(it,t.to_location)}</td><td class="num tnum">${B(l.qty_requested)}</td><td class="num tnum">${picking?B(l.qty_picked||0):'—'}</td><td class="num tnum">${l.qty_dispatched?B(l.qty_dispatched):'—'}</td><td class="num tnum">${shown?B(l.qty_received):(t.status==='in_transit'?'—':'')}</td><td class="num tnum" style="color:${sh>0&&shown?'var(--crit)':'var(--faint)'}">${sh>0&&shown?'−'+B(sh):'—'}</td></tr>`;}).join('');
   // Approval view rows: requesting centre's stock, their 2-month usage, and extra/short vs that need.
   const approvalRows=(t.lines||[]).map(l=>{const it=item(l.item_id);const di=dinfo&&dinfo[l.item_id];const oh=di?di.oh:null;const use2=di?Math.round(di.avg*2):null;const need=use2==null?null:Math.max(0,use2-(oh||0));const delta=need==null?null:(l.qty_requested-need);let dcell='—',dcol='var(--faint)';if(delta!=null){if(delta>0){dcell='+'+delta+' extra';dcol='var(--warn)';}else if(delta<0){dcell=delta+' short';dcol='var(--muted)';}else{dcell='on target';dcol='var(--good)';}}const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum" style="font-weight:600">${l.qty_requested}${pc?`<div style="font-size:10px;color:var(--faint);font-weight:400">${bxTag(l.qty_requested,it)}</div>`:''}</td><td class="num tnum">${oh==null?'—':oh}${pc&&oh?`<div style="font-size:10px;color:var(--faint)">${bxTag(oh,it)}</div>`:''}</td><td class="num tnum">${use2==null?'—':use2}</td><td class="num tnum" style="color:${dcol};font-weight:600">${dcell}</td></tr>`;}).join('');
   let actions='';
@@ -3779,9 +3810,9 @@ function newTransfer(presetItem){
   document.getElementById('dlT').onclick=()=>{const fromV=(document.getElementById('tf-from')||{}).value;const fl=fromV?loc(fromV):null;
     const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
     const toV=(document.getElementById('tf-to')||{}).value;
-    const items=S.items.filter(i=>i.active!==false&&(!toV||sellsAt(i,toV))).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
+    const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
     downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
-      items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',hasPpc(i)?'':'No pack size set - cannot be transferred until a National Admin sets it'];}));
+      items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':newAt(i,toV)?'New for '+loc(toV).name+' - switched on in Square when received':''];}));
     toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();},'Stock transfer');};
@@ -3810,11 +3841,12 @@ function edLines(){
   const av=id=>(tfSrc.loc===from&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:availAt(from,id);
   const usage2=id=>{const mv=monthlyAvg(to,id);return mv>0?Math.round(mv*2):null;};
   const inLines=new Set(dLines.map(l=>l.item).filter(Boolean));
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)&&(!to||sellsAt(i,to)||inLines.has(i.id))).map(i=>{const a=av(i.id);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}" data-a="${boxDec(a,i)} bx" data-ac="${a>0?'pos':'neg'}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(a,i)} bx</option>`;}).join('');
+  const io=orderableItems().sort((a,b)=>(newAt(a,to)-newAt(b,to))).map(i=>{const a=av(i.id);const nw=newAt(i,to);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}${nw?' · not sold at '+esc(loc(to).name)+' yet':''}" data-a="${boxDec(a,i)} bx" data-ac="${a>0?'pos':'neg'}">${esc(i.sku||'')} — ${esc(i.name)} · ${boxDec(a,i)} bx${nw?' · NEW':''}</option>`;}).join('');
   const ed=document.getElementById('ed');
   const sohLbl=document.getElementById('lbl-soh');if(sohLbl)sohLbl.textContent=to?(loc(to).code+' SOH'):'SOH';
   ed.innerHTML=dLines.map((l,ix)=>{const has=!!l.item;const it0=has?item(l.item):null;const u=has?usage2(l.item):null;const soh=(has&&to)?destOH(to,l.item):null;const mv=(has&&to)?monthlyAvg(to,l.item):0;const mc=(soh!=null&&mv>0)?soh/mv:null;const low=mc!=null&&mc<2;const pc=has?ppc(it0):0;const availBx=(has&&from&&pc)?boxDec(av(l.item),it0):null;const qBox=(has&&pc)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="tf-line"><select data-li="${ix}"><option value="">Select item…</option>${io}</select><div class="lbox" title="Available to send from ${from?esc(loc(from).name):'source'}${has&&from?' — '+av(l.item)+' packets':''}" style="color:${has&&from?'var(--good)':'var(--faint)'}">${has&&from?(availBx!=null?availBx+'<div style="font-size:9px;color:var(--faint);font-weight:400">bx</div>':av(l.item)):'—'}</div><div class="lbox" title="Units ${to?esc(loc(to).code):'destination'} sells in 2 months" style="color:${has&&u!=null?'var(--transit)':'var(--faint)'}">${has?(u!=null?u:'n/a'):'—'}${has&&u!=null&&pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(u,it0)}</div>`:''}</div><div class="lbox" title="Stock on hand now at ${to?esc(loc(to).name):'destination'}" style="color:${has&&to?'var(--ink)':'var(--faint)'}">${soh==null?'—':soh+(pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${bxTag(soh,it0)}</div>`:'')}</div><div class="lbox" title="Months of stock ${to?esc(loc(to).code):'destination'} has left" style="color:${mc==null?'var(--faint)':(low?'var(--crit)':'var(--good)')}">${mc==null?'—':Math.round(mc)+'mo'}</div><input type="number" min="1" step="1" value="${qBox}" data-lq="${ix}" title="${has&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><div class="lbox" data-lqpk="${ix}" title="Packets that will move (auto from boxes × pack size)" style="color:var(--faint)">${has&&pc?l.qty+`<div style="font-size:9px;color:var(--faint);font-weight:400">pk</div>`:'—'}</div><button class="rm" data-lr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   dLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-li="${ix}"]`).value=l.item;});
+  if(to)dLines.forEach((l,ix)=>{if(!l.item||!newAt(item(l.item),to))return;const sel=ed.querySelector(`[data-li="${ix}"]`);const row=sel&&sel.closest('.tf-line');if(row)row.insertAdjacentHTML('afterend',newAtTag(item(l.item),to));});
   ed.querySelectorAll('[data-li]').forEach(s=>s.onchange=e=>{dLines[+e.target.dataset.li].item=e.target.value;edLines();});
   ed.querySelectorAll('[data-lq]').forEach(s=>{s.oninput=e=>{const ix=+e.target.dataset.lq;const it0=item(dLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));dLines[ix].qty=box2pk(bx,it0);const pkc=ed.querySelector(`[data-lqpk="${ix}"]`);if(pkc)pkc.innerHTML=(it0&&ppc(it0))?dLines[ix].qty+`<div style="font-size:9px;color:var(--faint);font-weight:400">pk</div>`:'—';sum();};
     s.onchange=e=>{if(!tfUploaded)tfWarnLine(dLines[+e.target.dataset.lq]);};});
@@ -3941,7 +3973,7 @@ function oList(){
 }
 function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
-  const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
+  const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>${o.status==='received'?'':newAtTag(it,o.location_id)}</td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   let act='';
   if(o.status==='cancelled'&&ROLE==='super_admin')act=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-opurge="${o.id}">${svg(I.x,15)} Delete permanently</button>`;
   if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
@@ -4044,18 +4076,21 @@ function newOrder(o){
     <section class="sec"><div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div></section><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
   modal(o?'Edit purchase order '+o.code:'New purchase order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`,'full form');
   restrictLocSelect('po-loc');
+  {const pls=document.getElementById('po-loc');if(pls)pls.addEventListener('change',()=>pEd());}
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
-  document.getElementById('dlO').onclick=()=>{const items=S.items.filter(i=>i.active!==false).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadCSV('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
+  document.getElementById('dlO').onclick=()=>{const plv=(document.getElementById('po-loc')||{}).value;const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadCSV('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();},'Purchase order');};
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
 }
 function pEd(){
-  const io=S.items.filter(i=>i.active!==false&&hasPpc(i)).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
+  const pl=(document.getElementById('po-loc')||{}).value;
+  const io=orderableItems().sort((a,b)=>(newAt(a,pl)-newAt(b,pl))).map(i=>{const nw=newAt(i,pl);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}${nw?' · not sold at '+esc(loc(pl).name)+' yet':''}">${esc(i.sku||'')} — ${esc(i.name)}${nw?' · NEW':''}</option>`;}).join('');
   const ed=document.getElementById('ped');
   ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" data-ppk="${ix}" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><div class="ltot" data-plt="${ix}">${l.item?money((+l.qty||0)*(+l.cost||0)):'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
+  if(pl)poLines.forEach((l,ix)=>{if(!l.item||!newAt(item(l.item),pl))return;const sel=ed.querySelector(`[data-pi="${ix}"]`);const row=sel&&sel.closest('.linerow');if(row)row.insertAdjacentHTML('afterend',newAtTag(item(l.item),pl));});
   ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi,val=e.target.value,prev=poLines[ix].item;
     // the same item is already on another line: merge, keep both, or pick something else
     const dupIx=val?poLines.findIndex((l,j)=>j!==ix&&l.item===val):-1;
@@ -7979,13 +8014,15 @@ function poReceiveTemplate(o){
 function poParseDate(v){v=String(v||'').trim();if(!v)return '';let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
   m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);if(m){const y=m[3].length===2?'20'+m[3]:m[3];return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}return 'bad';}
 function poReceiveUpload(o,file,hub){
-  readSheetRows(file,raw=>{
+  readSheetRows(file,async raw=>{
     const rows=(raw||[]).filter(r=>r.some(c=>String(c||'').trim()));if(rows.length<2)return toast('The file has no data rows',true);
     const h=rows[0].map(x=>String(x||'').replace(/^﻿/,'').trim().toLowerCase());const col=re=>h.findIndex(x=>re.test(x));
     const cSku=col(/^sku|code/),cName=col(/^item|name|product/),cRec=col(/received/),cArea=col(/area|location/),cAisle=col(/aisle/),cExp=col(/best|expir|bb/),cCost=col(/cost/);
     const title='Receive '+o.code;
     if(cRec<0)return showUploadReport(title,file,{loaded:0,problems:[{row:1,problem:'Missing the "Received (boxes)" column',fix:'Use the downloaded template and keep its column headings. Columns found: '+rows[0].filter(Boolean).join(', ')}]});
     const byKey={},costs={},P=[];const hubLoc=isHub(o.location_id);
+    {const m={};(o.lines||[]).forEach(l=>{const it=item(l.item_id);if(it.sku)m[String(it.sku).toLowerCase()]=l.item_id;});const fn=await fillMissingFromFile(rows,m,cSku,-1,cCost,P);
+     Object.entries(fn).forEach(([id,set])=>{const it=item(id);P.push({code:it.sku,name:it.name,problem:'Saved to the item from the file: '+set.join(', '),fix:'It had no cost in the system — check it’s right',level:'warn'});});}
     rows.slice(1).forEach((r,ix)=>{const n=ix+2;const skuRaw=cSku>=0?String(r[cSku]||'').trim():'';const sku=skuRaw.toLowerCase();const nmRaw=cName>=0?String(r[cName]||'').trim():'';const nm=nmRaw.toLowerCase();const rq=String(r[cRec]||'').trim();
       if(!sku&&!nm&&!rq)return;
       const line=(o.lines||[]).find(l=>{const it=item(l.item_id);return (sku&&String(it.sku||'').toLowerCase()===sku)||(!sku&&nm&&it.name.toLowerCase()===nm);});
