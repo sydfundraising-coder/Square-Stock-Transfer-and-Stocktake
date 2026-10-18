@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.18-3';
-const APP_VERSION_NOTE='Uploads fill in a missing pack size / cost from the file · centres can order items they don’t sell yet · upload error report';
+const APP_VERSION='2026.10.18-4';
+const APP_VERSION_NOTE='Upload templates are Excel files that keep long product codes exact · codes Excel turned into 9.99E+12 are matched by item name · uploads fill in missing pack size / cost';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1152,6 +1152,20 @@ function downloadCSV(filename,header,rows){
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
+/* Upload templates as EXCEL (.xlsx) with product codes stored as TEXT. A CSV opened in Excel turns long codes
+   like 9990001200107 into 9.99E+12 and saves them that way — the code is then lost. Falls back to CSV. */
+function downloadTemplate(filename,header,rows,textCols){
+  textCols=textCols||[0];
+  if(!window.XLSX)return downloadCSV(filename,header,rows);
+  const aoa=[header].concat(rows.map(r=>r.map((v,i)=>textCols.includes(i)?String(v==null?'':v):(v==null?'':v))));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const rng=XLSX.utils.decode_range(ws['!ref']);
+  for(let R=1;R<=rng.e.r+200;R++)textCols.forEach(C=>{const a=XLSX.utils.encode_cell({r:R,c:C});if(ws[a]){ws[a].t='s';ws[a].v=String(ws[a].v);}else if(R>rng.e.r){ws[a]={t:'s',v:''};}if(ws[a])ws[a].z='@';});
+  if(rng.e.r<rng.e.r+200)ws['!ref']=XLSX.utils.encode_range({s:rng.s,e:{r:rng.e.r+200,c:rng.e.c}});
+  ws['!cols']=header.map((h,i)=>({wch:Math.min(48,Math.max(10,String(h).length+2,...rows.slice(0,300).map(r=>String(r[i]==null?'':r[i]).length+1)))}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Template');
+  XLSX.writeFile(wb,filename.replace(/\.csv$/i,'.xlsx'));
+}
 function downloadJSON(filename,obj){
   const blob=new Blob([JSON.stringify(obj)],{type:'application/json'});
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
@@ -1164,6 +1178,8 @@ function parseCSV(text){
   if(f.length||row.length){row.push(f);rows.push(row);}
   return rows;
 }
+/* exact item-name match (ignoring case / extra spaces); only when exactly one item has that name */
+function itemByName(nm){const k=String(nm||'').trim().toLowerCase().replace(/\s+/g,' ');if(!k)return null;const m=(S.allItems||S.items).filter(i=>!i.hidden&&String(i.name||'').trim().toLowerCase().replace(/\s+/g,' ')===k);return m.length===1?m[0].id:null;}
 function itemBySku(){const m={};(S.allItems||S.items).forEach(it=>{if(it.sku&&!it.hidden)m[String(it.sku).trim().toLowerCase()]=it.id;});return m;}
 /* ---- reading an uploaded sheet: CSV or Excel (.xlsx / .xls), first sheet ---- */
 function readSheetRows(file,cb){
@@ -1192,9 +1208,9 @@ function showUploadReport(title,file,res){
 }
 /* An item with NO pack size or NO cost in the system takes them from the uploaded file (migration 91).
    Values already set are never changed here. Returns {itemId: ['pack size 12','cost $1.85']}. */
-async function fillMissingFromFile(rows,map,ci,pi,ki,P){
+async function fillMissingFromFile(rows,map,ci,pi,ki,P,nameCol){nameCol=nameCol==null?-1:nameCol;
   const want={};
-  for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim();const id=code&&map[code.toLowerCase()];if(!id||want[id])continue;const it=item(id);if(!it||it.active===false)continue;
+  for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim();const id=(code&&map[code.toLowerCase()])||(nameCol>=0?itemByName(row[nameCol]):null);if(!id||want[id])continue;const it=item(id);if(!it||it.active===false)continue;
     const w={item:id};
     if(pi>=0&&!hasPpc(it)){const t=String(row[pi]||'').trim();if(/^\d+(\.0+)?$/.test(t)){const v=parseInt(t,10);if(v>=1&&v<=1000)w.ppc=v;}}
     if(ki>=0&&!(+it.unit_cost>0)){const t=String(row[ki]||'').replace(/[$,\s]/g,'');const c=parseFloat(t);if(t&&!isNaN(c)&&c>0)w.cost=c;}
@@ -1214,7 +1230,7 @@ function readTemplate(file,needCost,cb,title){
     const ci=col('productcode','code','sku','stockcode','itemcode'),qi=col('quantity','qty','boxes','quantityboxes','orderboxes'),ki=col('unitcost','cost','costperpacket','unitcostperpacket'),ni=col('item','itemname','name','product','productname','description');
     if(ci<0||qi<0){showUploadReport(title||'Upload',file,{loaded:0,problems:[{row:1,problem:'Missing column: '+(ci<0?'"Product Code"':'')+(ci<0&&qi<0?' and ':'')+(qi<0?'"Quantity (boxes)"':''),fix:'Download the template again and keep its column headings. Columns found: '+rows[0].filter(Boolean).join(', ')}]});return;}
     const map=itemBySku();const byId={},order=[],P=[];
-    const fillNote=await fillMissingFromFile(rows,map,ci,col('packetsperbox','packetspercarton','packspercarton','packsperbox','ppc','packsize','unitsperbox','packetsperpack'),ki,P);
+    const fillNote=await fillMissingFromFile(rows,map,ci,col('packetsperbox','packetspercarton','packspercarton','packsperbox','ppc','packsize','unitsperbox','packetsperpack'),ki,P,ni);
     for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim(),nm=ni>=0?String(row[ni]||'').trim():'',rawQ=String(row[qi]||'').trim();const R=n+1;
       if(!code&&!rawQ)continue;
       if(!code){P.push({row:R,name:nm,qty:rawQ,problem:'No product code',fix:'Enter the item’s product code (SKU) from the catalogue'});continue;}
@@ -1223,8 +1239,11 @@ function readTemplate(file,needCost,cb,title){
       if(isNaN(qn)){P.push({row:R,code,name:nm,qty:rawQ,problem:'Quantity is not a number',fix:'Enter whole boxes, e.g. 3'});continue;}
       if(qn<0){P.push({row:R,code,name:nm,qty:rawQ,problem:'Negative quantity',fix:'Enter the number of boxes (0 or more)'});continue;}
       if(qn===0)continue;
-      const id=map[code.toLowerCase()];
-      if(!id){P.push({row:R,code,name:nm,qty:rawQ,problem:'Product code not found in the catalogue',fix:'Check the code (no extra spaces or missing leading zeros). If it’s a new Square item, run a Square sync first'});continue;}
+      let id=map[code.toLowerCase()];
+      if(!id){   // Excel turns long codes into 9.99E+12 — find the item by its name instead
+        const sci=/^\d+(\.\d+)?e[+]?\d+$/i.test(code);const byName=nm?itemByName(nm):null;
+        if(byName){id=byName;P.push({row:R,code,name:nm,qty:rawQ,problem:(sci?`Code was changed by Excel to “${code}”`:`Code “${code}” not found`)+` — matched by item name (code ${item(byName).sku||'?'})`,fix:'Use the Excel (.xlsx) template so codes stay exact',level:'warn'});}
+        else{P.push({row:R,code,name:nm,qty:rawQ,problem:sci?`Code was changed by Excel to “${code}” — the real code is lost`:'Product code not found in the catalogue',fix:sci?'Download the template again (it is now an Excel file that keeps codes exact), or type the full code as text':'Check the code (no extra spaces or missing leading zeros). If it’s a new Square item, run a Square sync first'});continue;}}
       const it=item(id);
       if(it.active===false){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Item is inactive / hidden in the catalogue',fix:'Re-activate it in the Catalogue, or remove the row'});continue;}
       if(fillNote[id]&&!fillNote[id]._shown){fillNote[id]._shown=1;P.push({row:R,code,name:it.name,qty:rawQ,problem:'Saved to the item from the file: '+fillNote[id].join(', '),fix:'It had no '+(fillNote[id].some(x=>/pack/.test(x))?'pack size':'cost')+' in the system — check it’s right',level:'warn'});}
@@ -3811,7 +3830,7 @@ function newTransfer(presetItem){
     const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
     const toV=(document.getElementById('tf-to')||{}).value;
     const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
-    downloadCSV('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
+    downloadTemplate('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
       items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':newAt(i,toV)?'New for '+loc(toV).name+' - switched on in Square when received':''];}));
     toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
@@ -4079,7 +4098,7 @@ function newOrder(o){
   {const pls=document.getElementById('po-loc');if(pls)pls.addEventListener('change',()=>pEd());}
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
-  document.getElementById('dlO').onclick=()=>{const plv=(document.getElementById('po-loc')||{}).value;const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadCSV('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
+  document.getElementById('dlO').onclick=()=>{const plv=(document.getElementById('po-loc')||{}).value;const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadTemplate('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();},'Purchase order');};
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
@@ -8008,8 +8027,8 @@ async function openCamFinder(title,onCode){
 /* ---- PO receipt by upload ---- */
 function poReceiveTemplate(o){
   const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);return [it.sku||'',it.name,pk2boxWhole(+l.qty||0,it),pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id)||'',aisleOf(o.location_id,l.item_id)||'','',(+l.unit_cost||0).toFixed(2)];});
-  downloadCSV(o.code+'-receive.csv',['SKU','Item','Ordered (boxes)','Received (boxes)','Store area','Aisle #','Best before (YYYY-MM-DD)','Cost per packet'],rows);
-  toast('Template downloaded. Add a row for each extra location or best-before date of the same item.');
+  downloadTemplate(o.code+'-receive.csv',['SKU','Item','Ordered (boxes)','Received (boxes)','Store area','Aisle #','Best before (YYYY-MM-DD)','Cost per packet'],rows);
+  toast('Template downloaded (Excel). Add a row for each extra location or best-before date of the same item.');
 }
 function poParseDate(v){v=String(v||'').trim();if(!v)return '';let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
   m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);if(m){const y=m[3].length===2?'20'+m[3]:m[3];return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}return 'bad';}
@@ -8025,7 +8044,9 @@ function poReceiveUpload(o,file,hub){
      Object.entries(fn).forEach(([id,set])=>{const it=item(id);P.push({code:it.sku,name:it.name,problem:'Saved to the item from the file: '+set.join(', '),fix:'It had no cost in the system — check it’s right',level:'warn'});});}
     rows.slice(1).forEach((r,ix)=>{const n=ix+2;const skuRaw=cSku>=0?String(r[cSku]||'').trim():'';const sku=skuRaw.toLowerCase();const nmRaw=cName>=0?String(r[cName]||'').trim():'';const nm=nmRaw.toLowerCase();const rq=String(r[cRec]||'').trim();
       if(!sku&&!nm&&!rq)return;
-      const line=(o.lines||[]).find(l=>{const it=item(l.item_id);return (sku&&String(it.sku||'').toLowerCase()===sku)||(!sku&&nm&&it.name.toLowerCase()===nm);});
+      const sciCode=/^\d+(\.\d+)?e[+]?\d+$/i.test(sku);   // Excel turned a long code into 9.99E+12: match on the item name
+      const line=(o.lines||[]).find(l=>{const it=item(l.item_id);return (sku&&!sciCode&&String(it.sku||'').toLowerCase()===sku)||((!sku||sciCode)&&nm&&it.name.toLowerCase()===nm);});
+      if(line&&sciCode)P.push({row:n,code:skuRaw,name:item(line.item_id).name,qty:rq,problem:`Code was changed by Excel to “${skuRaw}” — matched by item name`,fix:'Use the Excel (.xlsx) template so codes stay exact',level:'warn'});
       if(!line){if(sku||nm){const inCat=sku&&S.items.find(i=>String(i.sku||'').toLowerCase()===sku);P.push({row:n,code:skuRaw,name:nmRaw||(inCat?inCat.name:''),qty:rq,problem:inCat?'Item is not on '+o.code:'Product code not found',fix:inCat?'Only items on this order can be received here — receive extra stock as a supplier receipt':'Check the code against the order'});}return;}
       const it=item(line.item_id);
       if(rq==='')return;
