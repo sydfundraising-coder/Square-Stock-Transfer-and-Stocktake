@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.17-2';
-const APP_VERSION_NOTE='Shared stock: SYDKD, Shayona Cafe, Shayona and Food Van sell from Sydney stock · stock takes over 1,000 items load in full · not-counted items set to 0 on submit · up to 4 helpers without approval · cash: back-dating, $0, shared drawer';
+const APP_VERSION='2026.10.18-1';
+const APP_VERSION_NOTE='Upload error report for purchase orders, transfers and PO receiving (what failed, why, how to fix, CSV) · Excel files accepted · cash in / paid out removed';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -1163,26 +1163,64 @@ function parseCSV(text){
   return rows;
 }
 function itemBySku(){const m={};S.items.forEach(it=>{if(it.sku)m[String(it.sku).trim().toLowerCase()]=it.id;});return m;}
-function readTemplate(file,needCost,cb){
-  if(!file)return;const r=new FileReader();
-  r.onload=()=>{const rows=parseCSV(r.result).filter(x=>x&&x.some(c=>String(c||'').trim()));if(rows.length<2){toast('That file looks empty',true);return;}
+/* ---- reading an uploaded sheet: CSV or Excel (.xlsx / .xls), first sheet ---- */
+function readSheetRows(file,cb){
+  if(!file)return;
+  if(/\.(xlsx|xls)$/i.test(file.name||'')&&window.XLSX){const r=new FileReader();
+    r.onload=()=>{try{const wb=XLSX.read(r.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];cb(XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}).map(a=>a.map(c=>String(c??''))));}catch(e){toast('Could not read that Excel file: '+(e.message||e),true);}};
+    r.readAsArrayBuffer(file);return;}
+  const r=new FileReader();r.onload=()=>cb(parseCSV(String(r.result||'')));r.readAsText(file);
+}
+/* ---- upload error report: every row that couldn't be used, why, and how to fix it ---- */
+function showUploadReport(title,file,res){
+  const P=res.problems||[],errs=P.filter(p=>p.level!=='warn'),warns=P.filter(p=>p.level==='warn');
+  window._lastUploadReport={title,file:file&&file.name,res};
+  const csv=()=>downloadCSV(`upload-errors_${String(title).replace(/[^\w]+/g,'-').toLowerCase()}_${today()}.csv`,['Row','Product code','Item','Quantity in file','Problem','How to fix','Type'],
+    P.map(p=>[p.row||'',p.code||'',p.name||'',p.qty??'',p.problem,p.fix||'',p.level==='warn'?'Warning (row used)':'Error (row not used)']));
+  const tbl=L=>`<div class="tablewrap" style="max-height:46vh;overflow:auto;margin-top:8px"><table class="no-cards" style="min-width:0"><thead><tr><th>Row</th><th>Product code</th><th>Item</th><th class="num">Qty</th><th>Problem</th><th>How to fix</th></tr></thead><tbody>${L.map(p=>`<tr><td class="tnum">${esc(p.row||'')}</td><td class="mono" style="font-size:12px">${esc(p.code||'—')}</td><td style="font-size:12.5px">${esc(p.name||'')}</td><td class="num tnum">${esc(p.qty??'')}</td><td style="font-size:12.5px;color:${p.level==='warn'?'var(--warn)':'var(--crit)'};font-weight:600">${esc(p.problem)}</td><td style="font-size:12px;color:var(--muted)">${esc(p.fix||'')}</td></tr>`).join('')}</tbody></table></div>`;
+  stackConfirm(title+' — upload report',(file&&file.name?file.name+' · ':'')+`${res.loaded||0} item(s) loaded · ${errs.length} error(s) · ${warns.length} warning(s)`,
+    `<div class="banner ${errs.length?'crit':'warn'}" style="margin-bottom:6px">${svg(I.alert,17)}<div>${errs.length?`<b>${errs.length} row(s) were not loaded.</b> Fix them in the file and upload again, or add those items by hand.`:'<b>Everything was loaded</b>, with the notes below.'}${res.loaded?` The other <b>${res.loaded}</b> item(s) are on the screen — check them before saving.`:''}</div></div>
+     ${errs.length?`<h3 style="font-size:13.5px;margin:12px 0 0">Not loaded (${errs.length})</h3>${tbl(errs)}`:''}
+     ${warns.length?`<h3 style="font-size:13.5px;margin:12px 0 0">Loaded, but check (${warns.length})</h3>${tbl(warns)}`:''}
+     <div style="margin-top:10px"><button type="button" class="btn sm" id="upr-csv">${svg(I.receipt,14)} Download error report (CSV)</button></div>`,
+    {okLabel:'Close',cancelLabel:'Download & close',onOk:()=>{}});
+  const b=document.getElementById('upr-csv');if(b)b.onclick=csv;
+  // the Cancel button doubles as "Download & close"
+  const host=b&&b.closest('.modal');const cc=host&&host.querySelector('#sc-cancel');if(cc){const old=cc.onclick;cc.onclick=e=>{csv();if(old)old(e);};}
+}
+function readTemplate(file,needCost,cb,title){
+  if(!file)return;
+  readSheetRows(file,raw=>{const rows=(raw||[]).filter(x=>x&&x.some(c=>String(c||'').trim()));if(rows.length<2){toast('That file looks empty',true);return;}
     // header names are matched loosely, ignoring case, spaces, units in brackets and the byte-order mark Excel adds
-    const norm=x=>String(x||'').replace(/^\ufeff/,'').toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z]/g,'');
+    const norm=x=>String(x||'').replace(/^﻿/,'').toLowerCase().replace(/\(.*?\)/g,'').replace(/[^a-z]/g,'');
     const h=rows[0].map(norm);const col=(...names)=>h.findIndex(x=>names.includes(x));
-    const ci=col('productcode','code','sku','stockcode','itemcode'),qi=col('quantity','qty','boxes','quantityboxes','orderboxes'),ki=col('unitcost','cost','costperpacket','unitcostperpacket');
-    if(ci<0||qi<0){toast('The file needs a "Product Code" column and a "Quantity (boxes)" column. Download the template again and fill in the Quantity column.',true);return;}
-    const map=itemBySku();const out=[];const missing=[],noPack=[],inactive=[];
-    for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim();if(!code)continue;
-      const qty=Math.round(parseFloat(String(row[qi]||'').replace(/,/g,''))||0);if(!(qty>0))continue;
-      const id=map[code.toLowerCase()];if(!id){missing.push(code);continue;}
-      const it=item(id);if(it.active===false){inactive.push(code);continue;}if(!hasPpc(it)){noPack.push(code+' '+it.name);continue;}
-      const o={item:id,qty};if(needCost)o.cost=ki>=0&&String(row[ki]||'').trim()!==''?Math.max(0,parseFloat(String(row[ki]).replace(/[$,]/g,''))||0):it.unit_cost;out.push(o);}
-    const notes=[];if(missing.length)notes.push(missing.length+' code(s) not found ('+missing.slice(0,3).join(', ')+(missing.length>3?'…':'')+')');
-    if(noPack.length)notes.push(noPack.length+' item(s) skipped: no pack size set ('+noPack.slice(0,2).join(', ')+(noPack.length>2?'…':'')+')');
-    if(inactive.length)notes.push(inactive.length+' inactive item(s) skipped');
-    if(!out.length){toast('No quantities found to import'+(notes.length?' — '+notes.join('; '):'. Enter the number of boxes in the Quantity (boxes) column.'),true);return;}
-    cb(out);toast(`Loaded ${out.length} item(s)`+(notes.length?' — '+notes.join('; '):''),notes.length>0);};
-  r.readAsText(file);
+    const ci=col('productcode','code','sku','stockcode','itemcode'),qi=col('quantity','qty','boxes','quantityboxes','orderboxes'),ki=col('unitcost','cost','costperpacket','unitcostperpacket'),ni=col('item','itemname','name','product','productname','description');
+    if(ci<0||qi<0){showUploadReport(title||'Upload',file,{loaded:0,problems:[{row:1,problem:'Missing column: '+(ci<0?'"Product Code"':'')+(ci<0&&qi<0?' and ':'')+(qi<0?'"Quantity (boxes)"':''),fix:'Download the template again and keep its column headings. Columns found: '+rows[0].filter(Boolean).join(', ')}]});return;}
+    const map=itemBySku();const byId={},order=[],P=[];
+    for(let n=1;n<rows.length;n++){const row=rows[n];const code=String(row[ci]||'').trim(),nm=ni>=0?String(row[ni]||'').trim():'',rawQ=String(row[qi]||'').trim();const R=n+1;
+      if(!code&&!rawQ)continue;
+      if(!code){P.push({row:R,name:nm,qty:rawQ,problem:'No product code',fix:'Enter the item’s product code (SKU) from the catalogue'});continue;}
+      if(rawQ==='')continue;                                   // nothing ordered on this row
+      const qn=parseFloat(rawQ.replace(/,/g,''));
+      if(isNaN(qn)){P.push({row:R,code,name:nm,qty:rawQ,problem:'Quantity is not a number',fix:'Enter whole boxes, e.g. 3'});continue;}
+      if(qn<0){P.push({row:R,code,name:nm,qty:rawQ,problem:'Negative quantity',fix:'Enter the number of boxes (0 or more)'});continue;}
+      if(qn===0)continue;
+      const id=map[code.toLowerCase()];
+      if(!id){P.push({row:R,code,name:nm,qty:rawQ,problem:'Product code not found in the catalogue',fix:'Check the code (no extra spaces or missing leading zeros). If it’s a new Square item, run a Square sync first'});continue;}
+      const it=item(id);
+      if(it.active===false){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Item is inactive / hidden in the catalogue',fix:'Re-activate it in the Catalogue, or remove the row'});continue;}
+      if(!hasPpc(it)){P.push({row:R,code,name:it.name,qty:rawQ,problem:'No pack size (packets per box) set',fix:'A National / Super Admin sets the pack size on the item, then upload again'});continue;}
+      let qty=Math.round(qn);if(qty!==qn)P.push({row:R,code,name:it.name,qty:rawQ,problem:`Part box rounded to ${qty} box(es)`,fix:'Orders and transfers are in whole boxes',level:'warn'});
+      if(qty<1){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Less than one box',fix:'Enter at least 1 whole box',});continue;}
+      let cost;if(needCost){const rc=ki>=0?String(row[ki]||'').trim():'';if(rc!==''){const cv=parseFloat(rc.replace(/[$,]/g,''));if(isNaN(cv)||cv<0){cost=it.unit_cost;P.push({row:R,code,name:it.name,qty:rawQ,problem:`Cost “${rc}” not understood — catalogue cost ${money(it.unit_cost||0)} used`,fix:'Enter the cost per packet as a number, e.g. 1.85',level:'warn'});}else cost=cv;}else cost=it.unit_cost;}
+      if(byId[id]){byId[id].qty+=qty;P.push({row:R,code,name:it.name,qty:rawQ,problem:`Listed more than once — added to row ${byId[id].row} (now ${byId[id].qty} boxes)`,fix:'Check it isn’t a double entry',level:'warn'});continue;}
+      byId[id]={item:id,qty,row:R};if(needCost)byId[id].cost=cost;order.push(id);}
+    const out=order.map(id=>{const o={item:id,qty:byId[id].qty};if(needCost)o.cost=byId[id].cost;return o;});
+    if(out.length)cb(out);
+    if(P.length)showUploadReport(title||'Upload',file,{loaded:out.length,problems:P});
+    else if(out.length)toast(`Loaded ${out.length} item(s) — no problems found`);
+    else toast('No quantities found to import. Enter the number of boxes in the Quantity (boxes) column.',true);
+  });
 }
 
 /* RBAC */
@@ -3698,7 +3736,7 @@ function newTransfer(presetItem){
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Where the stock comes from and where it goes</span></div><div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div></section>
     <section class="sec tray field"><div class="sec-h"><h3>Items to transfer</h3><span class="tray-count" id="ed-count"></span><span class="sec-hint">Quantities in whole boxes</span>
-      <div class="sec-tools"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv" hidden><select id="tf-bystatus" class="btn sm"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select></div></div>
+      <div class="sec-tools"><button type="button" class="btn sm" id="dlT">${svg(I.receipt,14)} Template</button><button type="button" class="btn sm" id="upT">${svg(I.box,14)} Upload</button><input type="file" id="upF" accept=".csv,text/csv,.xlsx,.xls" hidden><select id="tf-bystatus" class="btn sm"><option value="">Add by stock status…</option><option value="lowout">Low + Out of Stock</option><option value="out">Out of Stock only</option><option value="low">Low / Reorder only</option></select></div></div>
       <div class="lines-scroll"><div class="linerow-lbl"><span>Product</span><span>Avail (bx)</span><span>2-mo usage</span><span id="lbl-soh">SOH</span><span>Cover</span><span>Transfer (boxes)</span><span>= packets</span><span></span></div>
       <div id="ed"></div></div><button type="button" class="addmore" id="addL">${svg(I.plus,16)} Add more items</button></section>
     <section class="sec"><div class="field"><label>Notes</label><textarea id="tf-notes" rows="2" placeholder="Courier, reason, ETA…"></textarea></div></section>
@@ -3746,7 +3784,7 @@ function newTransfer(presetItem){
       items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',hasPpc(i)?'':'No pack size set - cannot be transferred until a National Admin sets it'];}));
     toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
-  document.getElementById('upF').onchange=e=>readTemplate(e.target.files[0],false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();});
+  document.getElementById('upF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();},'Stock transfer');};
   document.getElementById('go').onclick=submitTransfer;
   document.getElementById('go-draft').onclick=saveTransferDraft;
 }
@@ -4000,7 +4038,7 @@ function newOrder(o){
     <div class="field"><label>Expected arrival (ETA)</label><input type="date" id="po-eta" value="${eta}"><div class="hint">${o?'Adjust as needed.':'Pre-filled from supplier lead time — adjust as needed.'}</div></div>
     </section>
     <section class="sec tray field"><div class="sec-h"><h3>Items to order</h3><span class="tray-count" id="ped-count"></span><span class="sec-hint">Quantities in whole boxes</span>
-      <div class="sec-tools"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv" hidden></div></div>
+      <div class="sec-tools"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv,.xlsx,.xls" hidden></div></div>
       <div class="lines-scroll"><div class="linerow-lbl cols-po"><span>Product</span><span>Boxes</span><span>Cost / packet</span><span>= packets</span><span style="text-align:right;padding-right:6px">Line total</span><span></span></div>
       <div id="ped"></div><div class="po-total cols-po"><div class="lbl">Order total (ex GST)</div><div class="val" id="po-total-val">$0.00</div></div></div><button type="button" class="addmore" id="pAdd">${svg(I.plus,16)} Add more items</button></section>
     <section class="sec"><div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div></section><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
@@ -4010,7 +4048,7 @@ function newOrder(o){
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
   document.getElementById('dlO').onclick=()=>{const items=S.items.filter(i=>i.active!==false).sort((a,b)=>String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadCSV('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
-  document.getElementById('upOF').onchange=e=>readTemplate(e.target.files[0],true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();});
+  document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();},'Purchase order');};
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
 }
 function pEd(){
@@ -7941,25 +7979,39 @@ function poReceiveTemplate(o){
 function poParseDate(v){v=String(v||'').trim();if(!v)return '';let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
   m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);if(m){const y=m[3].length===2?'20'+m[3]:m[3];return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}return 'bad';}
 function poReceiveUpload(o,file,hub){
-  const rd=new FileReader();rd.onload=()=>{
-    const rows=parseCSV(rd.result).filter(r=>r.some(c=>String(c||'').trim()));if(rows.length<2)return toast('The file has no data rows',true);
-    const h=rows[0].map(x=>String(x||'').replace(/^\ufeff/,'').trim().toLowerCase());const col=re=>h.findIndex(x=>re.test(x));
+  readSheetRows(file,raw=>{
+    const rows=(raw||[]).filter(r=>r.some(c=>String(c||'').trim()));if(rows.length<2)return toast('The file has no data rows',true);
+    const h=rows[0].map(x=>String(x||'').replace(/^﻿/,'').trim().toLowerCase());const col=re=>h.findIndex(x=>re.test(x));
     const cSku=col(/^sku|code/),cName=col(/^item|name|product/),cRec=col(/received/),cArea=col(/area|location/),cAisle=col(/aisle/),cExp=col(/best|expir|bb/),cCost=col(/cost/);
-    if(cRec<0)return toast('Missing the "Received (boxes)" column. Use the downloaded template.',true);
-    const byKey={},costs={},probs=[];
-    rows.slice(1).forEach((r,ix)=>{const n=ix+2;const sku=cSku>=0?String(r[cSku]||'').trim().toLowerCase():'';const nm=cName>=0?String(r[cName]||'').trim().toLowerCase():'';
+    const title='Receive '+o.code;
+    if(cRec<0)return showUploadReport(title,file,{loaded:0,problems:[{row:1,problem:'Missing the "Received (boxes)" column',fix:'Use the downloaded template and keep its column headings. Columns found: '+rows[0].filter(Boolean).join(', ')}]});
+    const byKey={},costs={},P=[];const hubLoc=isHub(o.location_id);
+    rows.slice(1).forEach((r,ix)=>{const n=ix+2;const skuRaw=cSku>=0?String(r[cSku]||'').trim():'';const sku=skuRaw.toLowerCase();const nmRaw=cName>=0?String(r[cName]||'').trim():'';const nm=nmRaw.toLowerCase();const rq=String(r[cRec]||'').trim();
+      if(!sku&&!nm&&!rq)return;
       const line=(o.lines||[]).find(l=>{const it=item(l.item_id);return (sku&&String(it.sku||'').toLowerCase()===sku)||(!sku&&nm&&it.name.toLowerCase()===nm);});
-      if(!line){if(sku||nm)probs.push('Row '+n+': '+(sku||nm)+' is not on '+o.code);return;}
-      const q=Math.round(+String(r[cRec]||'').trim()||0);if(!(q>0))return;
-      const exp=cExp>=0?poParseDate(r[cExp]):'';if(exp==='bad')probs.push('Row '+n+': best-before date not understood (use YYYY-MM-DD)');
-      (byKey[line.item_id]=byKey[line.item_id]||[]).push({qty:q,area:cArea>=0?String(r[cArea]||'').trim():'',aisle:cAisle>=0?String(r[cAisle]||'').trim():'',exp:exp==='bad'?'':exp});
-      if(cCost>=0&&String(r[cCost]||'').trim()!==''){const cv=+String(r[cCost]).replace(/[$,]/g,'');if(cv>=0)costs[line.item_id]=cv;else probs.push('Row '+n+': cost not understood');}
+      if(!line){if(sku||nm){const inCat=sku&&S.items.find(i=>String(i.sku||'').toLowerCase()===sku);P.push({row:n,code:skuRaw,name:nmRaw||(inCat?inCat.name:''),qty:rq,problem:inCat?'Item is not on '+o.code:'Product code not found',fix:inCat?'Only items on this order can be received here — receive extra stock as a supplier receipt':'Check the code against the order'});}return;}
+      const it=item(line.item_id);
+      if(rq==='')return;
+      const qn=parseFloat(rq.replace(/,/g,''));
+      if(isNaN(qn)||qn<0){P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:'Received quantity not understood',fix:'Enter whole boxes received, e.g. 4'});return;}
+      const q=Math.round(qn);if(!(q>0))return;
+      if(q!==qn)P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:`Part box rounded to ${q}`,fix:'Receiving is in whole boxes',level:'warn'});
+      const exp=cExp>=0?poParseDate(r[cExp]):'';
+      if(exp==='bad')P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:`Best-before “${r[cExp]}” not understood`,fix:'Use YYYY-MM-DD (e.g. 2027-03-12), then enter it on screen',level:'warn'});
+      else if(exp&&exp<today())P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:`Best-before ${fmtDate(exp)} is in the past`,fix:'Check the date on the pack',level:'warn'});
+      const area=cArea>=0?String(r[cArea]||'').trim():'',aisle=cAisle>=0?String(r[cAisle]||'').trim():'';
+      if(!exp||exp==='bad')P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:'No best-before date',fix:'Add it in the file or on screen before saving',level:'warn'});
+      if(hubLoc&&(!area||!aisle))P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:'Central Warehouse: store area / aisle missing',fix:'Add them in the file or on screen before saving',level:'warn'});
+      (byKey[line.item_id]=byKey[line.item_id]||[]).push({qty:q,area,aisle,exp:exp==='bad'||(exp&&exp<today())?'':exp});
+      if(cCost>=0&&String(r[cCost]||'').trim()!==''){const cv=+String(r[cCost]).replace(/[$,]/g,'');if(cv>=0)costs[line.item_id]=cv;else P.push({row:n,code:skuRaw||it.sku,name:it.name,qty:rq,problem:`Cost “${r[cCost]}” not understood`,fix:'Enter the cost per packet as a number',level:'warn'});}
     });
+    // received more than ordered
+    (o.lines||[]).forEach(l=>{const got=(byKey[l.item_id]||[]).reduce((a,x)=>a+x.qty,0);const it=item(l.item_id);const ord=pk2boxWhole(+l.qty||0,it);if(got&&ord!=null&&got>ord)P.push({code:it.sku,name:it.name,qty:got,problem:`More received (${got}) than ordered (${ord}) boxes`,fix:'Check the delivery — extra boxes are recorded as received',level:'warn'});});
     let n=0;(o.lines||[]).forEach(l=>{if(byKey[l.item_id]){PL[l.item_id]=byKey[l.item_id];n++;}else PL[l.item_id]=[{qty:'',area:areaOf(o.location_id,l.item_id)||'',aisle:aisleOf(o.location_id,l.item_id)||'',exp:''}];plRender(l.item_id,o.location_id,hub);
       if(costs[l.item_id]!=null){const ce=document.querySelector('[data-rcost="'+l.item_id+'"]');if(ce)ce.value=(+costs[l.item_id]).toFixed(2);}});
-    const missing=Object.values(byKey).flat().filter(r=>!r.area||!r.aisle||!r.exp).length;
-    toast('Filled '+n+' item'+(n===1?'':'s')+' from the file'+(missing?' — '+missing+' row(s) still need area, aisle or best-before':'')+(probs.length?' — '+probs.length+' problem(s): '+probs.slice(0,2).join('; '):''),!!(probs.length||missing));
-  };rd.readAsText(file);
+    if(P.length)showUploadReport(title,file,{loaded:n,problems:P});
+    else toast('Filled '+n+' item'+(n===1?'':'s')+' from the file — no problems found');
+  });
 }
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
@@ -7968,7 +8020,7 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card por-card" data-poritem="${l.item_id}" data-porq="${esc((it.name+' '+(it.sku||'')+' '+(it.barcode||'')).toLowerCase())}" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div style="display:flex;gap:12px;align-items:flex-start"><div style="text-align:right"><div class="cap">Cost / packet ($)</div><input type="number" min="0" step="0.01" inputmode="decimal" data-rcost="${l.item_id}" value="${(+l.unit_cost||0).toFixed(2)}" title="Actual cost per packet on the supplier invoice" style="width:92px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right;font-weight:600"></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
   modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item, with its <b>store area</b>, <b>aisle #</b> and <b>best-before</b> date (all required), and the <b>cost per packet</b> from the supplier invoice. Split a line across several areas or dates with <b>+ Add location / best-before</b>.</div></div>
     <div class="por-find"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="por-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${('BarcodeDetector' in window)?`<button type="button" class="btn" id="por-cam">${svg(I.box,16)} Camera</button>`:''}</div>
-    <div class="por-tools"><span>Receiving a big order?</span><button type="button" class="btn sm" id="por-dl">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="por-up">${svg(I.box,14)} Upload filled</button><input type="file" id="por-file" accept=".csv,text/csv" hidden></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
+    <div class="por-tools"><span>Receiving a big order?</span><button type="button" class="btn sm" id="por-dl">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="por-up">${svg(I.box,14)} Upload filled</button><input type="file" id="por-file" accept=".csv,text/csv,.xlsx,.xls" hidden></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
   document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
   porWireFind(o);
