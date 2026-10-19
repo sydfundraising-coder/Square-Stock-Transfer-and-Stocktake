@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.18-5';
-const APP_VERSION_NOTE='One best-before for a whole PO / transfer delivery · 2-digit years (27 → 2027) in every date box · Perth PO receiving: area & aisle optional · Excel templates keep codes exact';
+const APP_VERSION='2026.10.19-1';
+const APP_VERSION_NOTE='New: Online Orders (Square) — active / completed, customer, email, mobile, suburb, items, qty, notes, export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,7 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .oo-tbl td{vertical-align:top}.oo-sub{font-size:11.5px;color:var(--muted);margin-top:2px}.oo-sub a{color:var(--accent-ink)}.oo-li{font-size:13px;padding:2px 0}
   .pl-bulk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--accent);border-radius:12px;background:var(--accent-soft);font-size:13px}
   .pl-bulk>div{flex:1;min-width:180px}.pl-bulk input{padding:7px 9px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink)}
   .new-at{display:inline-flex;align-items:center;gap:5px;margin:2px 0 8px;padding:3px 9px;border-radius:999px;background:var(--transit-soft);color:var(--transit);font-size:11.5px;font-weight:600}
@@ -1670,6 +1671,7 @@ async function startApp(){
   if(!HELPER){try{const r0=sessionStorage.getItem('nav.route');if(r0&&navItem(r0))route=r0;}catch(e){}}
   try{history.replaceState({route,idx:0},'',location.pathname);}catch(e){}
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
+  if(!HELPER){ loadOnlineCount(); setInterval(loadOnlineCount,300000); }
   if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
 }
@@ -1696,6 +1698,7 @@ const NAV=[
   {id:'catalog',label:'Catalogue',kw:'items products prices',icon:I.catalog,group:'Inventory'},
   {id:'labels',label:'Shelf Labels',kw:'barcode print',icon:I.tag,group:'Inventory'},
   {id:'sales',label:'Sales',kw:'invoice customers statements credit',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
+  {id:'online',label:'Online Orders',kw:'web square online pickup delivery customer',icon:I.inbox,group:'Sales & Cash',badge:()=>S.onlineActive||0},
   {id:'cash',label:'Cash on Hand',kw:'banking till drawer',icon:I.wallet,group:'Sales & Cash'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
@@ -2235,7 +2238,7 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={online:['Online Orders','Square online, pickup and delivery orders for your centre — customer, items and notes'],warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 /* ---------- shelf labels (70 x 29.7 mm, 30 per A4) ---------- */
 const LBL={q:'',cat:'all',lines:[],src:'barcode',start:1,page:0,show:{price:true,weight:true,barcode:true},dx:0,dy:0};
 const LBL_COLS=3,LBL_ROWS=10,LBL_PER=30;
@@ -2386,6 +2389,12 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hoo1','Sales','Online orders','<b>Online Orders</b> (menu) lists the online, pickup, delivery and shipping orders customers placed through Square for your centre.',[
+      '<b>Active</b>: orders still to be prepared or collected, soonest pickup / delivery first. <b>Completed</b>: finished or cancelled orders — choose the period.',
+      'Each order shows the order #, status, pickup / delivery time, customer name, email, mobile, suburb (and address for delivery), every item with its quantity and notes, and the total.',
+      'Search by order #, customer, email, mobile, suburb or item. Tap an email or mobile to contact the customer.',
+      'Orders come in from Square every 10 minutes; <b>Refresh</b> pulls the latest straight away. <b>CSV</b> / <b>Excel</b> export one line per item.',
+      'You see your own centre’s orders only. Customer details are private — don’t share them outside the team.'],'','',['route:online'],ALL),
     T('hnew1','Stock transfers','Ordering an item your centre doesn’t sell yet','Transfer requests and purchase orders list the whole catalogue — not only your centre’s range.',[
       'Items Square hasn’t switched on at your centre are at the end of the list, marked <b>NEW</b> / “not sold at (centre) yet”.',
       'Add them as usual. The line shows <b>New for (centre) — switched on in Square when received</b>, so the approver can see it too.',
@@ -2878,6 +2887,68 @@ async function openCashCount(L){
     if(!first&&Math.abs(v)>=0.05&&!note)return stackConfirm('Submit with a difference?',`The drawer is ${v<0?'short':'over'} by ${money(Math.abs(v))}`,`<p>Counted <b>${money(c)}</b> against expected <b>${money(expected)}</b>.</p><p style="margin-top:8px">Please add a note explaining the difference if you can. You can submit anyway.</p>`,{okLabel:'Submit anyway',cancelLabel:'Add a note',onOk:go});
     go();};
 }
+/* =====================================================================
+   ONLINE ORDERS (migration 92 + square-online-orders): Square online / pickup /
+   delivery / shipping orders for the centre, with customer details, items and notes.
+   ===================================================================== */
+let ooTab='active',ooCentre='',ooQ='',ooDays=30,ooRows=[];
+const OO_FS={PROPOSED:['New','p-req'],RESERVED:['Accepted','p-appr'],PREPARED:['Ready','p-transit'],COMPLETED:['Picked up / done','p-done'],CANCELED:['Cancelled','p-cancel'],FAILED:['Failed','p-cancel']};
+function ooCentres(){return S.locations.filter(l=>visLocs().includes(l.id)&&l.square_location_id).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+async function loadOnlineCount(){if(HELPER)return;try{const ids=visLocs();if(!ids.length)return;const{count,error}=await sb.from('online_orders').select('square_order_id',{count:'exact',head:true}).eq('state','OPEN').in('location_id',ids);if(!error){S.onlineActive=count||0;renderNav();}}catch(e){}}
+function ooStatus(o){if(o.state==='CANCELED')return '<span class="pill p-cancel">Cancelled</span>';if(o.state==='COMPLETED')return '<span class="pill p-done">Completed</span>';const f=OO_FS[o.fulfillment_state]||['Open','p-req'];return `<span class="pill ${f[1]}">${f[0]}</span>`;}
+const ooType=t=>({PICKUP:'Pickup',DELIVERY:'Delivery',SHIPMENT:'Shipping'}[t]||'Online');
+async function vOnline(v){
+  const cs=ooCentres();
+  if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.inbox||I.order,34)}<div>No Square centre available to you.</div></div>`;return;}
+  if(ooCentre&&!cs.find(c=>c.id===ooCentre))ooCentre='';
+  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${ooTab==='active'?'active':''}" data-ootab="active">Active <span class="badge-count" id="oo-na" style="margin-left:4px">${S.onlineActive||0}</span></button><button class="rep-tab ${ooTab==='completed'?'active':''}" data-ootab="completed">Completed</button></div>
+    <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="oo-q" placeholder="Search order #, customer, email, mobile, suburb, item…" value="${esc(ooQ)}"></div>
+      ${cs.length>1?`<select class="filter" id="oo-c"><option value="">${scoped()?'All my centres':'All centres'}</option>${cs.map(c=>`<option value="${c.id}"${c.id===ooCentre?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
+      ${ooTab==='completed'?`<select class="filter" id="oo-d">${[[7,'Last 7 days'],[30,'Last 30 days'],[90,'Last 90 days'],[365,'Last 12 months']].map(([d,l])=>`<option value="${d}"${d===ooDays?' selected':''}>${l}</option>`).join('')}</select>`:''}
+      <div class="spacer"></div><span class="hint" id="oo-sync"></span><button class="btn" id="oo-ref">${svg(I.sync,15)} Refresh</button><button class="btn" id="oo-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="oo-xls">${svg(I.receipt,15)} Excel</button></div>
+    <div id="oo-body"><div class="card empty">${svg(I.inbox||I.order,30)}<div>Loading…</div></div></div>`;
+  v.querySelectorAll('[data-ootab]').forEach(b=>b.onclick=()=>{ooTab=b.dataset.ootab;vOnline(v);});
+  const c=document.getElementById('oo-c');if(c)c.onchange=e=>{ooCentre=e.target.value;vOnline(v);};
+  const d=document.getElementById('oo-d');if(d)d.onchange=e=>{ooDays=+e.target.value;vOnline(v);};
+  const q=document.getElementById('oo-q');q.oninput=()=>{ooQ=q.value;ooDraw();};
+  document.getElementById('oo-ref').onclick=async e=>{const b=e.currentTarget;b.disabled=true;toast('Pulling online orders from Square…');
+    const{data,error}=await sb.functions.invoke('square-online-orders',{body:{days:ooTab==='completed'?Math.max(ooDays,3):30,location_ids:ooCentre?[ooCentre]:cs.map(x=>x.id)}});b.disabled=false;
+    if(error||(data&&data.error))return toast('Online orders: '+((data&&data.error)||await fnErr(error)),true);toast(`Online orders updated (${data.orders||0} checked)`);vOnline(v);};
+  document.getElementById('oo-csv').onclick=()=>ooExport('csv');document.getElementById('oo-xls').onclick=()=>ooExport('xlsx');
+  const ids=ooCentre?[ooCentre]:cs.map(x=>x.id);
+  const{data,error}=await sbAll(()=>{let qq=sb.from('online_orders').select('*').in('location_id',ids);
+    if(ooTab==='active')qq=qq.eq('state','OPEN').order('due_at',{ascending:true,nullsFirst:false});
+    else qq=qq.in('state',['COMPLETED','CANCELED']).gte('placed_at',new Date(Date.now()-ooDays*864e5).toISOString()).order('placed_at',{ascending:false});
+    return qq;});
+  const body=document.getElementById('oo-body');if(!body)return;
+  if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${/online_orders|does not exist|schema cache/i.test(error.message||'')?'Run <b>92_online_orders.sql</b> in Supabase and deploy the <b>square-online-orders</b> function.':esc(error.message)}</div></div>`;return;}
+  ooRows=data||[];
+  if(ooTab==='active'){S.onlineActive=ooRows.length;const na=document.getElementById('oo-na');if(na)na.textContent=ooRows.length;renderNav();}
+  const last=ooRows.reduce((m,r)=>r.synced_at>m?r.synced_at:m,'');const sy=document.getElementById('oo-sync');if(sy)sy.textContent=last?'Updated '+fmtDT(last):'';
+  ooDraw();
+}
+function ooFiltered(){const q=(ooQ||'').trim().toLowerCase();if(!q)return ooRows;
+  return ooRows.filter(o=>[o.order_no,o.customer_name,o.email,o.phone,o.suburb,o.address,o.note,...(o.lines||[]).map(l=>l.name+' '+(l.sku||'')+' '+(l.note||''))].join(' ').toLowerCase().includes(q));}
+function ooDraw(){
+  const body=document.getElementById('oo-body');if(!body)return;const L=ooFiltered();const many=!ooCentre&&ooCentres().length>1;
+  if(!L.length){body.innerHTML=`<div class="card empty">${svg(I.inbox||I.order,30)}<div>${ooRows.length?'No orders match your search.':ooTab==='active'?'No active online orders right now.':'No completed online orders in this period.'}</div><div class="hint" style="margin-top:6px">Orders come in from Square every 10 minutes — or click <b>Refresh</b>.</div></div>`;return;}
+  const units=L.reduce((a,o)=>a+(o.lines||[]).reduce((b,l)=>b+(+l.qty||0),0),0);
+  body.innerHTML=`<div style="font-size:12.5px;color:var(--muted);margin:0 0 8px">${L.length} order${L.length===1?'':'s'} · ${units.toLocaleString()} item${units===1?'':'s'} · ${money(L.reduce((a,o)=>a+(+o.total||0),0))}</div>
+  <div class="tablewrap"><table class="oo-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Suburb</th><th>Items</th><th>Note</th><th class="num">Total</th></tr></thead><tbody>${L.map(o=>`<tr>
+    <td style="white-space:nowrap"><b class="mono">#${esc(o.order_no||'')}</b><div>${ooStatus(o)}</div><div class="oo-sub">${ooType(o.fulfillment_type)}${o.due_at?' · due '+fmtDT(o.due_at):''}</div><div class="oo-sub">Placed ${fmtDT(o.placed_at)}</div>${many?`<div class="oo-sub">${esc(loc(o.location_id).name)}</div>`:''}</td>
+    <td><b>${esc(o.customer_name||'—')}</b>${o.email?`<div class="oo-sub"><a href="mailto:${esc(o.email)}">${esc(o.email)}</a></div>`:''}${o.phone?`<div class="oo-sub"><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a></div>`:''}</td>
+    <td>${esc(o.suburb||'—')}${o.address&&o.fulfillment_type!=='PICKUP'?`<div class="oo-sub">${esc(o.address)}</div>`:''}</td>
+    <td>${(o.lines||[]).map(l=>`<div class="oo-li"><b class="tnum">${+l.qty||0} ×</b> ${esc(l.name)}${l.sku?` <span class="icode">${esc(l.sku)}</span>`:''}${l.note?`<div class="oo-sub">${esc(l.note)}</div>`:''}</div>`).join('')}</td>
+    <td style="font-size:12.5px;max-width:240px">${esc(o.note||'—')}</td>
+    <td class="num tnum" style="font-weight:700">${money(+o.total||0)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function ooExport(fmt){const L=ooFiltered();if(!L.length)return toast('Nothing to export',true);
+  const header=['Order #','Status','Type','Placed','Due','Centre','Customer','Email','Mobile','Suburb','Address','Item','Product code','Qty','Item note','Order note','Order total'];
+  const rows=[];L.forEach(o=>{const st=o.state==='OPEN'?((OO_FS[o.fulfillment_state]||['Open'])[0]):o.state==='CANCELED'?'Cancelled':'Completed';
+    const base=[o.order_no||'',st,ooType(o.fulfillment_type),o.placed_at?fmtDT(o.placed_at):'',o.due_at?fmtDT(o.due_at):'',loc(o.location_id).name,o.customer_name||'',o.email||'',o.phone||'',o.suburb||'',o.address||''];
+    const ls=(o.lines||[]).length?o.lines:[{}];ls.forEach((l,i)=>rows.push([...base,l.name||'',l.sku||'',l.qty??'',l.note||'',i===0?(o.note||''):'',i===0?(+o.total||0).toFixed(2):'']));});
+  const name=`online-orders_${ooTab}_${ooCentre?loc(ooCentre).name.replace(/[^\w]+/g,'-'):'all'}_${today()}`;
+  if(fmt==='xlsx'&&window.XLSX)downloadTemplate(name+'.csv',header,rows,[0,9,12]);else downloadCSV(name+'.csv',header,rows);}
 /* Cash in and Paid out: National Admin and Super Admin only (migration 75) */
 function cashInOutOk(){return false;}   // Cash in / Paid out removed (migration 89) — count, banking and opening balance only
 function openCashMove(L,kind){
@@ -3112,7 +3183,7 @@ function renderView(){
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,online:vOnline,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
