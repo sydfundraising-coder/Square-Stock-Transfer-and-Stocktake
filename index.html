@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.19-1';
+const APP_VERSION='2026.10.19-2';
 const APP_VERSION_NOTE='New: Online Orders (Square) — active / completed, customer, email, mobile, suburb, items, qty, notes, export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -2391,7 +2391,7 @@ HELP.topics.push(
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
     T('hoo1','Sales','Online orders','<b>Online Orders</b> (menu) lists the online, pickup, delivery and shipping orders customers placed through Square for your centre.',[
       '<b>Active</b>: orders still to be prepared or collected, soonest pickup / delivery first. <b>Completed</b>: finished or cancelled orders — choose the period.',
-      'Each order shows the order #, status, pickup / delivery time, customer name, email, mobile, suburb (and address for delivery), every item with its quantity and notes, and the total.',
+      'Each order shows the order #, status, pickup / delivery time, customer name, email, mobile, <b>collection point</b> (what the customer typed at checkout — filter by it with the chips above the list), suburb (and address for delivery), every item with its quantity and notes, and the total.',
       'Search by order #, customer, email, mobile, suburb or item. Tap an email or mobile to contact the customer.',
       'Orders come in from Square every 10 minutes; <b>Refresh</b> pulls the latest straight away. <b>CSV</b> / <b>Excel</b> export one line per item.',
       'You see your own centre’s orders only. Customer details are private — don’t share them outside the team.'],'','',['route:online'],ALL),
@@ -2891,7 +2891,7 @@ async function openCashCount(L){
    ONLINE ORDERS (migration 92 + square-online-orders): Square online / pickup /
    delivery / shipping orders for the centre, with customer details, items and notes.
    ===================================================================== */
-let ooTab='active',ooCentre='',ooQ='',ooDays=30,ooRows=[];
+let ooTab='active',ooCentre='',ooQ='',ooDays=30,ooRows=[],ooCp='';
 const OO_FS={PROPOSED:['New','p-req'],RESERVED:['Accepted','p-appr'],PREPARED:['Ready','p-transit'],COMPLETED:['Picked up / done','p-done'],CANCELED:['Cancelled','p-cancel'],FAILED:['Failed','p-cancel']};
 function ooCentres(){return S.locations.filter(l=>visLocs().includes(l.id)&&l.square_location_id).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 async function loadOnlineCount(){if(HELPER)return;try{const ids=visLocs();if(!ids.length)return;const{count,error}=await sb.from('online_orders').select('square_order_id',{count:'exact',head:true}).eq('state','OPEN').in('location_id',ids);if(!error){S.onlineActive=count||0;renderNav();}}catch(e){}}
@@ -2902,11 +2902,11 @@ async function vOnline(v){
   if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.inbox||I.order,34)}<div>No Square centre available to you.</div></div>`;return;}
   if(ooCentre&&!cs.find(c=>c.id===ooCentre))ooCentre='';
   v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${ooTab==='active'?'active':''}" data-ootab="active">Active <span class="badge-count" id="oo-na" style="margin-left:4px">${S.onlineActive||0}</span></button><button class="rep-tab ${ooTab==='completed'?'active':''}" data-ootab="completed">Completed</button></div>
-    <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="oo-q" placeholder="Search order #, customer, email, mobile, suburb, item…" value="${esc(ooQ)}"></div>
+    <div class="toolbar"><div class="search">${svg(I.search,16)}<input id="oo-q" placeholder="Search order #, customer, email, mobile, collection point, suburb, item…" value="${esc(ooQ)}"></div>
       ${cs.length>1?`<select class="filter" id="oo-c"><option value="">${scoped()?'All my centres':'All centres'}</option>${cs.map(c=>`<option value="${c.id}"${c.id===ooCentre?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
       ${ooTab==='completed'?`<select class="filter" id="oo-d">${[[7,'Last 7 days'],[30,'Last 30 days'],[90,'Last 90 days'],[365,'Last 12 months']].map(([d,l])=>`<option value="${d}"${d===ooDays?' selected':''}>${l}</option>`).join('')}</select>`:''}
       <div class="spacer"></div><span class="hint" id="oo-sync"></span><button class="btn" id="oo-ref">${svg(I.sync,15)} Refresh</button><button class="btn" id="oo-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="oo-xls">${svg(I.receipt,15)} Excel</button></div>
-    <div id="oo-body"><div class="card empty">${svg(I.inbox||I.order,30)}<div>Loading…</div></div></div>`;
+    <div id="oo-cpf"></div><div id="oo-body"><div class="card empty">${svg(I.inbox||I.order,30)}<div>Loading…</div></div></div>`;
   v.querySelectorAll('[data-ootab]').forEach(b=>b.onclick=()=>{ooTab=b.dataset.ootab;vOnline(v);});
   const c=document.getElementById('oo-c');if(c)c.onchange=e=>{ooCentre=e.target.value;vOnline(v);};
   const d=document.getElementById('oo-d');if(d)d.onchange=e=>{ooDays=+e.target.value;vOnline(v);};
@@ -2923,32 +2923,39 @@ async function vOnline(v){
   const body=document.getElementById('oo-body');if(!body)return;
   if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${/online_orders|does not exist|schema cache/i.test(error.message||'')?'Run <b>92_online_orders.sql</b> in Supabase and deploy the <b>square-online-orders</b> function.':esc(error.message)}</div></div>`;return;}
   ooRows=data||[];
+  ooCpFilter();
   if(ooTab==='active'){S.onlineActive=ooRows.length;const na=document.getElementById('oo-na');if(na)na.textContent=ooRows.length;renderNav();}
   const last=ooRows.reduce((m,r)=>r.synced_at>m?r.synced_at:m,'');const sy=document.getElementById('oo-sync');if(sy)sy.textContent=last?'Updated '+fmtDT(last):'';
   ooDraw();
 }
-function ooFiltered(){const q=(ooQ||'').trim().toLowerCase();if(!q)return ooRows;
-  return ooRows.filter(o=>[o.order_no,o.customer_name,o.email,o.phone,o.suburb,o.address,o.note,...(o.lines||[]).map(l=>l.name+' '+(l.sku||'')+' '+(l.note||''))].join(' ').toLowerCase().includes(q));}
+/* collection point filter: one chip per collection point in the list */
+function ooCpFilter(){const el=document.getElementById('oo-cpf');if(!el)return;const m={};ooRows.forEach(o=>{const k=(o.collection_point||'').trim();if(k)m[k]=(m[k]||0)+1;});const ks=Object.keys(m).sort((a,b)=>a.localeCompare(b));
+  if(ooCp&&!m[ooCp])ooCp='';
+  el.innerHTML=ks.length?`<div class="st-chips" style="margin:0 0 10px"><span style="font-size:12px;font-weight:700;color:var(--muted);align-self:center">Collection point:</span><button type="button" class="st-chip${!ooCp?' on':''}" data-oocp="">All<b>${ooRows.length}</b></button>${ks.map(k=>`<button type="button" class="st-chip${ooCp===k?' on':''}" data-oocp="${esc(k)}">${esc(k)}<b>${m[k]}</b></button>`).join('')}</div>`:'';
+  el.querySelectorAll('[data-oocp]').forEach(b=>b.onclick=()=>{ooCp=b.dataset.oocp;ooCpFilter();ooDraw();});}
+function ooFiltered(){const q=(ooQ||'').trim().toLowerCase();const base=ooCp?ooRows.filter(o=>(o.collection_point||'').trim()===ooCp):ooRows;if(!q)return base;
+  return base.filter(o=>[o.order_no,o.customer_name,o.email,o.phone,o.suburb,o.address,o.note,o.collection_point,...(o.lines||[]).map(l=>l.name+' '+(l.sku||'')+' '+(l.note||''))].join(' ').toLowerCase().includes(q));}
 function ooDraw(){
   const body=document.getElementById('oo-body');if(!body)return;const L=ooFiltered();const many=!ooCentre&&ooCentres().length>1;
   if(!L.length){body.innerHTML=`<div class="card empty">${svg(I.inbox||I.order,30)}<div>${ooRows.length?'No orders match your search.':ooTab==='active'?'No active online orders right now.':'No completed online orders in this period.'}</div><div class="hint" style="margin-top:6px">Orders come in from Square every 10 minutes — or click <b>Refresh</b>.</div></div>`;return;}
   const units=L.reduce((a,o)=>a+(o.lines||[]).reduce((b,l)=>b+(+l.qty||0),0),0);
   body.innerHTML=`<div style="font-size:12.5px;color:var(--muted);margin:0 0 8px">${L.length} order${L.length===1?'':'s'} · ${units.toLocaleString()} item${units===1?'':'s'} · ${money(L.reduce((a,o)=>a+(+o.total||0),0))}</div>
-  <div class="tablewrap"><table class="oo-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Suburb</th><th>Items</th><th>Note</th><th class="num">Total</th></tr></thead><tbody>${L.map(o=>`<tr>
+  <div class="tablewrap"><table class="oo-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Collection point</th><th>Suburb</th><th>Items</th><th>Note</th><th class="num">Total</th></tr></thead><tbody>${L.map(o=>`<tr>
     <td style="white-space:nowrap"><b class="mono">#${esc(o.order_no||'')}</b><div>${ooStatus(o)}</div><div class="oo-sub">${ooType(o.fulfillment_type)}${o.due_at?' · due '+fmtDT(o.due_at):''}</div><div class="oo-sub">Placed ${fmtDT(o.placed_at)}</div>${many?`<div class="oo-sub">${esc(loc(o.location_id).name)}</div>`:''}</td>
     <td><b>${esc(o.customer_name||'—')}</b>${o.email?`<div class="oo-sub"><a href="mailto:${esc(o.email)}">${esc(o.email)}</a></div>`:''}${o.phone?`<div class="oo-sub"><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a></div>`:''}</td>
+    <td style="font-weight:600;color:var(--accent-ink)">${esc(o.collection_point||'—')}</td>
     <td>${esc(o.suburb||'—')}${o.address&&o.fulfillment_type!=='PICKUP'?`<div class="oo-sub">${esc(o.address)}</div>`:''}</td>
     <td>${(o.lines||[]).map(l=>`<div class="oo-li"><b class="tnum">${+l.qty||0} ×</b> ${esc(l.name)}${l.sku?` <span class="icode">${esc(l.sku)}</span>`:''}${l.note?`<div class="oo-sub">${esc(l.note)}</div>`:''}</div>`).join('')}</td>
     <td style="font-size:12.5px;max-width:240px">${esc(o.note||'—')}</td>
     <td class="num tnum" style="font-weight:700">${money(+o.total||0)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function ooExport(fmt){const L=ooFiltered();if(!L.length)return toast('Nothing to export',true);
-  const header=['Order #','Status','Type','Placed','Due','Centre','Customer','Email','Mobile','Suburb','Address','Item','Product code','Qty','Item note','Order note','Order total'];
+  const header=['Order #','Status','Type','Placed','Due','Centre','Customer','Email','Mobile','Collection point','Suburb','Address','Item','Product code','Qty','Item note','Order note','Order total'];
   const rows=[];L.forEach(o=>{const st=o.state==='OPEN'?((OO_FS[o.fulfillment_state]||['Open'])[0]):o.state==='CANCELED'?'Cancelled':'Completed';
-    const base=[o.order_no||'',st,ooType(o.fulfillment_type),o.placed_at?fmtDT(o.placed_at):'',o.due_at?fmtDT(o.due_at):'',loc(o.location_id).name,o.customer_name||'',o.email||'',o.phone||'',o.suburb||'',o.address||''];
+    const base=[o.order_no||'',st,ooType(o.fulfillment_type),o.placed_at?fmtDT(o.placed_at):'',o.due_at?fmtDT(o.due_at):'',loc(o.location_id).name,o.customer_name||'',o.email||'',o.phone||'',o.collection_point||'',o.suburb||'',o.address||''];
     const ls=(o.lines||[]).length?o.lines:[{}];ls.forEach((l,i)=>rows.push([...base,l.name||'',l.sku||'',l.qty??'',l.note||'',i===0?(o.note||''):'',i===0?(+o.total||0).toFixed(2):'']));});
   const name=`online-orders_${ooTab}_${ooCentre?loc(ooCentre).name.replace(/[^\w]+/g,'-'):'all'}_${today()}`;
-  if(fmt==='xlsx'&&window.XLSX)downloadTemplate(name+'.csv',header,rows,[0,9,12]);else downloadCSV(name+'.csv',header,rows);}
+  if(fmt==='xlsx'&&window.XLSX)downloadTemplate(name+'.csv',header,rows,[0,8,10,13]);else downloadCSV(name+'.csv',header,rows);}
 /* Cash in and Paid out: National Admin and Super Admin only (migration 75) */
 function cashInOutOk(){return false;}   // Cash in / Paid out removed (migration 89) — count, banking and opening balance only
 function openCashMove(L,kind){
