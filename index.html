@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.19-2';
+const APP_VERSION='2026.10.19-3';
 const APP_VERSION_NOTE='New: Online Orders (Square) — active / completed, customer, email, mobile, suburb, items, qty, notes, export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -2922,12 +2922,24 @@ async function vOnline(v){
     return qq;});
   const body=document.getElementById('oo-body');if(!body)return;
   if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${/online_orders|does not exist|schema cache/i.test(error.message||'')?'Run <b>92_online_orders.sql</b> in Supabase and deploy the <b>square-online-orders</b> function.':esc(error.message)}</div></div>`;return;}
-  ooRows=data||[];
+  ooRows=(data||[]).map(ooNormCp);
   ooCpFilter();
   if(ooTab==='active'){S.onlineActive=ooRows.length;const na=document.getElementById('oo-na');if(na)na.textContent=ooRows.length;renderNav();}
   const last=ooRows.reduce((m,r)=>r.synced_at>m?r.synced_at:m,'');const sy=document.getElementById('oo-sync');if(sy)sy.textContent=last?'Updated '+fmtDT(last):'';
   ooDraw();
 }
+/* Collection point = the centre NAME only (e.g. "Melbourne East"). Whatever else came with it (the standard
+   "Collect from your local collection point…" text etc.) is moved to the order note. Done here as well as in
+   the Square pull, so the column is always clean whatever the stored text looks like. */
+function ooSplitCp(t){t=String(t||'').replace(/[\u00a0\u2007\u202f]/g,' ').replace(/\s+/g,' ').trim();if(!t)return {cp:'',rest:''};
+  t=t.replace(/^(?:collection|pick\s*-?\s*up)\s*(?:point|location|place|centre|center)?\s*[:\-–=]\s*/i,'');
+  const cuts=[/\.(?=\s|$|[A-Z])/,/\s[-–|]\s/,/[;\n]/,/\s(?:collect\b|shayona volunteers|volunteers\b|please\b|we will\b|you will\b|pick\s*up\b)/i];
+  let at=t.length;cuts.forEach(re=>{const m=t.match(re);if(m&&m.index>0&&m.index<at)at=m.index;});
+  const cp=t.slice(0,at).trim().replace(/[.,;:]+$/,''),rest=t.slice(at).replace(/^[\s.,;:|–-]+/,'').trim();
+  return cp.length>60?{cp:'',rest:t}:{cp,rest};}
+function ooNormCp(o){const r={...o};const src=r.collection_point||(r.fulfillment_type==='PICKUP'&&!r.collection_point?'':'');
+  if(src){const x=ooSplitCp(src);r.collection_point=x.cp||null;if(x.rest&&!(r.note||'').includes(x.rest))r.note=[x.rest,r.note].filter(Boolean).join(' · ');}
+  return r;}
 /* collection point filter: one chip per collection point in the list */
 function ooCpFilter(){const el=document.getElementById('oo-cpf');if(!el)return;const m={};ooRows.forEach(o=>{const k=(o.collection_point||'').trim();if(k)m[k]=(m[k]||0)+1;});const ks=Object.keys(m).sort((a,b)=>a.localeCompare(b));
   if(ooCp&&!m[ooCp])ooCp='';
