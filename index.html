@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.19-3';
+const APP_VERSION='2026.10.19-4';
 const APP_VERSION_NOTE='New: Online Orders (Square) — active / completed, customer, email, mobile, suburb, items, qty, notes, export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -2952,11 +2952,11 @@ function ooDraw(){
   if(!L.length){body.innerHTML=`<div class="card empty">${svg(I.inbox||I.order,30)}<div>${ooRows.length?'No orders match your search.':ooTab==='active'?'No active online orders right now.':'No completed online orders in this period.'}</div><div class="hint" style="margin-top:6px">Orders come in from Square every 10 minutes — or click <b>Refresh</b>.</div></div>`;return;}
   const units=L.reduce((a,o)=>a+(o.lines||[]).reduce((b,l)=>b+(+l.qty||0),0),0);
   body.innerHTML=`<div style="font-size:12.5px;color:var(--muted);margin:0 0 8px">${L.length} order${L.length===1?'':'s'} · ${units.toLocaleString()} item${units===1?'':'s'} · ${money(L.reduce((a,o)=>a+(+o.total||0),0))}</div>
-  <div class="tablewrap"><table class="oo-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Collection point</th><th>Suburb</th><th>Items</th><th>Note</th><th class="num">Total</th></tr></thead><tbody>${L.map(o=>`<tr>
+  <div class="tablewrap"><table class="oo-tbl"><thead><tr><th>Order</th><th>Customer</th><th>Collection point</th><th>Address</th><th>Items</th><th>Note</th><th class="num">Total</th></tr></thead><tbody>${L.map(o=>`<tr>
     <td style="white-space:nowrap"><b class="mono">#${esc(o.order_no||'')}</b><div>${ooStatus(o)}</div><div class="oo-sub">${ooType(o.fulfillment_type)}${o.due_at?' · due '+fmtDT(o.due_at):''}</div><div class="oo-sub">Placed ${fmtDT(o.placed_at)}</div>${many?`<div class="oo-sub">${esc(loc(o.location_id).name)}</div>`:''}</td>
     <td><b>${esc(o.customer_name||'—')}</b>${o.email?`<div class="oo-sub"><a href="mailto:${esc(o.email)}">${esc(o.email)}</a></div>`:''}${o.phone?`<div class="oo-sub"><a href="tel:${esc(o.phone)}">${esc(o.phone)}</a></div>`:''}</td>
     <td style="font-weight:600;color:var(--accent-ink)">${esc(o.collection_point||'—')}</td>
-    <td>${esc(o.suburb||'—')}${o.address&&o.fulfillment_type!=='PICKUP'?`<div class="oo-sub">${esc(o.address)}</div>`:''}</td>
+    <td style="font-size:12.5px;max-width:220px">${o.address?esc(o.address):esc(o.suburb||'—')}${o.suburb&&o.address&&!o.address.toLowerCase().includes(o.suburb.toLowerCase())?`<div class="oo-sub">${esc(o.suburb)}</div>`:''}</td>
     <td>${(o.lines||[]).map(l=>`<div class="oo-li"><b class="tnum">${+l.qty||0} ×</b> ${esc(l.name)}${l.sku?` <span class="icode">${esc(l.sku)}</span>`:''}${l.note?`<div class="oo-sub">${esc(l.note)}</div>`:''}</div>`).join('')}</td>
     <td style="font-size:12.5px;max-width:240px">${esc(o.note||'—')}</td>
     <td class="num tnum" style="font-weight:700">${money(+o.total||0)}</td></tr>`).join('')}</tbody></table></div>`;
