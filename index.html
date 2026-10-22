@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.22-1';
-const APP_VERSION_NOTE='Storage areas & aisle #s: add, rename (carries through to items, bins, open counts) and delete — Catalogue → Areas & aisles';
+const APP_VERSION='2026.10.23-1';
+const APP_VERSION_NOTE='Scan the aisle # barcode (camera button next to every Aisle # field) — fills the aisle and its storage area · storage areas & aisles editor';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,10 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .aisle-wrap{display:flex;gap:6px;align-items:center;width:100%}.aisle-wrap>input,.aisle-wrap>select{flex:1;min-width:0}
+  .aisle-scan{display:inline-grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);cursor:pointer;padding:0;margin-left:4px}
+  .aisle-scan:hover{background:var(--accent);color:#fff}
+  @media (max-width:900px){.aisle-scan{width:44px;height:44px}}
   .sa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:760px){.sa-grid{grid-template-columns:1fr}}
   .sa-sec{border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--surface)}
   .sa-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sa-h h3{font-size:14.5px}.sa-n{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 8px}
@@ -1363,7 +1367,7 @@ function plSum(key){return (PL[key]||[]).reduce((s,r)=>s+(+r.qty||0),0);}
 function plBuild(key,loc,hub){const rows=PL[key]||[];const opa=savedAreas(loc),opi=savedAisles(loc);const body=rows.map((r,ix)=>`<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0"><input type="number" min="0" step="1" value="${r.qty}" data-plq="${key}|${ix}" title="Boxes in this spot" style="width:56px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px"><span style="font-size:10px;color:var(--faint)">bx</span><select data-plsel="area" data-plref="${key}|${ix}" data-plloc="${loc}" title="Store area" style="min-width:112px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('area',opa,r.area||'')}</select><select data-plsel="aisle" data-plref="${key}|${ix}" data-plloc="${loc}" title="Aisle #" style="min-width:84px;padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${saOptions('aisle',opi,r.aisle||'')}</select><input type="date" value="${esc(r.exp||'')}" data-plx="${key}|${ix}" title="Best before (required)" style="padding:5px 6px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px">${rows.length>1?`<button type="button" class="btn sm" data-plrm="${key}|${ix}" title="Remove this spot" style="color:var(--crit);border-color:var(--crit);padding:2px 6px">${svg(I.x,13)}</button>`:''}</div>`).join('');
   const tot=plSum(key),max=PLMAX[key];const over=max!=null&&tot>max;
   return body+`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:3px"><button type="button" class="btn sm" data-pladd="${key}" style="padding:3px 8px;font-size:12px">${svg(I.plus,13)} Add location / best-before</button><span id="pltot-${key}" style="font-size:11.5px;color:${over?'var(--crit)':'var(--muted)'}">Receiving <b>${tot}</b>${max!=null?' of '+max:''} boxes</span></div>`;}
-function plRender(key,loc,hub){const host=document.getElementById('pl-'+key);if(!host)return;host.innerHTML=plBuild(key,loc,hub);
+function plRender(key,loc,hub){const host=document.getElementById('pl-'+key);if(!host)return;host.innerHTML=plBuild(key,loc,hub);host.querySelectorAll('[data-plsel]').forEach(x=>{x.dataset.saloc=loc;});
   host.querySelectorAll('[data-plq]').forEach(el=>el.oninput=e=>{const[k,ix]=e.target.dataset.plq.split('|');PL[k][+ix].qty=Math.max(0,Math.floor(+e.target.value||0));plTot(k);});
   host.querySelectorAll('[data-plx]').forEach(el=>el.onchange=e=>{const[k,ix]=e.target.dataset.plx.split('|');PL[k][+ix].exp=e.target.value;});
   host.querySelectorAll('[data-plrm]').forEach(el=>el.onclick=e=>{const[k,ix]=e.target.closest('[data-plrm]').dataset.plrm.split('|');PL[k].splice(+ix,1);plRender(k,loc,hub);});
@@ -2401,7 +2405,8 @@ HELP.topics.push(
       '<b>Add</b>: type the name and tap Add.',
       '<b>Rename</b>: fixes a spelling or renames a shelf. Every item stored there, the warehouse bins and open stock takes at your centre change with it. Renaming to a name that already exists merges the two.',
       '<b>Delete</b>: removes it from the pick list. Tick “also clear it from the items” to blank it on the items stored there; otherwise they keep it.',
-      'Each entry shows how many items are stored there. Every change is in the Audit Log.'],'','',['route:catalog','route:locations'],ALL),
+      'Each entry shows how many items are stored there. Every change is in the Audit Log.',
+      '<b>Scan instead of choosing</b>: every Aisle # box has a scan button (barcode icon). Tap it and point the camera at the aisle label — the Aisle # (and its storage area, e.g. Basement Storage, if empty) is filled in. Only Aisle #s on the list are accepted, so a product barcode can’t be taken by mistake. With a USB / Bluetooth scanner, click into the Aisle # box and scan.'],'','',['route:catalog','route:locations'],ALL),
     T('hoo1','Sales','Online orders','<b>Online Orders</b> (menu) lists the online, pickup, delivery and shipping orders customers placed through Square for your centre.',[
       '<b>Active</b>: orders still to be prepared or collected, soonest pickup / delivery first. <b>Completed</b>: finished or cancelled orders — choose the period.',
       'Each order shows the order #, status, pickup / delivery time, customer name, email, mobile, <b>collection point</b> (what the customer typed at checkout — filter by it with the chips above the list), suburb (and address for delivery), every item with its quantity and notes, and the total.',
@@ -8201,6 +8206,56 @@ function porWireFind(o){
 /* Camera barcode finder that floats OVER the current window (does not close it).
    onCode(code) → true closes the camera. One scan per barcode: after a scan the
    barcode must leave the view before it is read again. */
+/* =====================================================================
+   SCAN THE AISLE # BARCODE instead of picking it from a long list.
+   Every Aisle # field (stock take, receiving POs / transfers / supplier receipts, picking,
+   Set location, Areas & aisles) gets a scan button. The scanned code must be an Aisle #
+   already on the list (so a product barcode can't be taken as a location by mistake).
+   If the row's storage area is still empty it is filled too, when the aisle belongs to one area
+   (rack codes like R4-02-3 → Basement Storage).
+   A USB / Bluetooth scanner also works: click into the Aisle # box and scan.
+   ===================================================================== */
+const AISLE_SEL='#se-aisle,[data-saisle],[data-plsel="aisle"],[data-pkaisle],#sl-aisle,[data-sapick="aisle"]';
+const AREA_SEL='#se-area,[data-starea],[data-plsel="area"],[data-pkfrom],#sl-area,[data-sapick="area"]';
+function aisleLocOf(el){const d=el.dataset||{};if(d.saloc)return d.saloc;
+  if(d.pkaisle&&typeof pkId!=='undefined'&&pkId){const t=S.transfers.find(x=>x.id===pkId);if(t)return t.from_location;}
+  const ids=['po-loc','rc-loc','sl-loc','aa-loc'].map(i=>document.getElementById(i)).filter(Boolean);if(ids.length&&ids[0].value)return ids[0].value;
+  const st=S.stocktakes&&S.stocktakes.find(x=>x.id===stCurrentId);if(st&&el.closest&&(el.closest('.scan-entry')||el.closest('#stList')))return st.location_id;
+  return null;}
+function aisleKnown(loc){const set=new Map();const add=(n,l)=>{if(!n)return;const k=String(n).trim().toLowerCase();if(!set.has(k))set.set(k,{name:String(n).trim(),loc:l});};
+  (S.storeAreas||[]).filter(a=>a.kind==='aisle'&&a.active!==false&&(!loc||a.location_id===loc)).forEach(a=>add(a.name,a.location_id));
+  if(S.bin)for(const k in S.bin){const[lc]=k.split('__');if((!loc||lc===loc)&&S.bin[k].aisle)add(S.bin[k].aisle,lc);}
+  return set;}
+function areaForAisle(loc,aisle){const a=String(aisle).toLowerCase();const used=new Set();
+  if(S.bin)for(const k in S.bin){const[lc]=k.split('__');const b=S.bin[k];if(lc===loc&&b.aisle&&b.aisle.toLowerCase()===a&&b.area)used.add(b.area);}
+  if(used.size===1)return [...used][0];
+  if(/^R\d+-\d+-[A-Z0-9]+$/i.test(aisle)){const bs=(savedAreas(loc)||[]).find(x=>/basement/i.test(x));if(bs)return bs;}
+  return '';}
+function setFieldVal(el,v){if(!el)return;if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=v;const add=[...el.options].find(x=>x.value==='__add');el.insertBefore(o,add||null);}
+  el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));}
+function scanAisleFor(el){
+  if(!('BarcodeDetector' in window))return toast('Camera scanning isn’t available on this device — click into the Aisle # box and use a USB / Bluetooth scanner',true);
+  const loc=aisleLocOf(el);
+  openCamFinder('Scan the aisle # barcode',code=>{
+    const raw=String(code||'').trim();const k=aisleKnown(loc);let hit=k.get(raw.toLowerCase());
+    if(!hit&&loc){const any=aisleKnown(null).get(raw.toLowerCase());if(any&&any.loc===loc)hit=any;}
+    if(!hit){toast(`“${raw}” isn’t an Aisle # on the list${loc?' at '+loc0name(loc):''} — scan the aisle label (not a product)`,true);return false;}
+    setFieldVal(el,hit.name);
+    const box=el.closest('.grid2,.stl-det,.recv-row,.field')?.parentElement||el.parentElement;
+    const areaEl=el.closest('div')&&(el.closest('div[style*="flex"]')||el.closest('.grid2')||el.closest('.recv-row')||el.closest('.stl-det')||document);
+    const ar=(areaEl&&areaEl.querySelector?areaEl.querySelector(AREA_SEL):null)||(box&&box.querySelector?box.querySelector(AREA_SEL):null);
+    if(ar&&!String(ar.value||'').trim()&&loc){const a=areaForAisle(loc,hit.name);if(a)setFieldVal(ar,a);}
+    toast('Aisle # '+hit.name+(ar&&ar.value?' · '+ar.value:''));if(navigator.vibrate)navigator.vibrate(40);
+    return true;});
+}
+function aisleEnhance(el){if(el.dataset.aisleScan)return;el.dataset.aisleScan='1';
+  const b=document.createElement('button');b.type='button';b.className='aisle-scan';b.title='Scan the aisle # barcode';b.setAttribute('aria-label','Scan the aisle # barcode');
+  b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 8v8M11 8v8M14 8v8M17 8v8"/></svg>';
+  b.onclick=e=>{e.preventDefault();e.stopPropagation();scanAisleFor(el);};
+  el.insertAdjacentElement('afterend',b);
+  const p=el.parentElement;if(p&&!p.classList.contains('aisle-wrap')&&getComputedStyle(p).display!=='flex'){const w=document.createElement('span');w.className='aisle-wrap';p.insertBefore(w,el);w.appendChild(el);w.appendChild(b);}}
+new MutationObserver(()=>{document.querySelectorAll(AISLE_SEL).forEach(el=>{if(!el.dataset.aisleScan&&!HELPER_NO_SCAN())aisleEnhance(el);});}).observe(document.body,{childList:true,subtree:true});
+function HELPER_NO_SCAN(){return false;}
 async function openCamFinder(title,onCode){
   if(!('BarcodeDetector' in window))return toast('Camera scan not supported here — use a USB scanner or type the code',true);
   const host=document.createElement('div');host.className='scan-entry-host';
