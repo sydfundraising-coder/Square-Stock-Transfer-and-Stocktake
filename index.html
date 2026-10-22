@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.19-5';
-const APP_VERSION_NOTE='Transfers: request items the sending centre hasn’t got (marked on request + picking list) · Requested-but-not-in-stock report · café / food-service categories left out of transfers and templates';
+const APP_VERSION='2026.10.22-1';
+const APP_VERSION_NOTE='Storage areas & aisle #s: add, rename (carries through to items, bins, open counts) and delete — Catalogue → Areas & aisles';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,12 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .sa-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:760px){.sa-grid{grid-template-columns:1fr}}
+  .sa-sec{border:1px solid var(--border);border-radius:14px;padding:12px 14px;background:var(--surface)}
+  .sa-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sa-h h3{font-size:14.5px}.sa-n{font-size:11.5px;font-weight:700;color:var(--muted);background:var(--surface-2);border-radius:999px;padding:1px 8px}
+  .sa-add{display:flex;gap:8px;margin-bottom:6px}.sa-add input{flex:1;padding:8px 10px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--ink)}
+  .sa-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)}.sa-row>div{flex:1;min-width:0}.sa-row b{font-size:13.5px}
+  .sa-use{font-size:11.5px;color:var(--faint)}.sa-del{color:var(--crit);border-color:var(--crit)}
   .tl-short{display:inline-flex;align-items:center;gap:5px;margin:3px 0 2px;padding:2px 8px;border-radius:999px;background:var(--crit-soft);color:var(--crit);font-size:11.5px;font-weight:700}
   .oo-tbl td{vertical-align:top}.oo-sub{font-size:11.5px;color:var(--muted);margin-top:2px}.oo-sub a{color:var(--accent-ink)}.oo-li{font-size:13px;padding:2px 0}
   .pl-bulk{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin:0 0 12px;border:1px dashed var(--accent);border-radius:12px;background:var(--accent-soft);font-size:13px}
@@ -2391,6 +2397,11 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hsa1','Checking stock and sales','Storage areas and aisle #s','Keep the pick lists of storage areas and aisle #s tidy: <b>Catalogue → Areas &amp; aisles</b> (Admins also from Locations → Storage areas).',[
+      '<b>Add</b>: type the name and tap Add.',
+      '<b>Rename</b>: fixes a spelling or renames a shelf. Every item stored there, the warehouse bins and open stock takes at your centre change with it. Renaming to a name that already exists merges the two.',
+      '<b>Delete</b>: removes it from the pick list. Tick “also clear it from the items” to blank it on the items stored there; otherwise they keep it.',
+      'Each entry shows how many items are stored there. Every change is in the Audit Log.'],'','',['route:catalog','route:locations'],ALL),
     T('hoo1','Sales','Online orders','<b>Online Orders</b> (menu) lists the online, pickup, delivery and shipping orders customers placed through Square for your centre.',[
       '<b>Active</b>: orders still to be prepared or collected, soonest pickup / delivery first. <b>Completed</b>: finished or cancelled orders — choose the period.',
       'Each order shows the order #, status, pickup / delivery time, customer name, email, mobile, <b>collection point</b> (what the customer typed at checkout — filter by it with the chips above the list), suburb (and address for delivery), every item with its quantity and notes, and the total.',
@@ -5715,7 +5726,7 @@ function vCatalog(v){
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
       <div class="spacer"></div>
-      <button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
+      ${HELPER?'':`<button class="btn" id="cat-areas">${svg(I.location,15)} Areas &amp; aisles</button>`}<button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
       ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button><button class="btn" id="cat-clean">${svg(I.check,15)} Clean up catalogue</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
@@ -5725,6 +5736,7 @@ function vCatalog(v){
   document.getElementById('cat-csv').onclick=()=>exportCatalogue('csv');
   document.getElementById('cat-xls').onclick=()=>exportCatalogue('xlsx');
   const ci=document.getElementById('cat-import');if(ci)ci.onclick=importCostCarton;
+  const ca=document.getElementById('cat-areas');if(ca)ca.onclick=()=>openAreasAisles(catCentre||HOME);
   const cc=document.getElementById('cat-clean');if(cc)cc.onclick=openCatalogueCleanup;
   catList();
 }
@@ -6335,23 +6347,59 @@ function vLocations(v){
   v.querySelectorAll('[data-areas]').forEach(b=>b.onclick=()=>openStoreAreas(b.dataset.areas));
 }
 const adminPlus=()=>['admin','national_admin','super_admin'].includes(ROLE);
+/* =====================================================================
+   STORAGE AREAS + AISLE #s manager (migration 96): add, rename, delete.
+   Any centre staff member; renames carry through to items, bins and open counts.
+   ===================================================================== */
+async function saManager(host,locId){
+  if(!host)return;host.innerHTML=`<div style="color:var(--faint);font-size:13px;padding:6px 0">Loading…</div>`;
+  let use={};try{const{data,error}=await sb.rpc('store_list_usage',{p_loc:locId});if(!error)(data||[]).forEach(r=>use[r.kind+'|'+r.name]=+r.items||0);}catch(e){}
+  const list=k=>k==='area'?savedAreas(locId):savedAisles(locId);
+  const sec=(k,title,ph)=>{const L=list(k);return `<div class="sa-sec"><div class="sa-h"><h3>${title}</h3><span class="sa-n">${L.length}</span></div>
+    <div class="sa-add"><input data-sanew="${k}" placeholder="${ph}" maxlength="60"><button type="button" class="btn sm" data-saadd="${k}">${svg(I.plus,14)} Add</button></div>
+    ${L.length?L.map(n=>`<div class="sa-row"><div><b>${esc(n)}</b><div class="sa-use">${use[k+'|'+n]?use[k+'|'+n]+' item'+(use[k+'|'+n]===1?'':'s')+' stored here':'Not used by any item'}</div></div><button type="button" class="btn sm" data-saren="${k}|${esc(n)}">Rename</button><button type="button" class="btn sm sa-del" data-sadl="${k}|${esc(n)}">Delete</button></div>`).join(''):`<div class="sa-use" style="padding:8px 0">None yet.</div>`}</div>`;};
+  host.innerHTML=`<div class="sa-grid">${sec('area','Storage areas','e.g. Shayona Store, Storage, Basement')}${sec('aisle','Aisle #s','e.g. A1, 3, Cool room')}</div>`;
+  const redraw=()=>saManager(host,locId);
+  const after=async()=>{await reloadStoreAreas();try{await refreshOps([locId]);}catch(e){}try{if(typeof loadBins==='function')await loadBins();}catch(e){}redraw();};
+  host.querySelectorAll('[data-saadd]').forEach(b=>b.onclick=async()=>{const k=b.dataset.saadd;const inp=host.querySelector(`[data-sanew="${k}"]`);const nm=(inp.value||'').trim();if(!nm)return toast('Type a name first',true);
+    if(list(k).some(x=>x.toLowerCase()===nm.toLowerCase()))return toast('“'+nm+'” is already on the list',true);
+    const{error}=await sb.from('store_areas').insert({location_id:locId,name:nm,kind:k});if(error)return toast(error.message,true);toast((k==='area'?'Storage area':'Aisle #')+' “'+nm+'” added');await reloadStoreAreas();redraw();});
+  host.querySelectorAll('[data-sanew]').forEach(i=>i.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const b=host.querySelector(`[data-saadd="${i.dataset.sanew}"]`);if(b)b.click();}});
+  host.querySelectorAll('[data-saren]').forEach(b=>b.onclick=()=>{const[k,...r]=b.dataset.saren.split('|');const old=r.join('|');const n=use[k+'|'+old]||0;
+    stackConfirm('Rename '+(k==='area'?'storage area':'aisle #'),old,`<div class="field" style="margin:0"><label>New name</label><input id="sa-rn" value="${esc(old)}" maxlength="60"></div><div class="hint" style="margin-top:8px">${n?`Updates the <b>${n}</b> item(s) stored here, warehouse bins and open stock takes at ${esc(loc(locId).name)}.`:'Nothing uses it yet.'} If the new name already exists, the two are merged.</div>`,
+      {okLabel:'Save',onOk:()=>{const nv=((document.getElementById('sa-rn')||{}).value||'').trim();if(!nv){toast('Enter the new name',true);return false;}if(nv===old)return;
+        (async()=>{const{data,error}=await sb.rpc('store_list_rename',{p_loc:locId,p_kind:k,p_old:old,p_new:nv});if(error)return toast(/store_list_rename/.test(error.message)?'Run 96_edit_storage_areas.sql in Supabase first':error.message,true);
+          toast(`${data&&data.merged?'Merged into':'Renamed to'} “${(data&&data.name)||nv}”${data&&data.items?' · '+data.items+' item(s) updated':''}`);await after();})();}});
+    setTimeout(()=>{const i=document.getElementById('sa-rn');if(i){i.focus();i.select();}},40);});
+  host.querySelectorAll('[data-sadl]').forEach(b=>b.onclick=()=>{const[k,...r]=b.dataset.sadl.split('|');const nm=r.join('|');const n=use[k+'|'+nm]||0;
+    stackConfirm('Delete '+(k==='area'?'storage area':'aisle #'),nm,`<div>Remove <b>${esc(nm)}</b> from the ${k==='area'?'storage area':'aisle'} list at ${esc(loc(locId).name)}?</div>${n?`<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px"><input type="checkbox" id="sa-clr" style="margin-top:3px"><span>Also clear it from the <b>${n}</b> item(s) stored there (they’ll show no ${k==='area'?'area':'aisle'} until one is set). Leave unticked to keep it on those items.</span></label>`:''}`,
+      {okLabel:'Delete',danger:true,onOk:()=>{const clr=!!(document.getElementById('sa-clr')||{}).checked;
+        (async()=>{const{data,error}=await sb.rpc('store_list_delete',{p_loc:locId,p_kind:k,p_name:nm,p_clear:clr});if(error)return toast(/store_list_delete/.test(error.message)?'Run 96_edit_storage_areas.sql in Supabase first':error.message,true);
+          toast('Deleted “'+nm+'”'+(data&&data.cleared?' · cleared from '+data.cleared+' item(s)':''));await after();})();}});});
+}
+/* open the manager on its own (Catalogue → Areas & aisles), for any centre the person works at */
+function openAreasAisles(locId){
+  const cs=S.locations.filter(l=>l.active!==false&&(!scoped()||mine(l.id))&&!l.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  if(!cs.length)return toast('No centre available',true);
+  let L=locId&&cs.find(c=>c.id===locId)?locId:(cs.find(c=>c.id===HOME)||cs[0]).id;
+  modal('Storage areas & aisle #s','Add, rename or delete',`${cs.length>1?`<div class="field"><label>Centre</label><select id="aa-loc">${cs.map(c=>`<option value="${c.id}"${c.id===L?' selected':''}>${esc(c.name)}</option>`).join('')}</select></div>`:''}<div id="aa-mgr"></div>`,`<button class="btn primary" data-close>Done</button>`,'full form');
+  const go=()=>saManager(document.getElementById('aa-mgr'),L);go();
+  const s=document.getElementById('aa-loc');if(s)s.onchange=e=>{L=e.target.value;go();};
+}
 function openStoreAreas(locId){
   const render=()=>{const areas=(S.storeAreas||[]).filter(a=>a.location_id===locId).sort((a,b)=>a.name.localeCompare(b.name));
     return `<div class="banner info">${svg(I.info,17)}<div>Storage areas for <b>${esc(loc(locId).name)}</b>${isHub(locId)?' (Central Warehouse — users must pick from this list, so keep it accurate).':' (optional; other centres also allow free-text locations).'}</div></div>
     <div class="field"><label>Centre address (shown on the dispatch / picking slip)</label><div style="display:flex;gap:8px;align-items:flex-start"><textarea id="sa-addr" rows="2" placeholder="Street, suburb, state, postcode" style="flex:1">${esc(loc(locId).address||'')}</textarea><button class="btn" id="sa-addrsave">Save</button></div></div>
     ${ROLE==='super_admin'?`<div class="field"><label>Cash goes into the drawer at</label><div style="display:flex;gap:8px"><select id="sa-drawer" style="flex:1"><option value="">${esc(loc(locId).name)} (its own drawer)</option>${S.locations.filter(x=>x.id!==locId&&!x.cash_drawer_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).cash_drawer_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-drawersave">Save</button></div><div class="hint">For locations that share one cash drawer (e.g. Shayona Cafe and SYDKD → Sydney). Their Square cash sales are added to that drawer’s expected cash.</div></div>`:''}
     ${ROLE==='super_admin'?`<div class="field"><label>Sells from the stock at</label><div style="display:flex;gap:8px"><select id="sa-stockfrom" style="flex:1"><option value="">${esc(loc(locId).name)} (its own stock)</option>${S.locations.filter(x=>x.id!==locId&&!x.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).stock_from_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-stockfromsave">Save</button></div><div class="hint">For locations that sell another location’s stock (e.g. SYDKD, Shayona Cafe, Shayona, Food Van → Sydney). From the moment you save, every Square sale here is taken off that location’s stock instead — in the app and in Square. Existing stock isn’t moved.${loc(locId).stock_from_since?` <b>On since ${fmtDT(loc(locId).stock_from_since)}.</b>`:''}</div></div>`:''}
-    <div class="field"><label>Add an area</label><div style="display:flex;gap:8px"><input id="sa-new" placeholder="e.g. Shayona Store, Storage, Basement" style="flex:1"><button class="btn" id="sa-add">${svg(I.plus,15)} Add</button></div></div>
-    <div id="sa-list">${areas.length?areas.map(a=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>${esc(a.name)}</span><button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-sadel="${a.id}">Remove</button></div>`).join(''):'<div style="color:var(--faint);font-size:13px;padding:8px 0">No areas yet.</div>'}</div>`;};
-  modal('Storage areas',loc(locId).code,render(),`<button class="btn primary" data-close>Done</button>`);
+    <div id="sa-mgr"></div>`;};
+  modal('Storage areas & settings',loc(locId).name,render(),`<button class="btn primary" data-close>Done</button>`,'full form');
   const wire=()=>{
-    const add=document.getElementById('sa-add');if(add)add.onclick=async()=>{const nm=document.getElementById('sa-new').value.trim();if(!nm)return;const{error}=await sb.from('store_areas').insert({location_id:locId,name:nm});if(error)return toast(error.message||'Failed',true);await loadOps();refreshStoreAreasModal(locId,render,wire);};
     const ssv=document.getElementById('sa-stockfromsave');if(ssv)ssv.onclick=async()=>{const m=document.getElementById('sa-stockfrom').value||null;const{error}=await sb.rpc('set_stock_from',{p_loc:locId,p_main:m});if(error)return toast(/set_stock_from/.test(error.message)?'Run 86_shared_stock_locations.sql first':error.message,true);const lo=S.locations.find(x=>x.id===locId);if(lo){lo.stock_from_loc=m;lo.stock_from_since=m?(lo.stock_from_since||new Date().toISOString()):null;}toast(m?'Sales here now come off '+loc(m).name+' stock':'Uses its own stock again');};
     const dsv=document.getElementById('sa-drawersave');if(dsv)dsv.onclick=async()=>{const d=document.getElementById('sa-drawer').value||null;const{error}=await sb.rpc('set_cash_drawer',{p_loc:locId,p_drawer:d});if(error)return toast(/set_cash_drawer/.test(error.message)?'Run 84_shared_cash_drawer.sql first':error.message,true);const lo=S.locations.find(x=>x.id===locId);if(lo)lo.cash_drawer_loc=d;toast(d?'Cash now goes into the '+loc(d).name+' drawer':'Uses its own cash drawer');};
     const asv=document.getElementById('sa-addrsave');if(asv)asv.onclick=async()=>{const ad=document.getElementById('sa-addr').value;const{error}=await sb.rpc('set_location_address',{p_loc:locId,p_address:ad});if(error)return toast(error.message||'Failed',true);const lo=S.locations.find(x=>x.id===locId);if(lo)lo.address=ad.trim()||null;toast('Address saved');};
-    document.querySelectorAll('[data-sadel]').forEach(b=>b.onclick=async()=>{const{error}=await sb.from('store_areas').delete().eq('id',b.dataset.sadel);if(error)return toast(error.message,true);await loadOps();refreshStoreAreasModal(locId,render,wire);});
   };
-  wire();
+  wire();saManager(document.getElementById('sa-mgr'),locId);
 }
 function refreshStoreAreasModal(locId,render,wire){const body=document.querySelector('#scrim .panel-body');if(body){body.innerHTML=render();wire();}renderView();}
 async function setHub(id){
