@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.23-1';
-const APP_VERSION_NOTE='Scan the aisle # barcode (camera button next to every Aisle # field) — fills the aisle and its storage area · storage areas & aisles editor';
+const APP_VERSION='2026.10.23-2';
+const APP_VERSION_NOTE='Near expiry: filter by one or several centres, centre summary cards, export the selection / Excel sheet per centre / CSV per centre · scan aisle barcodes';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,7 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .exp-sum{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.exp-c{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:9px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--ink);font-size:12.5px;text-align:left;cursor:pointer;box-shadow:var(--shadow)}.exp-c:hover{border-color:var(--accent)}.exp-c em{font-style:normal;color:var(--crit);font-weight:700}.exp-c span{color:var(--muted)}
   .aisle-wrap{display:flex;gap:6px;align-items:center;width:100%}.aisle-wrap>input,.aisle-wrap>select{flex:1;min-width:0}
   .aisle-scan{display:inline-grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);cursor:pointer;padding:0;margin-left:4px}
   .aisle-scan:hover{background:var(--accent);color:#fff}
@@ -2049,14 +2050,40 @@ function expiryBodyHtml(rows,cfg){
 }
 /* Standalone Near-Expiry view — open to ALL users, scoped to their own centre(s) */
 function nearExpiryCount(){const sset=new Set(visLocs());let n=0;for(const k in (S.batches||{})){if(!sset.has(k.split('__')[0]))continue;for(const b of (S.batches[k]||[])){if((+b.qty||0)>0&&daysToExp(b.expiry)<=30)n++;}}return n;}
+/* ---- Near expiry: pick one or several centres; export the selection, or one sheet / file per centre ---- */
+let expSel=[];try{expSel=JSON.parse(localStorage.getItem('exp.sel')||'[]')||[];}catch(e){expSel=[];}
+function expCentres(){return S.locations.filter(l=>visLocs().includes(l.id)&&l.active!==false).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+function expPicked(){const ok=new Set(expCentres().map(c=>c.id));return expSel.filter(id=>ok.has(id));}
+function expLocs(){const p=expPicked();return p.length?p:expCentres().map(c=>c.id);}
+function expIsAll(){const p=expPicked();return !p.length||p.length===expCentres().length;}
+function expLabel(){const p=expPicked();return expIsAll()?(scoped()?'All my centres':'All centres'):p.length===1?loc(p[0]).name:p.length+' centres';}
+function expPickerHtml(){const cs=expCentres(),p=expPicked();if(cs.length<2)return '';
+  return `<details class="ssmp" id="exp-pick" style="position:relative"><summary class="btn" style="list-style:none;user-select:none">${svg(I.location,15)} ${esc(expLabel())} ▾</summary>
+    <div class="pf-pick-pop"><div class="pf-pick-h"><b>Centres</b><span><button type="button" class="lnk" data-xall>All</button> · <button type="button" class="lnk" data-xnone>Clear</button></span></div>
+    ${cs.map(c=>{const n=ssExpiryRows([c.id]).length;return `<label class="pf-pick-r"><input type="checkbox" value="${c.id}"${(!p.length||p.includes(c.id))?' checked':''}> ${esc(c.name)}<span style="margin-left:auto;font-size:11.5px;color:${n?'var(--crit)':'var(--faint)'}">${n}</span></label>`;}).join('')}
+    <div class="pf-pick-f"><button type="button" class="btn sm primary" data-xgo>Show</button></div></div></details>`;}
 function vExpiry(v){
-  const cfg=ssSettings();const rows=ssExpiryRows(visLocs());
-  const head=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Stock nearing its best-before date across your centre(s) — within ${cfg.expiry_warn_days} days, or at risk of not selling in time.</div></div><div class="rep-actions no-print">${rows.length?`<button class="btn" data-expexport="csv">${svg(I.receipt,15)} CSV</button><button class="btn" data-expexport="xlsx">${svg(I.receipt,15)} Excel</button>`:''}</div></div>`;
-  v.innerHTML=head+(rows.length?expiryBodyHtml(rows,cfg):`<div class="card empty">${svg(I.check,34)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) right now. Best-before dates are captured as stock is received; older stock shows no date until the next stock take.</div></div>`);
+  const cfg=ssSettings();const L=expLocs();const rows=ssExpiryRows(L);const multi=L.length>1;
+  const head=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Stock nearing its best-before date — within ${cfg.expiry_warn_days} days, or at risk of not selling in time. Showing <b>${esc(expLabel())}</b>${multi?` (${L.length} centres)`:''}.</div></div>
+    <div class="rep-actions no-print">${expPickerHtml()}${rows.length?`<button class="btn" data-expexport="csv" title="One file for the centres shown">${svg(I.receipt,15)} CSV</button><button class="btn" data-expexport="xlsx" title="Excel: everything shown, plus one sheet per centre">${svg(I.receipt,15)} Excel</button>${multi?`<button class="btn" data-expexport="percentre" title="A separate CSV file for each centre shown">${svg(I.receipt,15)} CSV per centre</button>`:''}`:''}</div></div>`;
+  const byC=multi&&rows.length?`<div class="exp-sum">${L.map(id=>{const r=ssExpiryRows([id]);if(!r.length)return '';const val=r.reduce((a,x)=>a+x.risk*(x.it.unit_cost||0),0);const soon=r.filter(x=>x.dte<=30).length;return `<button type="button" class="exp-c" data-expone="${id}"><b>${esc(loc(id).name)}</b><span>${r.length} batch${r.length===1?'':'es'}${soon?` · <em>${soon} ≤30 days</em>`:''}</span><span class="tnum">${money0(val)} at risk</span></button>`;}).join('')}</div>`:'';
+  v.innerHTML=head+byC+(rows.length?expiryBodyHtml(rows,cfg):`<div class="card empty">${svg(I.check,34)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) for ${esc(expLabel())} right now. Best-before dates are captured as stock is received; older stock shows no date until the next stock take.</div></div>`);
+  const d=document.getElementById('exp-pick');
+  if(d){const boxes=()=>[...d.querySelectorAll('input[type=checkbox]')];
+    d.querySelector('[data-xall]').onclick=()=>boxes().forEach(b=>b.checked=true);d.querySelector('[data-xnone]').onclick=()=>boxes().forEach(b=>b.checked=false);
+    d.querySelector('[data-xgo]').onclick=()=>{const on=boxes().filter(b=>b.checked).map(b=>b.value);if(!on.length)return toast('Tick at least one centre',true);expSel=on.length===boxes().length?[]:on;try{localStorage.setItem('exp.sel',JSON.stringify(expSel));}catch(e){}vExpiry(v);};}
+  v.querySelectorAll('[data-expone]').forEach(b=>b.onclick=()=>{expSel=[b.dataset.expone];try{localStorage.setItem('exp.sel',JSON.stringify(expSel));}catch(e){}vExpiry(v);});
 }
-function expExport(fmt){const rows=ssExpiryRows(visLocs());const header=['Item','SKU','Centre','Best before','Days left','Qty','Value (cost)','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
-  const data=rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).code,r.expiry,r.dte,Math.round(r.qty),(r.qty*(r.it.unit_cost||0)).toFixed(2),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
-  ssDownload('near-expiry',header,data,fmt);}
+function expExport(fmt){const L=expLocs();const header=['Item','SKU','Centre','Best before','Days left','Qty','Value (cost)','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
+  const toRows=rows=>rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).name,r.expiry,r.dte,Math.round(r.qty),(r.qty*(r.it.unit_cost||0)).toFixed(2),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
+  const stamp=today(),tag=expIsAll()?'all':L.length===1?loc(L[0]).name.replace(/[^\w]+/g,'-'):L.length+'-centres';
+  if(fmt==='percentre'){let n=0;L.forEach((id,i)=>{const r=ssExpiryRows([id]);if(!r.length)return;n++;setTimeout(()=>downloadCSV(`near-expiry_${loc(id).name.replace(/[^\w]+/g,'-')}_${stamp}.csv`,header,toRows(r)),i*350);});toast(n?`Exporting ${n} file${n===1?'':'s'} — one per centre`:'Nothing to export',!n);return;}
+  const all=ssExpiryRows(L);if(!all.length)return toast('Nothing to export',true);
+  if(fmt==='xlsx'&&window.XLSX){const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...toRows(all)]),L.length>1?'All selected':'Near expiry');
+    if(L.length>1){const used=new Set();L.forEach(id=>{const r=ssExpiryRows([id]);if(!r.length)return;let nm=String(loc(id).name).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31).trim()||'Centre';while(used.has(nm))nm=nm.slice(0,28)+'_'+used.size;used.add(nm);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...toRows(r)]),nm);});}
+    XLSX.writeFile(wb,`near-expiry_${tag}_${stamp}.xlsx`);toast('Excel exported'+(L.length>1?' — one sheet per centre':''));return;}
+  downloadCSV(`near-expiry_${tag}_${stamp}.csv`,header,toRows(all));}
 function ssFilteredRows(skipStatus){
   let rows=ssStoreRows().filter(r=>r.calc.key!=='inactive');
   if(!skipStatus&&(SS.fStatuses||[]).length)rows=rows.filter(r=>SS.fStatuses.includes(r.calc.key));
