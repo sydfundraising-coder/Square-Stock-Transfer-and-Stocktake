@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.23-2';
-const APP_VERSION_NOTE='Near expiry: filter by one or several centres, centre summary cards, export the selection / Excel sheet per centre / CSV per centre · scan aisle barcodes';
+const APP_VERSION='2026.10.24-1';
+const APP_VERSION_NOTE='Non-stock (sales-only) categories left out of stock takes, purchase orders, transfers, catalogue, stock status and near expiry · shared stock between centres switched off';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,8 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .exp-tile{text-align:left;cursor:pointer;font:inherit;color:inherit;width:100%}.exp-tile:hover{border-color:var(--accent);box-shadow:var(--shadow-lg)}.exp-tile.on{outline:2px solid var(--accent);outline-offset:1px;background:var(--accent-soft)}
+  .exp-filt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;font-size:13px;color:var(--muted)}.exp-filt .btn{margin-left:auto}
   .exp-sum{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.exp-c{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:9px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--ink);font-size:12.5px;text-align:left;cursor:pointer;box-shadow:var(--shadow)}.exp-c:hover{border-color:var(--accent)}.exp-c em{font-style:normal;color:var(--crit);font-weight:700}.exp-c span{color:var(--muted)}
   .aisle-wrap{display:flex;gap:6px;align-items:center;width:100%}.aisle-wrap>input,.aisle-wrap>select{flex:1;min-width:0}
   .aisle-scan{display:inline-grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent-ink);cursor:pointer;padding:0;margin-left:4px}
@@ -1261,7 +1263,7 @@ function readTemplate(file,needCost,cb,title){
         else{P.push({row:R,code,name:nm,qty:rawQ,problem:sci?`Code was changed by Excel to “${code}” — the real code is lost`:'Product code not found in the catalogue',fix:sci?'Download the template again (it is now an Excel file that keeps codes exact), or type the full code as text':'Check the code (no extra spaces or missing leading zeros). If it’s a new Square item, run a Square sync first'});continue;}}
       const it=item(id);
       if(it.active===false){P.push({row:R,code,name:it.name,qty:rawQ,problem:'Item is inactive / hidden in the catalogue',fix:'Re-activate it in the Catalogue, or remove the row'});continue;}
-      if(title==='Stock transfer'&&tfCatExcl(it.category)){P.push({row:R,code,name:it.name,qty:rawQ,problem:`“${it.category}” items aren’t sent on transfers`,fix:'Remove the row (this category is made / bought locally)'});continue;}
+      if(tfCatExcl(it.category)){P.push({row:R,code,name:it.name,qty:rawQ,problem:`“${it.category}” is a non-stock (sales-only) category`,fix:'Remove the row — these items aren’t ordered or transferred through the system'});continue;}
       if(fillNote[id]&&!fillNote[id]._shown){fillNote[id]._shown=1;P.push({row:R,code,name:it.name,qty:rawQ,problem:'Saved to the item from the file: '+fillNote[id].join(', '),fix:'It had no '+(fillNote[id].some(x=>/pack/.test(x))?'pack size':'cost')+' in the system — check it’s right',level:'warn'});}
       if(!hasPpc(it)){P.push({row:R,code,name:it.name,qty:rawQ,problem:'No pack size (packets per box) set',fix:'Enter the packets per box in the file’s “Packets per box” column and upload again — it is saved to the item'});continue;}
       let qty=Math.round(qn);if(qty!==qn)P.push({row:R,code,name:it.name,qty:rawQ,problem:`Part box rounded to ${qty} box(es)`,fix:'Orders and transfers are in whole boxes',level:'warn'});
@@ -1473,7 +1475,7 @@ function recTarget(l,it){const mv=monthlyAvg(l,it);return mv>0?Math.ceil(mv*(2+l
 function recQty(l,it){return Math.max(0,recTarget(l,it)-onHand(l,it));}
 function monthsCover(l,it){const mv=monthlyAvg(l,it);return mv>0?onHand(l,it)/mv:null;}
 function isLow(l,it){const mv=monthlyAvg(l,it);return mv>0&&onHand(l,it)<mv*2;}
-function invValueFor(locs){let v=0;for(const k in S.stock){const[l,i]=k.split('__');if(locs.includes(l))v+=S.stock[k]*item(i).unit_cost;}return v;}
+function invValueFor(locs){let v=0;for(const k in S.stock){const[l,i]=k.split('__');if(locs.includes(l)){const it=item(i);if(!nonStock(it))v+=S.stock[k]*it.unit_cost;}}return v;}
 /* per-item total on hand across all centres — precomputed so the Catalog doesn't scan all stock per item */
 function recomputeItemTotals(){const m={};for(const k in S.stock){const i=k.split('__')[1];m[i]=(m[i]||0)+S.stock[k];}S.itemTotal=m;}
 const trValue=t=>(t.lines||[]).reduce((s,l)=>s+l.qty_requested*item(l.item_id).unit_cost,0);
@@ -1683,6 +1685,7 @@ async function startApp(){
   // reopen the screen this tab was on before a refresh; start the Back history here
   if(!HELPER){try{const r0=sessionStorage.getItem('nav.route');if(r0&&navItem(r0))route=r0;}catch(e){}}
   try{history.replaceState({route,idx:0},'',location.pathname);}catch(e){}
+  try{await tfExclLoad();}catch(e){}   // non-stock categories, needed by catalogue / stock screens
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
   if(!HELPER){ loadOnlineCount(); setInterval(loadOnlineCount,300000); tfExclLoad(); }
   if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
@@ -1930,7 +1933,7 @@ function ssSelfTest(){
 /* build the per-store row set with calc + ABC */
 function ssRows(locId){
   const cfg=ssSettings();const fr=SS._fr||{},fl=SS._fl||{inc:{},out:{},incPO:{},eta:{}};const td=today();
-  const rows=S.items.filter(i=>i.active!==false&&(sellsAt(i,locId)||onHand(locId,i.id)>0)).map(it=>{
+  const rows=S.items.filter(i=>i.active!==false&&!nonStock(i)&&(sellsAt(i,locId)||onHand(locId,i.id)>0)).map(it=>{
     const id=it.id,k=locId+'__'+id;const soh=onHand(locId,id);const w=ssWin(locId,id),ov=ssOverride(id);
     // Age drives ADS (units/day). Square's created date is unreliable (its updated_at is bumped on every sync,
     // so every item looks a few days old and ADS explodes). So we DON'T use created_at for age. We use:
@@ -2010,7 +2013,7 @@ function ssRerenderBody(){const el=document.getElementById('ssBody');if(!el)retu
 /* ---- expiry / near-expiry report (applies each centre's sales pattern) ---- */
 function ssExpiryRows(stores){
   const cfg=ssSettings();const warn=cfg.expiry_warn_days||90;const sset=new Set(stores||ssSelectedStores());const out=[];
-  Object.keys(S.batches||{}).forEach(k=>{const p=k.split('__'),locId=p[0],itemId=p[1];if(!sset.has(locId))return;const it=item(itemId);if(!it||it.active===false)return;
+  Object.keys(S.batches||{}).forEach(k=>{const p=k.split('__'),locId=p[0],itemId=p[1];if(!sset.has(locId))return;const it=item(itemId);if(!it||it.active===false||nonStock(it))return;
     const comp=batchComp(locId,itemId);if(!comp.batches.length)return;
     const dailyADS=ssMovement(locId,itemId)/30;let cumQty=0,prevRisk=0;
     comp.batches.forEach(b=>{cumQty+=b.qty;const dte=daysToExp(b.expiry);const salesBy=dailyADS*Math.max(0,dte);const cumRisk=Math.max(0,cumQty-salesBy);const risk=Math.max(0,Math.min(b.qty,cumRisk-prevRisk));prevRisk=cumRisk;
@@ -2023,11 +2026,21 @@ function ssExpiryHtml(){
   if(!rows.length)return `<div class="banner info">${svg(I.check,17)}<div>Nothing near expiry (within ${cfg.expiry_warn_days} days) or at risk of not selling in time. Best-before dates are captured as stock is received; existing stock shows no date until the next stock take.</div></div>`;
   return expiryBodyHtml(rows,cfg);
 }
-function expiryBodyHtml(rows,cfg){
+/* the tiles act as filters: tap one to list only those batches, tap again (or "Show all") to clear */
+let expTile='';
+const EXP_TILES={expired:'Expired on hand',soon:'Within 30 days',near:'Near expiry',value:'Highest stock value first',risk:'At risk of not selling'};
+function expTileFilter(rows){const t=expTile;if(!t||t==='near')return rows;
+  if(t==='expired')return rows.filter(r=>r.dte<0);
+  if(t==='soon')return rows.filter(r=>r.dte>=0&&r.dte<=30);
+  if(t==='value')return rows.slice().sort((a,b)=>b.qty*(b.it.unit_cost||0)-a.qty*(a.it.unit_cost||0));
+  if(t==='risk')return rows.filter(r=>r.risk>0.5).sort((a,b)=>b.risk*(b.it.unit_cost||0)-a.risk*(a.it.unit_cost||0));
+  return rows;}
+function expiryBodyHtml(allRows,cfg){
+  const rows=allRows;const shown=expTileFilter(allRows);
   const totRiskVal=rows.reduce((s,r)=>s+r.risk*(r.it.unit_cost||0),0);
   const totVal=rows.reduce((s,r)=>s+r.qty*(r.it.unit_cost||0),0);
   const expired=rows.filter(r=>r.dte<0).length,soon=rows.filter(r=>r.dte>=0&&r.dte<=30).length;
-  const body=rows.map(r=>{const c=expColor(r.expiry);const willSell=Math.round(r.dailyADS*Math.max(0,r.dte));return `<tr>
+  const body=shown.map(r=>{const c=expColor(r.expiry);const willSell=Math.round(r.dailyADS*Math.max(0,r.dte));return `<tr>
     <td><div style="font-weight:600"><span class="icode">${esc(r.it.sku||'')}</span>${esc(r.it.name)}</div></td>
     <td>${esc(loc(r.loc).code)}</td>
     <td style="white-space:nowrap;color:${c};font-weight:600">${fmtDate(r.expiry)}</td>
@@ -2038,18 +2051,22 @@ function expiryBodyHtml(rows,cfg){
     <td class="num tnum">${r.dailyADS>0?willSell:'—'}</td>
     <td class="num tnum" style="font-weight:700;color:${r.risk>0.5?'var(--crit)':'var(--faint)'}">${r.risk>0.5?Math.round(r.risk):'—'}</td>
     <td class="num tnum">${r.risk>0.5?money(r.risk*(r.it.unit_cost||0)):'—'}</td></tr>`;}).join('');
+  const T=(k,col,lbl,val,meta)=>`<button type="button" class="tile exp-tile${expTile===k?' on':''}" data-exptile="${k}" style="border-left:3px solid ${col}" title="${expTile===k?'Showing these — tap again to show all':'Tap to show only these'}"><div class="lbl">${lbl}</div><div class="val tnum" style="font-size:18px">${val}</div>${meta?`<div class="meta">${meta}</div>`:''}</button>`;
+  const riskN=rows.filter(r=>r.risk>0.5).length;
   return `<div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin:6px 0 14px">
-      <div class="tile" style="border-left:3px solid #dc2626"><div class="lbl">Expired on hand</div><div class="val tnum" style="font-size:18px">${expired}</div></div>
-      <div class="tile" style="border-left:3px solid #ea580c"><div class="lbl">Within 30 days</div><div class="val tnum" style="font-size:18px">${soon}</div></div>
-      <div class="tile" style="border-left:3px solid #ca8a04"><div class="lbl">Near expiry (≤${cfg.expiry_warn_days}d)</div><div class="val tnum" style="font-size:18px">${rows.length}</div></div>
-      <div class="tile" style="border-left:3px solid #0369a1"><div class="lbl">Stock value (near exp.)</div><div class="val tnum" style="font-size:18px">${money0(totVal)}</div><div class="meta">cost of stock listed</div></div>
-      <div class="tile accent"><div class="lbl">At-risk value</div><div class="val tnum" style="font-size:18px">${money0(totRiskVal)}</div><div class="meta">won't sell before expiry</div></div>
+      ${T('expired','#dc2626','Expired on hand',expired,'')}
+      ${T('soon','#ea580c','Within 30 days',soon,'')}
+      ${T('near','#ca8a04',`Near expiry (≤${cfg.expiry_warn_days}d)`,rows.length,'')}
+      ${T('value','#0369a1','Stock value (near exp.)',money0(totVal),'cost of stock listed')}
+      ${T('risk','var(--accent)','At-risk value',money0(totRiskVal),`won't sell before expiry · ${riskN} batch${riskN===1?'':'es'}`)}
     </div>
     <div class="banner info">${svg(I.info,17)}<div><b>At-risk</b> = units that likely won't sell before their best-before date, based on each centre's sales rate (ADS). Sending soon-to-expire stock to a busier centre, or discounting, avoids the loss.</div></div>
-    <div class="tablewrap" style="overflow-x:auto"><table style="min-width:960px;font-size:12.5px"><thead><tr><th>Item</th><th>Centre</th><th>Best before</th><th class="num">Days left</th><th class="num">Qty</th><th class="num">Value</th><th class="num">ADS/mo</th><th class="num">Will sell by exp.</th><th class="num">At-risk</th><th class="num">At-risk $</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    ${expTile&&expTile!=='near'?`<div class="exp-filt">${svg(I.search,14)} Showing <b>${esc(EXP_TILES[expTile])}</b> — ${shown.length} of ${rows.length} batch${rows.length===1?'':'es'} <button type="button" class="btn sm" data-exptile="">Show all</button></div>`:''}
+    ${shown.length?'':`<div class="card empty" style="margin-bottom:10px"><div>No batches in “${esc(EXP_TILES[expTile]||'')}”.</div></div>`}
+    <div class="tablewrap" style="overflow-x:auto${shown.length?'':';display:none'}"><table style="min-width:960px;font-size:12.5px"><thead><tr><th>Item</th><th>Centre</th><th>Best before</th><th class="num">Days left</th><th class="num">Qty</th><th class="num">Value</th><th class="num">ADS/mo</th><th class="num">Will sell by exp.</th><th class="num">At-risk</th><th class="num">At-risk $</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 /* Standalone Near-Expiry view — open to ALL users, scoped to their own centre(s) */
-function nearExpiryCount(){const sset=new Set(visLocs());let n=0;for(const k in (S.batches||{})){if(!sset.has(k.split('__')[0]))continue;for(const b of (S.batches[k]||[])){if((+b.qty||0)>0&&daysToExp(b.expiry)<=30)n++;}}return n;}
+function nearExpiryCount(){const sset=new Set(visLocs());let n=0;for(const k in (S.batches||{})){if(!sset.has(k.split('__')[0]))continue;if(nonStock(item(k.split('__')[1])))continue;for(const b of (S.batches[k]||[])){if((+b.qty||0)>0&&daysToExp(b.expiry)<=30)n++;}}return n;}
 /* ---- Near expiry: pick one or several centres; export the selection, or one sheet / file per centre ---- */
 let expSel=[];try{expSel=JSON.parse(localStorage.getItem('exp.sel')||'[]')||[];}catch(e){expSel=[];}
 function expCentres(){return S.locations.filter(l=>visLocs().includes(l.id)&&l.active!==false).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
@@ -2077,11 +2094,11 @@ function vExpiry(v){
 function expExport(fmt){const L=expLocs();const header=['Item','SKU','Centre','Best before','Days left','Qty','Value (cost)','ADS per month','Will sell by expiry','At-risk qty','At-risk value'];
   const toRows=rows=>rows.map(r=>[r.it.name,r.it.sku||'',loc(r.loc).name,r.expiry,r.dte,Math.round(r.qty),(r.qty*(r.it.unit_cost||0)).toFixed(2),(r.dailyADS*30).toFixed(1),r.dailyADS>0?Math.round(r.dailyADS*Math.max(0,r.dte)):'',r.risk>0.5?Math.round(r.risk):0,(r.risk*(r.it.unit_cost||0)).toFixed(2)]);
   const stamp=today(),tag=expIsAll()?'all':L.length===1?loc(L[0]).name.replace(/[^\w]+/g,'-'):L.length+'-centres';
-  if(fmt==='percentre'){let n=0;L.forEach((id,i)=>{const r=ssExpiryRows([id]);if(!r.length)return;n++;setTimeout(()=>downloadCSV(`near-expiry_${loc(id).name.replace(/[^\w]+/g,'-')}_${stamp}.csv`,header,toRows(r)),i*350);});toast(n?`Exporting ${n} file${n===1?'':'s'} — one per centre`:'Nothing to export',!n);return;}
-  const all=ssExpiryRows(L);if(!all.length)return toast('Nothing to export',true);
+  if(fmt==='percentre'){let n=0;L.forEach((id,i)=>{const r=expTileFilter(ssExpiryRows([id]));if(!r.length)return;n++;setTimeout(()=>downloadCSV(`near-expiry_${loc(id).name.replace(/[^\w]+/g,'-')}_${stamp}.csv`,header,toRows(r)),i*350);});toast(n?`Exporting ${n} file${n===1?'':'s'} — one per centre`:'Nothing to export',!n);return;}
+  const all=expTileFilter(ssExpiryRows(L));if(!all.length)return toast('Nothing to export',true);
   if(fmt==='xlsx'&&window.XLSX){const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...toRows(all)]),L.length>1?'All selected':'Near expiry');
-    if(L.length>1){const used=new Set();L.forEach(id=>{const r=ssExpiryRows([id]);if(!r.length)return;let nm=String(loc(id).name).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31).trim()||'Centre';while(used.has(nm))nm=nm.slice(0,28)+'_'+used.size;used.add(nm);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...toRows(r)]),nm);});}
+    if(L.length>1){const used=new Set();L.forEach(id=>{const r=expTileFilter(ssExpiryRows([id]));if(!r.length)return;let nm=String(loc(id).name).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31).trim()||'Centre';while(used.has(nm))nm=nm.slice(0,28)+'_'+used.size;used.add(nm);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...toRows(r)]),nm);});}
     XLSX.writeFile(wb,`near-expiry_${tag}_${stamp}.xlsx`);toast('Excel exported'+(L.length>1?' — one sheet per centre':''));return;}
   downloadCSV(`near-expiry_${tag}_${stamp}.csv`,header,toRows(all));}
 function ssFilteredRows(skipStatus){
@@ -3712,15 +3729,17 @@ let trFilter='all',trSearch='';
 /* ---- categories left out of transfers and the transfer / PO templates (migration 95) ---- */
 async function tfExclLoad(){try{const{data,error}=await sb.from('transfer_excluded_categories').select('category');if(!error){S.tfExcl=new Set((data||[]).map(r=>String(r.category).trim().toLowerCase()));return S.tfExcl;}}catch(e){}S.tfExcl=S.tfExcl||new Set();return S.tfExcl;}
 const tfCatExcl=c=>!!(S.tfExcl&&c&&S.tfExcl.has(String(c).trim().toLowerCase()));
+/* non-stock item: its category is sales-only (migration 99) — not stock-managed anywhere */
+const nonStock=it=>!!(it&&tfCatExcl(it.category));
 async function openTfExcluded(){
   if(ROLE!=='super_admin')return toast('Super Admin only',true);
   await tfExclLoad();const cats=[...new Set((S.allItems||S.items).map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  modal('Categories left out of transfers','Ticked categories aren’t in the transfer item list or the transfer / purchase-order templates',`<div class="banner info">${svg(I.info,17)}<div>Use this for café, food-service and non-stock categories. Items already on a transfer are not affected.</div></div>
+  modal('Non-stock categories','Ticked categories are for sales reporting only — their stock isn’t managed',`<div class="banner info">${svg(I.info,17)}<div>Items in ticked categories are left out of stock takes, purchase orders, transfers, the catalogue, stock status / reorder and near expiry. They still count in <b>Sales &amp; Performance</b>. Items already on a transfer or order are not affected.</div></div>
     <div style="columns:2 220px;column-gap:18px">${cats.map(c=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13.5px;break-inside:avoid"><input type="checkbox" value="${esc(c)}"${tfCatExcl(c)?' checked':''}> ${esc(c)}</label>`).join('')}</div>`,
     `<button class="btn" data-close>Cancel</button><button class="btn primary" id="tx-save">${svg(I.check,16)} Save</button>`);
   document.getElementById('tx-save').onclick=async()=>{const on=[...document.querySelectorAll('#scrim input[type=checkbox]:checked')].map(b=>b.value);
     const{error}=await sb.rpc('set_transfer_excluded',{p_cats:on});if(error)return toast(/set_transfer_excluded/.test(error.message)?'Run 95_transfer_short_and_excluded_categories.sql first':error.message,true);
-    await tfExclLoad();closeOverlay();toast(on.length+' categor'+(on.length===1?'y':'ies')+' left out of transfers and templates');};
+    await tfExclLoad();closeOverlay();toast(on.length+' non-stock categor'+(on.length===1?'y':'ies')+' saved');renderView();};
 }
 /* ---- "not in stock at the sending centre when requested" ---- */
 const tlShortTag=(l,t,it)=>{const sh=+l.short_at_request||0;if(!sh||!t||!['draft','requested','approved','picked'].includes(t.status))return '';const pc=ppc(it);
@@ -3750,7 +3769,7 @@ function openShortReport(){
 function vTransfers(v){
   v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
     <select class="filter" id="f"><option value="all">All statuses</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
-    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Excluded categories</button>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
+    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
   document.getElementById('tr-short').onclick=openShortReport;{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
   document.getElementById('f').value=trFilter;
   document.getElementById('f').onchange=e=>{trFilter=e.target.value;trList();};
@@ -4294,7 +4313,7 @@ function newOrder(o){
 }
 function pEd(){
   const pl=(document.getElementById('po-loc')||{}).value;
-  const io=orderableItems().sort((a,b)=>(newAt(a,pl)-newAt(b,pl))).map(i=>{const nw=newAt(i,pl);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}${nw?' · not sold at '+esc(loc(pl).name)+' yet':''}">${esc(i.sku||'')} — ${esc(i.name)}${nw?' · NEW':''}</option>`;}).join('');
+  const io=orderableItems().filter(i=>!nonStock(i)||poLines.some(l=>l.item===i.id)).sort((a,b)=>(newAt(a,pl)-newAt(b,pl))).map(i=>{const nw=newAt(i,pl);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}${nw?' · not sold at '+esc(loc(pl).name)+' yet':''}">${esc(i.sku||'')} — ${esc(i.name)}${nw?' · NEW':''}</option>`;}).join('');
   const ed=document.getElementById('ped');
   ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" data-ppk="${ix}" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><div class="ltot" data-plt="${ix}">${l.item?money((+l.qty||0)*(+l.cost||0)):'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
   poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
@@ -4373,7 +4392,7 @@ function stScopeConflict(locId,cat){const c=cat||null;
   return S.stocktakes.find(s=>s.location_id===locId&&s.status==='open'&&!stIsSpot(s)&&('category' in s)&&(s.category==null||c==null||String(s.category).toLowerCase()===String(c).toLowerCase()));}
 /* categories left out of stock takes (migration 87) */
 async function stExclLoad(){try{const{data,error}=await sb.from('stocktake_excluded_categories').select('category');if(!error){S.stExcl=new Set((data||[]).map(r=>String(r.category).trim().toLowerCase()));return S.stExcl;}}catch(e){}S.stExcl=S.stExcl||new Set();return S.stExcl;}
-const stCatExcl=c=>!!(S.stExcl&&c&&S.stExcl.has(String(c).trim().toLowerCase()));
+const stCatExcl=c=>!!((S.stExcl&&c&&S.stExcl.has(String(c).trim().toLowerCase()))||tfCatExcl(c));
 async function openStExcluded(){
   if(ROLE!=='super_admin')return toast('Super Admin only',true);
   await stExclLoad();const cats=[...new Set(S.items.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
@@ -5714,7 +5733,7 @@ function newReceipt(){
   document.getElementById('go').onclick=submitReceipt;
 }
 function rEd(){
-  const io=S.items.filter(i=>i.active!==false).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
+  const io=S.items.filter(i=>i.active!==false&&!nonStock(i)).map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');
   const ed=document.getElementById('red');
   ed.innerHTML=recLines.map((l,ix)=>`<div class="linerow cols-rc"><select data-ri="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" value="${l.qty}" data-rq="${ix}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$ cost" data-rk="${ix}"><div style="display:flex;gap:4px;align-items:center;min-width:0">${(l.batches&&l.batches.length)?`<span style="font-size:11px;color:var(--muted);flex:1">${l.batches.length} dates</span>`:`<input type="date" data-rx="${ix}" value="${l.exp||''}" title="Best before *" style="min-width:0;flex:1">`}<button type="button" class="btn sm" data-rxsp="${ix}" title="Multiple best-before dates" style="height:38px;padding:0 10px;font-size:13px">${(l.batches&&l.batches.length)?'✎':'+'}</button></div><button class="rm" data-rr="${ix}">${svg(I.x,15)}</button></div>`).join('');
   recLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-ri="${ix}"]`).value=l.item;});
@@ -5749,7 +5768,7 @@ let catSearch='',catCat='all';
 let catCentre=null;
 function catCentres(){return scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 function vCatalog(v){
-  const cats=['all',...new Set(S.items.map(i=>i.category).filter(Boolean))];
+  const cats=['all',...new Set(S.items.filter(i=>!nonStock(i)).map(i=>i.category).filter(Boolean))];
   const cens=catCentres();
   if(catCentre===null)catCentre=scoped()?(HOME||(cens[0]&&cens[0].id)||''):'';
   const cenOpts=`${scoped()?'':`<option value="">All centres (total)</option>`}${cens.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}`;
@@ -5758,7 +5777,7 @@ function vCatalog(v){
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}</select>
       <div class="spacer"></div>
-      ${HELPER?'':`<button class="btn" id="cat-areas">${svg(I.location,15)} Areas &amp; aisles</button>`}<button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
+      ${ROLE==='super_admin'?`<button class="btn" id="cat-nonstock">${svg(I.catalog,15)} Non-stock categories</button>`:''}${HELPER?'':`<button class="btn" id="cat-areas">${svg(I.location,15)} Areas &amp; aisles</button>`}<button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
       ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button><button class="btn" id="cat-clean">${svg(I.check,15)} Clean up catalogue</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
@@ -5769,6 +5788,7 @@ function vCatalog(v){
   document.getElementById('cat-xls').onclick=()=>exportCatalogue('xlsx');
   const ci=document.getElementById('cat-import');if(ci)ci.onclick=importCostCarton;
   const ca=document.getElementById('cat-areas');if(ca)ca.onclick=()=>openAreasAisles(catCentre||HOME);
+  const cn=document.getElementById('cat-nonstock');if(cn)cn.onclick=openTfExcluded;
   const cc=document.getElementById('cat-clean');if(cc)cc.onclick=openCatalogueCleanup;
   catList();
 }
@@ -6068,7 +6088,7 @@ async function ccApply(ids,hide,reason){
   ccSel=new Set();renderCleanup();try{if(document.getElementById('list'))catList();}catch(e){}
 }
 function catFiltered(){
-  const q=catSearch.toLowerCase();let list=S.items.slice();
+  const q=catSearch.toLowerCase();let list=S.items.filter(i=>!nonStock(i));   // non-stock (sales-only) categories aren't listed
   if(catCentre)list=list.filter(i=>sellsAt(i,catCentre)||onHand(catCentre,i.id)>0);   // that centre's range (hubs: everything)
   if(catCat!=='all')list=list.filter(i=>i.category===catCat);
   if(q)list=list.filter(i=>i.name.toLowerCase().includes(q)||(i.sku||'').toLowerCase().includes(q));
@@ -8533,6 +8553,7 @@ document.addEventListener('click',e=>{
   const sstab=e.target.closest('[data-sstab]');if(sstab){SS.tab=sstab.dataset.sstab;renderView();return;}
   const ssx=e.target.closest('[data-ssexport]');if(ssx){ssExport(ssx.dataset.ssexport);return;}
   const exx=e.target.closest('[data-expexport]');if(exx){expExport(exx.dataset.expexport);return;}
+  const ext=e.target.closest('[data-exptile]');if(ext){const k=ext.dataset.exptile;expTile=(k&&k!==expTile)?k:'';renderView();setTimeout(()=>{const t=document.querySelector('.exp-tile.on')||document.querySelector('.exp-tile');if(t&&expTile)try{t.scrollIntoView({block:'nearest'});}catch(_){}},30);return;}
   const ssc=e.target.closest('[data-ssconvert]');if(ssc){ssConvertToTransfer();return;}
   const sxp=e.target.closest('[data-ssexpiry]');if(sxp){SS.tab='expiry';go('stockstatus');return;}
   const sse=e.target.closest('[data-ssedit]');if(sse){ssEditItem(sse.dataset.ssedit);return;}
