@@ -28,8 +28,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.10.24-1';
-const APP_VERSION_NOTE='Non-stock (sales-only) categories left out of stock takes, purchase orders, transfers, catalogue, stock status and near expiry · shared stock between centres switched off';
+const APP_VERSION='2026.11.01-1';
+const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
 <script>
@@ -920,6 +920,9 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .st-cmw{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);margin-right:4px}
   .st-cmw select{padding:6px 10px;font-weight:600}
   .st-scope{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .sa-kinds{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}@media (max-width:700px){.sa-kinds{grid-template-columns:1fr}}
+  .sa-k{display:flex;flex-direction:column;gap:2px;text-align:left;padding:11px 13px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--ink);cursor:pointer}
+  .sa-k small{font-size:12px;color:var(--muted)}.sa-k.on{border-color:var(--accent);background:var(--accent-soft)}
   .exp-tile{text-align:left;cursor:pointer;font:inherit;color:inherit;width:100%}.exp-tile:hover{border-color:var(--accent);box-shadow:var(--shadow-lg)}.exp-tile.on{outline:2px solid var(--accent);outline-offset:1px;background:var(--accent-soft)}
   .exp-filt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px;font-size:13px;color:var(--muted)}.exp-filt .btn{margin-left:auto}
   .exp-sum{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.exp-c{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:9px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--ink);font-size:12.5px;text-align:left;cursor:pointer;box-shadow:var(--shadow)}.exp-c:hover{border-color:var(--accent)}.exp-c em{font-style:normal;color:var(--crit);font-weight:700}.exp-c span{color:var(--muted)}
@@ -1687,7 +1690,7 @@ async function startApp(){
   try{history.replaceState({route,idx:0},'',location.pathname);}catch(e){}
   try{await tfExclLoad();}catch(e){}   // non-stock categories, needed by catalogue / stock screens
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
-  if(!HELPER){ loadOnlineCount(); setInterval(loadOnlineCount,300000); tfExclLoad(); }
+  if(!HELPER){ loadOnlineCount(); setInterval(loadOnlineCount,300000); tfExclLoad(); loadAdjCount(); setInterval(loadAdjCount,300000); }
   if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
 }
@@ -1709,6 +1712,7 @@ const NAV=[
   {id:'freight',label:'Freight',icon:I.truck,group:'Stock Movement'},
   {id:'warehouse',label:'Warehouse Allocation',icon:I.warehouse,group:'Stock Movement'},
   {id:'stocktake',label:'Stock Take',short:'Stock Take',kw:'count spot check helpers',icon:I.stocktake,group:'Inventory',badge:()=>S.stocktakes.filter(s=>(!scoped()||mine(s.location_id))&&s.status==='open').length+((S.stFlags||[]).length)+(S.helperReqN||0)},
+  {id:'stockadj',label:'Stock Adjustments',kw:'adjust move code found correction repack',icon:I.sync,group:'Inventory',badge:()=>saCanApprove()?(S.adjPending||0):0},
   {id:'adjustments',label:'Damage / Expiry',kw:'write off expired broken',icon:I.damage,group:'Inventory',badge:()=>adjPendingCount()},
   {id:'expiry',label:'Near Expiry',kw:'best before bb dates',icon:I.hourglass,group:'Inventory',badge:()=>nearExpiryCount()},
   {id:'catalog',label:'Catalogue',kw:'items products prices',icon:I.catalog,group:'Inventory'},
@@ -2294,7 +2298,7 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={online:['Online Orders','Square online, pickup and delivery orders for your centre — customer, items and notes'],warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={stockadj:['Stock Adjustments','Move stock between codes, record found stock, correct a figure'],online:['Online Orders','Square online, pickup and delivery orders for your centre — customer, items and notes'],warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 /* ---------- shelf labels (70 x 29.7 mm, 30 per A4) ---------- */
 const LBL={q:'',cat:'all',lines:[],src:'barcode',start:1,page:0,show:{price:true,weight:true,barcode:true},dx:0,dy:0};
 const LBL_COLS=3,LBL_ROWS=10,LBL_PER=30;
@@ -2445,6 +2449,12 @@ HELP.topics.push(
       'Tap <b>Save password and continue</b>. You are signed in.',
       'From now on sign in at <b>stock.shayona.com.au</b> with your email and this password.'],
       'Each link works once and expires after an hour. Only the newest email works if you asked more than once.','',['login'],ALL),
+    T('hadj1','Checking stock and sales','Stock adjustments','<b>Inventory → Stock Adjustments</b> (or <b>Adjust stock</b> on an item) fixes stock without a stock take.',[
+      '<b>Move between codes</b>: choose the From code, the To code and how many packets. Set the conversion for repacks (1 carton = 10 units). The best-before dates move with the stock, earliest first.',
+      '<b>Found</b>: stock the system didn’t have — add the quantity and, if you can, the best-before.',
+      '<b>Correction</b>: fix a figure up (+) or down (−). Stock can’t go below 0.',
+      'Choose a reason every time. A National or Super Admin approves each request before stock changes (theirs apply at once). The change then goes to Square, labelled “Code adjustment” / “Found stock”.',
+      'Many at once: download the <b>Template</b>, fill one row per adjustment, choose the centre, then <b>Upload</b> — any row that can’t be done is listed in the upload report. <b>Export</b> gives the full list.'],'','',['route:stockadj'],ALL),
     T('hsa1','Checking stock and sales','Storage areas and aisle #s','Keep the pick lists of storage areas and aisle #s tidy: <b>Catalogue → Areas &amp; aisles</b> (Admins also from Locations → Storage areas).',[
       '<b>Add</b>: type the name and tap Add.',
       '<b>Rename</b>: fixes a spelling or renames a shelf. Every item stored there, the warehouse bins and open stock takes at your centre change with it. Renaming to a name that already exists merges the two.',
@@ -3030,6 +3040,133 @@ function ooExport(fmt){const L=ooFiltered();if(!L.length)return toast('Nothing t
     const ls=(o.lines||[]).length?o.lines:[{}];ls.forEach((l,i)=>rows.push([...base,l.name||'',l.sku||'',l.qty??'',l.note||'',i===0?(o.note||''):'',i===0?(+o.total||0).toFixed(2):'']));});
   const name=`online-orders_${ooTab}_${ooCentre?loc(ooCentre).name.replace(/[^\w]+/g,'-'):'all'}_${today()}`;
   if(fmt==='xlsx'&&window.XLSX)downloadTemplate(name+'.csv',header,rows,[0,8,10,13]);else downloadCSV(name+'.csv',header,rows);}
+/* =====================================================================
+   STOCK ADJUSTMENTS (migration 101): Move between codes · Found · Correction.
+   Staff request; National / Super Admin approve (their own apply at once).
+   ===================================================================== */
+let saTab='pending',saCentre='',saRows=[];
+const SA_KIND={move:'Move between codes',found:'Found stock',correction:'Correction'};
+const SA_REASONS={move:['Received under the wrong code','Repack (carton → units)','Repack (units → carton)','Duplicate item — merging','Labelled with the wrong code'],
+  found:['Found during a check','Found in another storage area','Not received into the system','Returned by a customer'],
+  correction:['Counting error','Data entry error','Missing / unexplained loss','Sampling / tasting','Used for an event','Other']};
+const saPill=s=>({pending:'<span class="pill p-req">Waiting for approval</span>',approved:'<span class="pill p-done">Applied</span>',rejected:'<span class="pill p-cancel">Rejected</span>',cancelled:'<span class="pill p-cancel">Cancelled</span>'}[s]||esc(s));
+const saCanApprove=()=>!HELPER&&['national_admin','super_admin'].includes(ROLE);
+function saCentres(){return S.locations.filter(l=>l.active!==false&&(!scoped()||mine(l.id))&&!l.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
+function saItems(){return (S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!nonStock(i));}
+const saQty=(q,it)=>{if(q==null)return '';const pc=ppc(it);return pc?`${q} pk <span style="color:var(--faint)">(${boxDec(Math.abs(q),it)} bx)</span>`:String(q);};
+async function loadAdjCount(){if(!saCanApprove())return;try{const{count,error}=await sb.from('stock_adjustments').select('id',{count:'exact',head:true}).eq('status','pending');if(!error){S.adjPending=count||0;renderNav();}}catch(e){}}
+async function vStockAdj(v){
+  const cs=saCentres();if(saCentre&&!cs.find(c=>c.id===saCentre))saCentre='';
+  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${saTab==='pending'?'active':''}" data-satab="pending">Waiting for approval${S.adjPending?` <span class="badge-count" style="margin-left:4px">${S.adjPending}</span>`:''}</button><button class="rep-tab ${saTab==='all'?'active':''}" data-satab="all">All adjustments</button></div>
+    <div class="toolbar">${cs.length>1?`<select class="filter" id="sa-c"><option value="">${scoped()?'All my centres':'All centres'}</option>${cs.map(c=>`<option value="${c.id}"${c.id===saCentre?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
+      <div class="spacer"></div><button class="btn" id="sa-tpl">${svg(I.receipt,15)} Template</button><button class="btn" id="sa-up">${svg(I.box,15)} Upload</button><input type="file" id="sa-file" accept=".csv,text/csv,.xlsx,.xls" hidden><button class="btn" id="sa-csv">${svg(I.receipt,15)} Export</button>${HELPER?'':`<button class="btn primary" id="sa-new">${svg(I.plus,16)} New adjustment</button>`}</div>
+    <div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div><b>Move between codes</b>: stock on the wrong code, repacks, merging duplicates. <b>Found</b>: stock the system didn’t have. <b>Correction</b>: fix a figure up or down. ${saCanApprove()?'Yours are applied straight away.':'A National or Super Admin approves each one before stock changes.'} Every change goes to Square and to each item’s history.</div></div>
+    <div id="sa-body"><div class="card empty">${svg(I.box,30)}<div>Loading…</div></div></div>`;
+  v.querySelectorAll('[data-satab]').forEach(b=>b.onclick=()=>{saTab=b.dataset.satab;vStockAdj(v);});
+  const c=document.getElementById('sa-c');if(c)c.onchange=e=>{saCentre=e.target.value;vStockAdj(v);};
+  const nb=document.getElementById('sa-new');if(nb)nb.onclick=()=>openStockAdj();
+  document.getElementById('sa-tpl').onclick=saTemplate;document.getElementById('sa-up').onclick=()=>document.getElementById('sa-file').click();
+  document.getElementById('sa-file').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)saUpload(f);};
+  document.getElementById('sa-csv').onclick=saExport;
+  const ids=saCentre?[saCentre]:cs.map(x=>x.id);
+  const{data,error}=await sbAll(()=>{let q=sb.from('stock_adjustments').select('*').in('location_id',ids);if(saTab==='pending')q=q.eq('status','pending');return q.order('requested_at',{ascending:false});});
+  const body=document.getElementById('sa-body');if(!body)return;
+  if(error){body.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>${/stock_adjustments|does not exist|schema cache/i.test(error.message||'')?'Run <b>101_stock_adjustments.sql</b> in Supabase first.':esc(error.message)}</div></div>`;return;}
+  saRows=data||[];if(saTab==='pending'&&saCanApprove()){S.adjPending=saRows.length;renderNav();}
+  if(!saRows.length){body.innerHTML=`<div class="card empty">${svg(I.check,30)}<div>${saTab==='pending'?'Nothing waiting for approval.':'No stock adjustments yet.'}</div></div>`;return;}
+  body.innerHTML=`<div class="tablewrap"><table><thead><tr><th>Adjustment</th><th>Type</th><th>Item(s)</th><th class="num">Quantity</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>${saRows.map(a=>{
+    const f=item(a.from_item),t=item(a.to_item),it=item(a.item_id);
+    const what=a.kind==='move'?`<div><span class="icode">${esc(f.sku||'')}</span>${esc(f.name)}</div><div style="color:var(--muted);font-size:12px">→ <span class="icode">${esc(t.sku||'')}</span>${esc(t.name)}</div>`:`<span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}${a.best_before?`<div style="font-size:11.5px;color:var(--muted)">BB ${fmtDate(a.best_before)}</div>`:''}`;
+    const qty=a.kind==='move'?`<span style="color:var(--crit)">−${saQty(a.qty_from,f)}</span><div style="color:var(--good)">+${saQty(a.qty_to,t)}</div>${+a.ratio!==1?`<div style="font-size:11px;color:var(--faint)">1 : ${+a.ratio}</div>`:''}`:`<span style="color:${a.delta<0?'var(--crit)':'var(--good)'};font-weight:700">${a.delta>0?'+':''}${saQty(a.delta,it)}</span>`;
+    const acts=a.status==='pending'?(saCanApprove()?`<button class="btn sm primary" data-saok="${a.id}">Approve</button> <button class="btn sm" data-sano="${a.id}" style="color:var(--crit);border-color:var(--crit)">Reject</button>`:((ME&&a.requested_by===ME.id)||ROLE==='admin'?`<button class="btn sm" data-sacx="${a.id}">Cancel</button>`:'')):'';
+    return `<tr><td style="white-space:nowrap"><b class="mono">${esc(a.code||'')}</b><div class="oo-sub">${esc(loc(a.location_id).name)}</div><div class="oo-sub">${fmtDT(a.requested_at)} · ${esc(pname(a.requested_by))}</div></td><td>${esc(SA_KIND[a.kind]||a.kind)}</td><td style="font-size:13px">${what}</td><td class="num tnum" style="white-space:nowrap">${qty}</td><td style="font-size:12.5px;max-width:220px">${esc(a.reason)}${a.note?`<div class="oo-sub">${esc(a.note)}</div>`:''}</td><td>${saPill(a.status)}${a.decided_by&&a.status!=='pending'?`<div class="oo-sub">${esc(pname(a.decided_by))} · ${fmtDate(a.decided_at)}</div>`:''}${a.decision_note?`<div class="oo-sub">${esc(a.decision_note)}</div>`:''}</td><td style="white-space:nowrap;text-align:right">${acts}</td></tr>`;}).join('')}</tbody></table></div>`;
+  const after=async(msg,locs)=>{toast(msg);await refreshOps(locs||[]);try{await loadBatches();}catch(e){}try{if(typeof loadBins==='function')await loadBins();}catch(e){}loadAdjCount();vStockAdj(v);};
+  body.querySelectorAll('[data-saok]').forEach(b=>b.onclick=()=>{const a=saRows.find(x=>x.id===b.dataset.saok);
+    stackConfirm('Approve '+a.code,SA_KIND[a.kind]+' · '+loc(a.location_id).name,`<div>Stock will change at <b>${esc(loc(a.location_id).name)}</b> in the app and in Square.</div><div class="field" style="margin:10px 0 0"><label>Note (optional)</label><input id="sa-dn"></div>`,
+      {okLabel:'Approve & apply',onOk:()=>{const n=(document.getElementById('sa-dn')||{}).value||'';(async()=>{const{error}=await sb.rpc('decide_stock_adjustment',{p_id:a.id,p_approve:true,p_note:n});if(error)return toast(error.message,true);await after(a.code+' applied',[a.location_id]);})();}});});
+  body.querySelectorAll('[data-sano]').forEach(b=>b.onclick=()=>{const a=saRows.find(x=>x.id===b.dataset.sano);
+    stackConfirm('Reject '+a.code,SA_KIND[a.kind],`<div class="field" style="margin:0"><label>Reason (the requester sees this) *</label><input id="sa-dn"></div>`,
+      {okLabel:'Reject',danger:true,onOk:()=>{const n=((document.getElementById('sa-dn')||{}).value||'').trim();if(!n){toast('Give a reason',true);return false;}(async()=>{const{error}=await sb.rpc('decide_stock_adjustment',{p_id:a.id,p_approve:false,p_note:n});if(error)return toast(error.message,true);await after(a.code+' rejected');})();}});});
+  body.querySelectorAll('[data-sacx]').forEach(b=>b.onclick=async()=>{if(!window.confirm('Cancel this adjustment request?'))return;const{error}=await sb.rpc('cancel_stock_adjustment',{p_id:b.dataset.sacx});if(error)return toast(error.message,true);await after('Request cancelled');});
+}
+function saItemOpts(){return saItems().map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}">${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('');}
+function openStockAdj(kind,pre){
+  const cs=saCentres();if(!cs.length)return toast('No centre available',true);
+  let K=kind||'move';const L0=(pre&&pre.loc)||saCentre||(cs.find(c=>c.id===HOME)||cs[0]).id;
+  const io=saItemOpts();
+  modal('New stock adjustment','Move between codes, found stock or a correction',`
+    <div class="sa-kinds">${Object.entries(SA_KIND).map(([k,l])=>`<button type="button" class="sa-k${k===K?' on':''}" data-sak="${k}"><b>${l}</b><small>${k==='move'?'Take stock off one code, put it on another':k==='found'?'Stock the system didn’t have (+)':'Fix the figure up or down (±)'}</small></button>`).join('')}</div>
+    <section class="sec"><div class="grid2"><div class="field"><label>Centre</label><select id="sa-loc">${cs.map(c=>`<option value="${c.id}"${c.id===L0?' selected':''}>${esc(c.name)}</option>`).join('')}</select></div><div></div></div>
+      <div id="sa-move"><div class="grid2"><div class="field"><label>From code (taken off)</label><select data-adji="from" id="sa-from"><option value="">Select item…</option>${io}</select><div class="hint" id="sa-from-oh"></div></div>
+        <div class="field"><label>To code (put on)</label><select data-adji="to" id="sa-to"><option value="">Select item…</option>${io}</select><div class="hint" id="sa-to-oh"></div></div></div>
+        <div class="grid2"><div class="field"><label>Quantity of FROM (packets)</label><input type="number" min="1" step="1" id="sa-qf" placeholder="0"><div class="hint" id="sa-qf-bx"></div></div>
+        <div class="field"><label>Conversion: 1 FROM = ? TO</label><input type="number" min="0.0001" step="any" id="sa-ratio" value="1"><div class="hint" id="sa-qt"></div></div></div></div>
+      <div id="sa-one" hidden><div class="grid2"><div class="field"><label>Item</label><select data-adji="item" id="sa-item"><option value="">Select item…</option>${io}</select><div class="hint" id="sa-item-oh"></div></div>
+        <div class="field"><label>Quantity (packets)</label><div style="display:flex;gap:6px"><select id="sa-sign" style="width:auto"><option value="1">+ Add</option><option value="-1">− Remove</option></select><input type="number" min="1" step="1" id="sa-d" placeholder="0" style="flex:1"></div><div class="hint" id="sa-d-bx"></div></div></div>
+        <div class="field" id="sa-bbw"><label>Best-before (optional, for stock added)</label><input type="date" id="sa-bb" data-bbfuture min="${today()}"></div></div>
+      <div class="grid2"><div class="field"><label>Reason *</label><select id="sa-reason"></select></div><div class="field"><label>Note</label><input id="sa-note" placeholder="optional details"></div></div>
+      <div id="sa-sum" class="banner info" style="margin:0"></div></section>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="sa-go">${svg(I.check,16)} ${saCanApprove()?'Apply adjustment':'Send for approval'}</button>`,'full form');
+  const $=id=>document.getElementById(id);
+  if(pre&&pre.item){$('sa-item').value=pre.item;$('sa-from').value=pre.item;}
+  const oh=id=>{const lc=$('sa-loc').value;return id?onHand(lc,id):0;};
+  const upd=()=>{const lc=$('sa-loc').value;
+    $('sa-move').hidden=K!=='move';$('sa-one').hidden=K==='move';
+    $('sa-sign').style.display=K==='correction'?'':'none';if(K==='found')$('sa-sign').value='1';
+    $('sa-bbw').style.display=(K==='found'||(K==='correction'&&$('sa-sign').value==='1'))?'':'none';
+    const rs=SA_REASONS[K];const cur=$('sa-reason').value;$('sa-reason').innerHTML=`<option value="">Choose…</option>${rs.map(r=>`<option${r===cur?' selected':''}>${esc(r)}</option>`).join('')}`;
+    const f=item($('sa-from').value),t=item($('sa-to').value),it=item($('sa-item').value);
+    $('sa-from-oh').textContent=$('sa-from').value?`On hand at ${loc(lc).name}: ${oh(f.id)}${ppc(f)?' ('+boxDec(oh(f.id),f)+' bx)':''}`:'';
+    $('sa-to-oh').textContent=$('sa-to').value?`On hand: ${oh(t.id)}`:'';
+    $('sa-item-oh').textContent=$('sa-item').value?`On hand at ${loc(lc).name}: ${oh(it.id)}${ppc(it)?' ('+boxDec(oh(it.id),it)+' bx)':''}`:'';
+    const qf=+$('sa-qf').value||0,ra=+$('sa-ratio').value||0,qt=Math.round(qf*ra);
+    $('sa-qf-bx').textContent=qf&&ppc(f)?`= ${boxDec(qf,f)} boxes`:'';
+    $('sa-qt').textContent=qf&&ra?`= ${qt} packet(s) of the TO code${ppc(t)?' ('+boxDec(qt,t)+' bx)':''}`:'';
+    const d=(+$('sa-d').value||0)*(+$('sa-sign').value);$('sa-d-bx').textContent=d&&ppc(it)?`= ${boxDec(Math.abs(d),it)} boxes`:'';
+    $('sa-sum').innerHTML=K==='move'?(f.id&&t.id&&qf?`${svg(I.info,16)}<div><b>${esc(f.name)}</b> −${qf} → <b>${esc(t.name)}</b> +${qt} at ${esc(loc(lc).name)}.${qf>oh(f.id)?` <b style="color:var(--crit)">Only ${oh(f.id)} on hand.</b>`:''}</div>`:`${svg(I.info,16)}<div>Choose the two codes and the quantity.</div>`)
+      :(it.id&&d?`${svg(I.info,16)}<div><b>${esc(it.name)}</b> ${d>0?'+':''}${d} → on hand becomes <b>${oh(it.id)+d}</b>.</div>`:`${svg(I.info,16)}<div>Choose the item and the quantity.</div>`);};
+  document.querySelectorAll('[data-sak]').forEach(b=>b.onclick=()=>{K=b.dataset.sak;document.querySelectorAll('[data-sak]').forEach(x=>x.classList.toggle('on',x===b));$('sa-reason').value='';upd();});
+  ['sa-loc','sa-from','sa-to','sa-item','sa-sign','sa-reason'].forEach(id=>$(id).addEventListener('change',upd));['sa-qf','sa-ratio','sa-d'].forEach(id=>$(id).addEventListener('input',upd));
+  // carton → unit repack: suggest the pack size as the conversion
+  $('sa-to').addEventListener('change',()=>{const f=item($('sa-from').value),t=item($('sa-to').value);if(f.id&&t.id&&$('sa-ratio').value==='1'&&ppc(f)&&!ppc(t)&&/carton|box|ctn/i.test(f.name))$('sa-ratio').value=ppc(f);upd();});
+  upd();
+  $('sa-go').onclick=async e=>{const b=e.currentTarget;const lc=$('sa-loc').value,reason=$('sa-reason').value,note=$('sa-note').value.trim();
+    if(!reason)return toast('Choose a reason',true);
+    const args={p_loc:lc,p_kind:K,p_from:null,p_to:null,p_qty_from:null,p_ratio:null,p_item:null,p_delta:null,p_best_before:null,p_reason:reason,p_note:note||null};
+    if(K==='move'){args.p_from=$('sa-from').value||null;args.p_to=$('sa-to').value||null;args.p_qty_from=Math.round(+$('sa-qf').value||0);args.p_ratio=+$('sa-ratio').value||0;}
+    else{args.p_item=$('sa-item').value||null;args.p_delta=Math.round(+$('sa-d').value||0)*(+$('sa-sign').value);const bb=$('sa-bb').value;if(bb&&args.p_delta>0)args.p_best_before=bb;}
+    b.disabled=true;const{data,error}=await sb.rpc('request_stock_adjustment',args);b.disabled=false;
+    if(error)return toast(/request_stock_adjustment/.test(error.message)?'Run 101_stock_adjustments.sql in Supabase first':error.message,true);
+    closeOverlay();toast(data.applied?`${data.code} applied — stock updated`:`${data.code} sent for approval`);
+    if(data.applied){await refreshOps([lc]);try{await loadBatches();}catch(e){}}loadAdjCount();if(route==='stockadj')renderView();};
+}
+function saTemplate(){const header=['Type (move / found / correction)','From code (move) or Item code','To code (move only)','Quantity (packets; + or − for correction)','Conversion 1 FROM = ? TO (move, default 1)','Reason','Note','Best-before YYYY-MM-DD (found, optional)'];
+  downloadTemplate('stock-adjustments-template.csv',header,[['move','','','','1','Received under the wrong code','',''],['found','','','','','Found during a check','',''],['correction','','','','','Counting error','','']],[1,2]);
+  toast('Template downloaded (Excel). One adjustment per row; choose the centre on screen before uploading.');}
+function saUpload(file){const cs=saCentres();const lc=saCentre||(cs.length===1?cs[0].id:'');
+  if(!lc)return toast('Choose a centre in the filter first — the upload is for one centre',true);
+  readSheetRows(file,async raw=>{const rows=(raw||[]).filter(r=>r.some(c=>String(c||'').trim()));if(rows.length<2)return toast('That file looks empty',true);
+    const map=itemBySku();const P=[];let ok=0,applied=0;
+    toast(`Uploading adjustments for ${loc(lc).name}…`);
+    for(let n=1;n<rows.length;n++){const r=rows[n].map(x=>String(x||'').trim());const R=n+1;
+      if(!r[0]&&!r[1])continue;
+      const t0=(r[0]||'').toLowerCase();const kind=/^move/.test(t0)?'move':/^found/.test(t0)?'found':/^correct/.test(t0)?'correction':'';
+      if(!kind){P.push({row:R,code:r[1],problem:`Type “${r[0]}” not understood`,fix:'Use move, found or correction'});continue;}
+      const a=map[(r[1]||'').toLowerCase()],b=map[(r[2]||'').toLowerCase()];const q=Math.round(parseFloat((r[3]||'').replace(/,/g,''))||0);
+      if(!a){P.push({row:R,code:r[1],problem:'Code not found',fix:'Check the product code (use the Excel template so long codes stay exact)'});continue;}
+      if(kind==='move'&&!b){P.push({row:R,code:r[2],name:item(a).name,problem:'“To” code not found',fix:'Enter the code the stock moves to'});continue;}
+      if(!q){P.push({row:R,code:r[1],name:item(a).name,problem:'No quantity',fix:'Enter packets (+ or − for a correction)'});continue;}
+      const bb=poParseDate(r[7]);
+      const args={p_loc:lc,p_kind:kind,p_from:kind==='move'?a:null,p_to:kind==='move'?b:null,p_qty_from:kind==='move'?Math.abs(q):null,p_ratio:kind==='move'?(parseFloat(r[4])||1):null,
+        p_item:kind!=='move'?a:null,p_delta:kind!=='move'?(kind==='found'?Math.abs(q):q):null,p_best_before:kind!=='move'&&q>0&&bb&&bb!=='bad'?bb:null,p_reason:r[5]||'Uploaded adjustment',p_note:r[6]||null};
+      const{data,error}=await sb.rpc('request_stock_adjustment',args);
+      if(error){P.push({row:R,code:r[1],name:item(a).name,qty:r[3],problem:error.message,fix:'Fix the row and upload it again'});continue;}
+      ok++;if(data&&data.applied)applied++;}
+    if(applied){await refreshOps([lc]);try{await loadBatches();}catch(e){}}loadAdjCount();if(route==='stockadj')renderView();
+    if(P.length)showUploadReport('Stock adjustments',file,{loaded:ok,problems:P});else toast(`${ok} adjustment(s) ${applied?'applied':'sent for approval'}`);});}
+function saExport(){if(!saRows.length)return toast('Nothing to export',true);
+  downloadCSV(`stock-adjustments_${today()}.csv`,['Code','Centre','Type','From / item code','From / item','To code','To item','Qty (from / change)','Qty to','Conversion','Best-before','Reason','Note','Status','Requested','Requested by','Decided','Decided by','Decision note'],
+    saRows.map(a=>{const f=item(a.kind==='move'?a.from_item:a.item_id),t=item(a.to_item);return [a.code,loc(a.location_id).name,SA_KIND[a.kind],f.sku||'',f.name,a.kind==='move'?t.sku||'':'',a.kind==='move'?t.name:'',a.kind==='move'?-a.qty_from:a.delta,a.kind==='move'?a.qty_to:'',a.ratio||'',a.best_before||'',a.reason,a.note||'',a.status,fmtDT(a.requested_at),pname(a.requested_by),a.decided_at?fmtDT(a.decided_at):'',a.decided_by?pname(a.decided_by):'',a.decision_note||''];}));}
 /* Cash in and Paid out: National Admin and Super Admin only (migration 75) */
 function cashInOutOk(){return false;}   // Cash in / Paid out removed (migration 89) — count, banking and opening balance only
 function openCashMove(L,kind){
@@ -3256,7 +3393,7 @@ function ipOpen(el,trig,refresh,first){
   setTimeout(()=>inp.focus(),0);
 }
 /* enhance item drop-downs automatically whenever a screen draws them */
-const IP_SEL='select[data-li],select[data-pi],select[data-ri],select[data-ili],input#ar-item';
+const IP_SEL='select[data-li],select[data-pi],select[data-ri],select[data-ili],select[data-adji],input#ar-item';
 new MutationObserver(()=>{document.querySelectorAll(IP_SEL).forEach(el=>{if(!el.dataset.ip)ipEnhance(el);});}).observe(document.body,{childList:true,subtree:true});
 
 function renderView(){
@@ -3264,7 +3401,7 @@ function renderView(){
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,online:vOnline,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,online:vOnline,stockadj:vStockAdj,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -6180,6 +6317,7 @@ const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfe
   sq_reserved:{l:'Held for a Square order',c:'var(--warn)'},sq_released:{l:'Released from a Square order',c:'var(--good)'},
   sq_transfer:{l:'Square transfer',c:'var(--transit)'},sq_count:{l:'Counted in Square',c:'var(--transit)'},sq_other:{l:'Square change',c:'var(--muted)'},
   opening:{l:'Opening balance',c:'var(--muted)'},
+  code_move_out:{l:'Moved to another code',c:'var(--warn)'},code_move_in:{l:'Moved from another code',c:'var(--good)'},
   pooled_sale:{l:'Sold at another location',c:'var(--transit)'},pooled_restock:{l:'Sale taken from main stock',c:'var(--muted)'}};
 const lkind=k=>LKIND[k]||{l:k,c:'var(--muted)'};
 let ihKind='all',ihItem=null,ihRange='12m';
@@ -6237,7 +6375,7 @@ async function renderItemHistory(itemId){
 function openItem(id){
   const it=S.items.find(x=>x.id===id);if(!it)return;ihItem=id;ihKind='all';
   const rows=S.locations.filter(l=>visLocs().includes(l.id)).map(l=>{const oh=onHand(l.id,id),rs=reservedAt(l.id,id);const bl=binLabel(l.id,id);const seq=(isHub(l.id)&&binsFor(l.id,id).length)?binSeqHtml(l.id,id):'';return `<tr><td>${esc(l.name)}</td><td style="font-size:12px;color:${(seq||bl)?'var(--muted)':'var(--faint)'}">${seq||(bl?esc(bl):'—')}</td><td class="num tnum">${oh}</td><td class="num tnum" style="color:${rs>0?'var(--warn)':'var(--faint)'}">${rs>0?rs:'—'}</td><td class="num tnum">${money(oh*it.unit_cost)}</td></tr>`;}).join('');
-  const kinds=['all','sale','return','sq_added','sq_removed','sq_waste','sq_reserved','sq_released','sq_transfer','sq_count','pooled_sale','pooled_restock','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','reversal','opening'];
+  const kinds=['all','sale','return','sq_added','sq_removed','sq_waste','sq_reserved','sq_released','sq_transfer','sq_count','pooled_sale','pooled_restock','code_move_out','code_move_in','transfer_in','transfer_out','transit_loss','purchase','stocktake','stocktake_var','stocktake_amend','damage','expire','write_off','found','correction','reversal','opening'];
   const preq=(S.adjReq||[]).filter(r=>r.item_id===id&&r.status==='pending'&&(!scoped()||mine(r.location_id)));
   const isApprover=['national_admin','super_admin'].includes(ROLE);
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
@@ -6258,7 +6396,7 @@ function openItem(id){
     +`<button class="btn" id="it-label">${svg(I.receipt,15)} Shelf label</button>`
     +(['super_admin','national_admin'].includes(ROLE)?`<button class="btn" id="it-sqchk">${svg(I.check,15)} Check with Square</button>`:'')
     +(ROLE==='super_admin'?`<button class="btn" id="it-transfer">${svg(I.transfer,15)} Transfer</button><button class="btn" id="it-recount">${svg(I.stocktake,15)} Recount</button>`:'')
-    +`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
+    +(HELPER?'':`<button class="btn" id="it-adj">${svg(I.sync,15)} Adjust stock</button>`)+`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
   slideover(it.name,it.sku||'',body,foot);
   document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
   const ihr=document.getElementById('ih-range');if(ihr){ihr.value=ihRange;ihr.onchange=e=>{ihRange=e.target.value;renderItemHistory(id);};}
@@ -6269,6 +6407,7 @@ function openItem(id){
   const chw=document.getElementById('ih-chgw');if(chw)chw.addEventListener('toggle',()=>{if(chw.open&&!chw.dataset.loaded){chw.dataset.loaded='1';loadItemChanges(id);}});
   const br=document.getElementById('it-recount');if(br)br.onclick=()=>openRecount(id);
   const bd=document.getElementById('it-dmg');if(bd)bd.onclick=()=>openDamageRequest(id);
+  const bad=document.getElementById('it-adj');if(bad)bad.onclick=()=>{closeOverlay();setTimeout(()=>openStockAdj('correction',{item:id}),60);};
   const bl2=document.getElementById('it-loc');if(bl2)bl2.onclick=()=>openSetLocation(id);
   const blb=document.getElementById('it-label');if(blb)blb.onclick=()=>openLabelsFor([id]);
   overlayEl().querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
