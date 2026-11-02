@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.02-2';
+const APP_VERSION='2026.11.02-3';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -3917,8 +3917,8 @@ function openShortReport(){
 function vTransfers(v){
   v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
     <select class="filter" id="f"><option value="all">All statuses</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
-    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
-  document.getElementById('tr-short').onclick=openShortReport;{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
+    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn" id="tr-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="tr-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="tr-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
+  document.getElementById('tr-short').onclick=openShortReport;{const a=document.getElementById('tr-tpl'),b=document.getElementById('tr-upl'),c=document.getElementById('tr-uplf');if(a)a.onclick=tfTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';tfUploadMain(f);};}}{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
   document.getElementById('f').value=trFilter;
   document.getElementById('f').onchange=e=>{trFilter=e.target.value;trList();};
   document.getElementById('q').oninput=e=>{trSearch=e.target.value;trList();};
@@ -4126,6 +4126,21 @@ let tfDraftId=null;
    Central Warehouse staff, National Admins and the Super Admin can choose any site. */
 function tfFromLocs(){const act=S.locations.filter(l=>l.active!==false);if(!scoped())return act;
   const hubs=act.filter(l=>l.is_hub);if(hubs.some(h=>mine(h.id)))return act;return hubs.length?hubs:act;}
+function tfTemplateDl(fromV,toV){const fl=fromV?loc(fromV):null;
+  const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
+  const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
+  downloadTemplate('stock-transfer-template'+(toV?'-'+(loc(toV).code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
+    items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':toV&&newAt(i,toV)?'New for '+loc(toV).name+' - switched on in Square when received':''];}));
+  toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
+function tfDestLocs(){return (scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false)).filter(l=>!l.stock_from_loc);}
+/* main Transfers screen: download the template / upload a filled one without opening New transfer first */
+function tfTemplateMain(){const fo=tfFromLocs(),de=tfDestLocs();
+  if(!de.length)return toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);
+  const o=a=>a.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  stackConfirm('Download transfer template','Every stock item, ready to fill in',`<div class="field"><label>From (sending centre)</label><select id="tt-from">${o(fo)}</select><div class="hint">Shows what it has available in the template.</div></div><div class="field"><label>To (your centre)</label><select id="tt-to">${o(de)}</select><div class="hint">Items not sold there yet are marked “New”.</div></div><div class="hint">Fill in <b>Quantity (boxes)</b>, then use <b>Upload filled</b> on the Transfers screen.</div>`,
+    {okLabel:'Download template',onOk:()=>{const f=document.getElementById('tt-from').value,t=document.getElementById('tt-to').value;if(f&&f===t){toast('From and To must be different',true);return false;}
+      toast('Preparing template…');loadTfSrc(f).then(()=>tfTemplateDl(f,t)).catch(()=>tfTemplateDl(f,t));}});}
+function tfUploadMain(f){if(!f)return;newTransfer();setTimeout(()=>{const u=document.getElementById('upF');if(u&&u.onchange)u.onchange({target:{files:[f],value:''}});},60);}
 function newTransfer(presetItem){
   const draft=(presetItem&&typeof presetItem==='object'&&presetItem.id)?presetItem:null;
   const pre=(presetItem&&typeof presetItem==='object'&&presetItem.prefill)?presetItem:null;
@@ -4133,7 +4148,7 @@ function newTransfer(presetItem){
   dLines=draft?(draft.lines||[]).map(l=>({item:l.item_id,qty:l.qty_requested})):pre?(pre.lines||[]).map(l=>({item:l.item,qty:l.qty})):[{item:(typeof presetItem==='string'?presetItem:'')||'',qty:1}];
   const opts=tfFromLocs().map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   // Destination is limited to the user's own centre(s); unscoped roles can send anywhere.
-  const destLocs=(scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false)).filter(l=>!l.stock_from_loc);   // selling-only locations use their main location's stock
+  const destLocs=tfDestLocs();   // selling-only locations use their main location's stock
   if(scoped()&&!destLocs.length){toast('No centre is assigned to you yet — ask a Super Admin to set your centre in Users & Roles.',true);return;}
   const toOpts=destLocs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   const body=`<section class="sec"><div class="sec-h"><h3>Route</h3><span class="sec-hint">Where the stock comes from and where it goes</span></div><div class="grid2"><div class="field"><label>From location</label><select id="tf-from">${opts}</select></div><div class="field"><label>To location (your centre)</label><select id="tf-to">${toOpts}</select></div></div></section>
@@ -4178,13 +4193,7 @@ function newTransfer(presetItem){
     else toast('Added '+add.length+' item(s) from stock status');};
   loadTfSrc(from.value);loadTfDest(to.value);
   document.getElementById('addL').onclick=()=>{dLines.push({item:'',qty:1});edLines();focusNewLine('ed');};
-  document.getElementById('dlT').onclick=()=>{const fromV=(document.getElementById('tf-from')||{}).value;const fl=fromV?loc(fromV):null;
-    const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
-    const toV=(document.getElementById('tf-to')||{}).value;
-    const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
-    downloadTemplate('stock-transfer-template.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
-      items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':newAt(i,toV)?'New for '+loc(toV).name+' - switched on in Square when received':''];}));
-    toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
+  document.getElementById('dlT').onclick=()=>tfTemplateDl((document.getElementById('tf-from')||{}).value,(document.getElementById('tf-to')||{}).value);
   document.getElementById('upT').onclick=()=>document.getElementById('upF').click();
   document.getElementById('upF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,false,rows=>{dLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item))}));tfUploaded=true;edLines();sum();},'Stock transfer');};
   document.getElementById('go').onclick=submitTransfer;
@@ -4339,8 +4348,9 @@ function vOrders(v){
   const inc=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on));
   v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div>Purchase orders and their expected arrival.</div></div>
     ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status,o)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
-    <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')&&canPO()?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New purchase order</button>`:''}</div><div id="list"></div>`;
+    <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')&&canPO()?`<button class="btn" id="po-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="po-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="po-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('order.create')&&canPO()?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New purchase order</button>`:''}</div><div id="list"></div>`;
   document.getElementById('q').oninput=e=>{oSearch=e.target.value;oList();};oList();
+  {const a=document.getElementById('po-tpl'),b=document.getElementById('po-upl'),c=document.getElementById('po-uplf');if(a)a.onclick=poTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';poUploadMain(f);};}}
 }
 function oList(){
   const q=oSearch.toLowerCase();let list=S.orders.filter(o=>!scoped()||mine(o.location_id));
@@ -4435,6 +4445,15 @@ function poEmail(o){
   const ni=document.getElementById('pm-note');if(ni)ni.oninput=e=>{note=e.target.value;};
 }
 let poLines=[],poUnit='pkt';
+function poTemplateDl(plv){const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
+  downloadTemplate('purchase-order-template'+(plv?'-'+(loc(plv).code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',!hasPpc(i)?'No pack size set - cannot be ordered until a National Admin sets it':plv&&newAt(i,plv)?'New for '+loc(plv).name+' - switched on in Square when received':'']));
+  toast('Template downloaded with all '+items.length+' products. Fill in Quantity (boxes) and upload it.');}
+function poTemplateMain(){const ls=S.locations.filter(l=>poLocs().some(p=>p.id===l.id)&&(!scoped()||mine(l.id)));
+  if(!ls.length)return toast('Purchase orders can only be raised for the Central Warehouse or Perth.',true);
+  if(ls.length===1)return poTemplateDl(ls[0].id);
+  stackConfirm('Download purchase order template','Every stock item, ready to fill in',`<div class="field"><label>Deliver to</label><select id="pt-loc">${ls.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select><div class="hint">Items not sold there yet are marked “New”.</div></div><div class="hint">Fill in <b>Quantity (boxes)</b> (and cost if it changed), then use <b>Upload filled</b> on the Purchase Orders screen.</div>`,
+    {okLabel:'Download template',onOk:()=>poTemplateDl(document.getElementById('pt-loc').value)});}
+function poUploadMain(f){if(!f)return;newOrder();setTimeout(()=>{const u=document.getElementById('upOF');if(u&&u.onchange)u.onchange({target:{files:[f],value:''}});},60);}
 function newOrder(o){
   o=(o&&o.id)?o:null;
   poLines=o?(o.lines||[]).map(l=>({item:l.item_id,qty:l.qty,cost:l.unit_cost})):[{item:'',qty:1,cost:0}];
@@ -4455,7 +4474,7 @@ function newOrder(o){
   {const pls=document.getElementById('po-loc');if(pls)pls.addEventListener('change',()=>pEd());}
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
   pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
-  document.getElementById('dlO').onclick=()=>{const plv=(document.getElementById('po-loc')||{}).value;const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));downloadTemplate('purchase-order-template.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',hasPpc(i)?'':'No pack size set - cannot be ordered until a National Admin sets it']));toast('Template downloaded with all '+items.length+' products.');}
+  document.getElementById('dlO').onclick=()=>poTemplateDl((document.getElementById('po-loc')||{}).value);
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
   document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();},'Purchase order');};
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
