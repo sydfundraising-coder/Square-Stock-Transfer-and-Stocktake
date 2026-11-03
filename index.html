@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.02-3';
+const APP_VERSION='2026.11.03-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -406,6 +406,8 @@ document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[da
   .panel-body input[data-rcost]{height:40px!important;font-size:15px!important;border:1.5px solid var(--border-strong)!important}
   .por-card,.recv-card{border:1.5px solid var(--border-strong)!important}
   .por-find{display:flex;gap:8px;margin:0 0 10px}
+  .qty-strip{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:0 0 10px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:13px;color:var(--muted)}
+  .qty-strip b{color:var(--ink)}.qty-strip>span:first-of-type{font-weight:600;color:var(--ink)}
   .rcv-filt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2,var(--surface))}
   .rcv-filt select,.rcv-filt input[type=date]{padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);font-size:12.5px;max-width:190px}
   .rcv-filt select.on,.rcv-filt input.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
@@ -1349,6 +1351,11 @@ const bxTag=(pk,it)=>{const n=ceilBox(pk,it);return n==null?'':n+' bx';};
 const hasPpc=it=>ppc(it)>0;                               // item usable in boxes only if a pack size is set
 const box2pk=(bx,it)=>{const n=ppc(it);return n?Math.round((+bx||0)*n):Math.round(+bx||0);};   // whole boxes → packets
 const pk2boxWhole=(pk,it)=>{const n=ppc(it);return n?Math.round(pk/n):Math.round(+pk||0);};      // packets → nearest whole box
+/* totals for a set of lines given as [[item, packets], …] → {n items, bx boxes, pk packets, nopk items without a pack size} */
+function qtyTot(pairs){const T={n:0,bx:0,pk:0,nopk:0};(pairs||[]).forEach(([it,p])=>{p=+p||0;if(!it||p<=0)return;T.n++;T.pk+=p;const c=ppc(it);if(c)T.bx+=p/c;else T.nopk++;});T.bx=Math.round(T.bx*100)/100;return T;}
+const nf=x=>(+x||0).toLocaleString('en-AU',{maximumFractionDigits:2});
+function qtyTotTxt(T,plain){const b=x=>plain?nf(x):'<b>'+nf(x)+'</b>';return b(T.bx)+' box'+(T.bx===1?'':'es')+' · '+b(T.pk)+' packet'+(T.pk===1?'':'s')+(T.nopk?' ('+T.nopk+' item'+(T.nopk===1?'':'s')+' with no pack size)':'');}
+function qtyStrip(label,T){return `<div class="qty-strip">${svg(I.box,15)}<span>${label}</span><span><b>${T.n}</b> item${T.n===1?'':'s'}</span><span>${qtyTotTxt(T)}</span></div>`;}
 const boxDec=(pk,it)=>{const n=ppc(it);return n?(Math.round((pk/n)*100)/100):null;};             // packets → boxes with 2 decimals
 const recPk=(pk,it)=>box2pk(pk2boxWhole(pk,it),it);       // recommended packets snapped to the nearest whole box
 const binOf=(l,i)=>(S.bin&&S.bin[l+'__'+i])||{area:'',aisle:''};
@@ -1399,7 +1406,7 @@ function plBulkDateBind(keys,loc,hub){const b=document.getElementById('plb-go');
     const apply=all=>{let n=0;keys.forEach(k=>{(PL[k]||[]).forEach(r=>{if(!r.exp||all){r.exp=d;n++;}});plRender(k,loc,hub);});toast(`Best-before ${fmtDate(d)} set on ${n} line${n===1?'':'s'}`);};
     if(conflicts)return stackConfirm('Some lines already have a date',`${conflicts} line(s) have a different best-before`,`<div>Set <b>${fmtDate(d)}</b> on <b>every</b> line, replacing those dates? Or only fill the lines that have no date yet?</div>`,{okLabel:'Replace all',cancelLabel:'Only empty lines',onOk:()=>apply(true)})||setTimeout(()=>{const cc=[...document.querySelectorAll('#sc-cancel')].pop();if(cc){const o=cc.onclick;cc.onclick=e=>{apply(false);if(o)o(e);};}},0);
     apply(false);};}
-function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return;const tot=plSum(key),max=PLMAX[key],over=max!=null&&tot>max;el.innerHTML=`Receiving <b>${tot}</b>${max!=null?' of '+max:''} boxes`;el.style.color=over?'var(--crit)':'var(--muted)';}
+function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return;const tot=plSum(key),max=PLMAX[key],over=max!=null&&tot>max;el.innerHTML=`Receiving <b>${tot}</b>${max!=null?' of '+max:''} boxes`;el.style.color=over?'var(--crit)':'var(--muted)';if(document.getElementById('rcf-count'))rcvSoon();}
 /* validate + return placements for a line; returns {ok, qty, rows} */
 function plCollect(key,hub){const rows=(PL[key]||[]).filter(r=>(+r.qty||0)>0);const qty=rows.reduce((s,r)=>s+(+r.qty||0),0);return {qty,rows};}
 /* ---- save / resume an in-progress receipt ---- */
@@ -3966,6 +3973,7 @@ async function openTransfer(id){
     ${du>0&&t.status==='received'?`<div class="banner crit">${svg(I.alert,17)}<div><b>Discrepancy: ${du} short (${money(dv)}).</b></div></div>`:''}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Route</dt><dd>${esc(loc(t.from_location).name)} → ${esc(loc(t.to_location).name)}</dd><dt>Value</dt><dd class="tnum">${money(trValue(t))}</dd><dt>Created by</dt><dd>${esc(pname(t.created_by))} · ${fmtDate(t.created_at)}</dd>${t.approved_by?`<dt>Approved</dt><dd>${esc(pname(t.approved_by))}</dd>`:''}${t.dispatched_at?`<dt>Dispatched</dt><dd>${fmtDate(t.dispatched_at)}</dd>`:''}${t.received_at?`<dt>Received</dt><dd>${fmtDate(t.received_at)}</dd>`:''}</dl>${t.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)"><b style="color:var(--ink)">Notes:</b> ${esc(t.notes)}</div>`:''}</div>
     ${isReq?`<div class="banner info">${svg(I.info,17)}<div><b>${esc(loc(t.to_location).name)} snapshot.</b> <b>${esc(loc(t.to_location).code)} stock</b> = ${esc(loc(t.to_location).name)}'s stock on hand · <b>2-mo use</b> = ${esc(loc(t.to_location).code)}'s forecast usage for 2 months · <b>Extra/Short</b> = how much more (+extra) or less (−short) ${esc(loc(t.to_location).code)} is asking for versus that 2-month need after ${esc(loc(t.to_location).code)}'s stock on hand.</div></div>`:''}
+    ${(()=>{const P=f=>qtyTot((t.lines||[]).map(l=>[item(l.item_id),l[f]]));const R=P('qty_requested'),D=P('qty_dispatched'),V=P('qty_received');return qtyStrip('Requested',R)+(D.pk?qtyStrip('Dispatched',D):'')+(V.pk?qtyStrip('Received',V):'');})()}
     <div class="tablewrap"><table style="min-width:0">${isReq?`<thead><tr><th>Item</th><th class="num">Req</th><th class="num">${esc(loc(t.to_location).code)} stock</th><th class="num">2-mo use</th><th class="num">Extra/Short</th></tr></thead><tbody>${approvalRows}</tbody>`:`<thead><tr><th>Item <span style="font-weight:400;color:var(--faint)">· boxes</span></th><th class="num">Req</th><th class="num">Pick</th><th class="num">Disp</th><th class="num">Recv</th><th class="num">Short</th></tr></thead><tbody>${rows}</tbody>`}</table></div>`;
   slideover(t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,body,actions);
 }
@@ -3996,7 +4004,7 @@ function printPickList(t){
   let rows='',cur=null;
   en.forEach(l=>{const area=l.area||'(no location set)';if(area!==cur){cur=area;rows+=`<tr><td colspan="6" style="background:#eef2f1;font-weight:700">${esc(area)}</td></tr>`;}rows+=`<tr><td style="text-align:center;font-weight:600">${esc(l.aisle||'—')}</td><td>${esc(l.name)}${l.short?`<div style="font-size:11px;font-weight:700;color:#b0303a">⚠ Not in stock when requested (${l.short} pk short) — may have run out</div>`:''}</td><td>${esc(l.sku)}</td><td>${esc(l.barcode)}</td><td style="text-align:right">${l.qty}</td><td style="width:70px">&nbsp;</td></tr>`;});
   const w=window.open('','_blank')||printFrame();
-  w.document.write(`<html><head><title>Pick list ${esc(t.code)}</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:14px;font-size:13px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#eee}</style></head><body><h1>Pick list — ${esc(t.code)}</h1><div>From <b>${esc(loc(t.from_location).name)}</b> &rarr; ${esc(loc(t.to_location).name)}</div><div style="color:#666;font-size:12px">Sorted by storage area &amp; aisle · Printed ${new Date().toLocaleString('en-AU')}</div><table><thead><tr><th>Aisle</th><th>Item</th><th>Code</th><th>Barcode</th><th style="text-align:right">Requested</th><th>Picked</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:22px;font-size:12px">Picked by: __________________ &nbsp; Checked by: __________________ &nbsp; Date: __________</p></body></html>`);
+  w.document.write(`<html><head><title>Pick list ${esc(t.code)}</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}h1{font-size:18px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:14px;font-size:13px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#eee}</style></head><body><h1>Pick list — ${esc(t.code)}</h1><div>From <b>${esc(loc(t.from_location).name)}</b> &rarr; ${esc(loc(t.to_location).name)}</div><div style="color:#666;font-size:12px">Sorted by storage area &amp; aisle · Printed ${new Date().toLocaleString('en-AU')}</div><table><thead><tr><th>Aisle</th><th>Item</th><th>Code</th><th>Barcode</th><th style="text-align:right">Requested</th><th>Picked</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">Total requested — ${(t.lines||[]).length} items · ${qtyTotTxt(qtyTot((t.lines||[]).map(l=>[item(l.item_id),l.qty_requested])),true)}</td><td colspan="2"></td></tr></tfoot></table><p style="margin-top:22px;font-size:12px">Picked by: __________________ &nbsp; Checked by: __________________ &nbsp; Date: __________</p></body></html>`);
   w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);
 }
 /* picking (shared, scan-to-pick) */
@@ -4267,7 +4275,7 @@ function sum(){
   const iss=tfIssues();const flagN=iss.low.length+iss.excess.length;
   let overAl=[];const hubFrom=S.locations.find(l=>l.id===from&&l.is_hub);
   if(hubFrom&&to){if(tfAlloc.to!==to)tfAllocLoad(to);else overAl=dLines.filter(l=>l.item&&tfAlloc.m[l.item]&&l.qty>Math.max(0,+tfAlloc.m[l.item].remaining||0));}
-  trayCount('ed-count',dLines.filter(l=>l.item).length);
+  trayCount('ed-count',dLines.filter(l=>l.item).length,dLines.filter(l=>l.item).map(l=>[item(l.item),l.qty]));
   const s=document.getElementById('sum');if(!s)return;
   if(overN)s.className='banner warn',s.innerHTML=`${svg(I.alert,17)}<div><b>${money(val)}.</b> <b>${overN} item(s) aren’t currently in stock</b> (or not enough) at ${esc(loc(from).code)}: ${overL.slice(0,4).map(l=>esc(item(l.item).name)).join(', ')}${overL.length>4?'…':''}. You can still request them, but they <b>may not be sent</b>.</div>`;
   else if(overAl.length)s.className='banner warn',s.innerHTML=`${svg(I.alert,17)}<div><b>${money(val)}.</b> ${overAl.length} item(s) are more than ${esc(loc(to).code)}'s <b>warehouse allocation</b> (${overAl.slice(0,3).map(l=>esc(item(l.item).sku||item(l.item).name)).join(', ')}${overAl.length>3?'…':''}). The warehouse may reduce them — if it is urgent, request an allocation change in <b>Warehouse Allocation</b>.${flagN?' '+flagN+' item(s) also flagged vs 2-month demand.':''}</div>`;
@@ -4370,6 +4378,7 @@ function openOrder(id){
   if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status,o)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
+    ${qtyStrip('Ordered',qtyTot((o.lines||[]).map(l=>[item(l.item_id),l.qty])))}${o.status==='received'&&(o.lines||[]).some(l=>l.qty_received!=null)?qtyStrip('Received',qtyTot((o.lines||[]).map(l=>[item(l.item_id),l.qty_received]))):''}
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   // send to the supplier: PDF, Excel, or email through the system
   const canMail=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE)&&(!scoped()||mine(o.location_id));
@@ -4407,7 +4416,7 @@ function poDocHtml(o){
       <td style="vertical-align:top;width:50%"><div style="font-size:10px;color:#777;text-transform:uppercase">Deliver to</div><b>${esc(dest.name||'')}</b>${dest.address?`<div style="white-space:pre-line">${esc(dest.address)}</div>`:''}</td></tr></table>
     <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Code</th><th style="${th}">Barcode</th><th style="${th}">Item</th><th style="${th};text-align:right">Boxes</th><th style="${th};text-align:right">Pkts/box</th><th style="${th};text-align:right">Packets</th><th style="${th};text-align:right">Cost/pkt</th><th style="${th};text-align:right">Total</th></tr></thead>
       <tbody>${R.map(r=>`<tr><td style="${cell}">${esc(r.code)}</td><td style="${cell}">${esc(r.barcode)}</td><td style="${cell}">${esc(r.name)}</td><td style="${cell};text-align:right">${r.boxes}</td><td style="${cell};text-align:right">${r.ppc}</td><td style="${cell};text-align:right">${r.qty}</td><td style="${cell};text-align:right">${money(r.cost)}</td><td style="${cell};text-align:right">${money(r.total)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="7" style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">Order total (ex GST)</td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">${money(tot)}</td></tr></tfoot></table>
+      <tfoot><tr><td colspan="3" style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">Total (${R.length} items)</td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">${nf(R.reduce((a,r)=>a+(+r.boxes||0),0))}</td><td style="border-top:2px solid #111"></td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">${nf(R.reduce((a,r)=>a+r.qty,0))}</td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">Order total (ex GST)</td><td style="padding:9px 6px;text-align:right;font-weight:800;border-top:2px solid #111">${money(tot)}</td></tr></tfoot></table>
     ${o.notes?`<div style="margin-top:14px;font-size:12px;white-space:pre-line"><b>Notes</b><br>${esc(o.notes)}</div>`:''}
     <div style="margin-top:22px;font-size:11px;color:#555">Please confirm receipt of this order, availability and the expected dispatch date. Quote <b>${esc(o.code)}</b> on your invoice and delivery paperwork.</div></div>`;
 }
@@ -4420,7 +4429,7 @@ function poExcel(o){
   const sup=supplier(o.supplier_id),R=poRows(o),tot=R.reduce((a,r)=>a+r.total,0);
   const aoa=[...((('approved_at' in o)&&!o.approved_at&&o.status==='placed')?[['DRAFT — AWAITING APPROVAL · NOT TO BE SENT TO THE SUPPLIER']]:[]),['PURCHASE ORDER',o.code],['From',(invSettings&&invSettings.seller_name)||'Shayona'],['Supplier',sup.name],['Supplier email',sup.email||sup.contact||''],['Deliver to',loc(o.location_id).name||''],['Order date',fmtDate(o.created_at)],['Required by',o.expected_on?fmtDate(o.expected_on):''],['Notes',o.notes||''],[],
     ['Code','Barcode','Item','Boxes','Packets per box','Packets','Cost per packet','Line total'],
-    ...R.map(r=>[r.code,r.barcode,r.name,r.boxes,r.ppc,r.qty,r.cost,Math.round(r.total*100)/100]),[],['','','','','','','Order total (ex GST)',Math.round(tot*100)/100]];
+    ...R.map(r=>[r.code,r.barcode,r.name,r.boxes,r.ppc,r.qty,r.cost,Math.round(r.total*100)/100]),[],['','','Total ('+R.length+' items)',Math.round(R.reduce((a,r)=>a+(+r.boxes||0),0)*100)/100,'',R.reduce((a,r)=>a+r.qty,0),'Order total (ex GST)',Math.round(tot*100)/100]];
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:14},{wch:16},{wch:42},{wch:8},{wch:14},{wch:9},{wch:14},{wch:12}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Purchase order');XLSX.writeFile(wb,o.code+'.xlsx');toast('Excel downloaded');
 }
@@ -4501,7 +4510,7 @@ function pEd(){
   ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
   pSum();
 }
-function pSum(){trayCount('ped-count',poLines.filter(l=>l.item).length);const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);poLines.forEach((l,ix)=>{const c=document.querySelector(`[data-plt="${ix}"]`);if(c)c.textContent=l.item?money((+l.qty||0)*(+l.cost||0)):'—';});const pt=document.getElementById('po-total-val');if(pt)pt.textContent=money(t);const ps=document.getElementById('psum');if(ps)ps.hidden=true;}
+function pSum(){trayCount('ped-count',poLines.filter(l=>l.item).length,poLines.filter(l=>l.item).map(l=>[item(l.item),l.qty]));const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);poLines.forEach((l,ix)=>{const c=document.querySelector(`[data-plt="${ix}"]`);if(c)c.textContent=l.item?money((+l.qty||0)*(+l.cost||0)):'—';});const pt=document.getElementById('po-total-val');if(pt)pt.textContent=money(t);const ps=document.getElementById('psum');if(ps)ps.hidden=true;}
 async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
   const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
@@ -5913,7 +5922,7 @@ function rEd(){
   ed.querySelectorAll('[data-rr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-rr]').dataset.rr;if(recLines.length>1)recLines.splice(ix,1);rEd();});
   rSum();
 }
-function rSum(){trayCount('red-count',recLines.filter(l=>l.item).length);const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('rsum').innerHTML=`${svg(I.cost,17)}<div>Total cost <b>${money(t)}</b>.</div>`;}
+function rSum(){trayCount('red-count',recLines.filter(l=>l.item).length,recLines.filter(l=>l.item).map(l=>[item(l.item),l.qty]));const t=recLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);document.getElementById('rsum').innerHTML=`${svg(I.cost,17)}<div>Total cost <b>${money(t)}</b>.</div>`;}
 async function submitReceipt(){
   const lc=document.getElementById('rc-loc').value,sup=document.getElementById('rc-sup').value.trim(),ref=document.getElementById('rc-ref').value.trim(),date=document.getElementById('rc-date').value,notes=document.getElementById('rc-notes').value.trim();
   const lines=recLines.filter(l=>l.item&&l.qty>0);if(!sup)return toast('Enter a supplier',true);if(!lines.length)return toast('Add an item',true);
@@ -8433,7 +8442,8 @@ function rcvApply(){const cnt=document.getElementById('rcf-count');const g=id=>{
     if(!hit&&act&&c.contains(act))hit=true;      // never hide the line being typed in
     c.style.display=hit?'':'none';if(hit)shown++;});
   const any=!!q||[fa,fi,fb,fs,fc].some(v=>v!=='*')||RCV.onlyErr;
-  if(cnt)cnt.innerHTML=any?`Showing <b>${shown}</b> of ${total} items`:`${total} item${total===1?'':'s'}`;
+  if(cnt){let rb=0,rp=0,eb=0;RCV.keys.forEach(k=>{const it=item(RCV.items[k]);const b=plSum(k);rb+=b;rp+=box2pk(b,it);eb+=+PLMAX[k]||0;});
+    cnt.innerHTML=(any?`Showing <b>${shown}</b> of ${total} items`:`${total} item${total===1?'':'s'}`)+` · Receiving <b>${nf(rb)}</b> of ${nf(eb)} boxes · <b>${nf(rp)}</b> packets`;}
   const cl=document.getElementById('rcf-clear');if(cl)cl.style.display=any?'':'none';
   let em=document.getElementById('por-none');
   if(!shown&&any){if(!em){em=document.createElement('div');em.id='por-none';em.className='hp-empty';const f=document.querySelector('.por-card');if(f)f.parentNode.insertBefore(em,f);}em.textContent=q?'No items match “'+q+'”'+(any&&[fa,fi,fb,fs,fc].some(v=>v!=='*')?' with these filters.':'.'):'No items match these filters.';}
@@ -8703,7 +8713,7 @@ function logEvent(msg){try{const p=sb.rpc('log_system_event',{p_action:msg});if(
 
 
 /* item-entry helpers: running count + focus the row just added */
-function trayCount(id,n){const el=document.getElementById(id);if(el)el.textContent=n?(n+(n===1?' item':' items')):'None yet';}
+function trayCount(id,n,pairs){const el=document.getElementById(id);if(el&&pairs&&n){const T=qtyTot(pairs);el.textContent=n+(n===1?' item':' items')+' · '+qtyTotTxt(T,true);return;}if(el)el.textContent=n?(n+(n===1?' item':' items')):'None yet';}
 function focusNewLine(id){const ed=document.getElementById(id);if(!ed)return;const s=ed.querySelectorAll('select');const last=s[s.length-1];if(last){last.focus();last.scrollIntoView({block:'nearest'});}}
 /* ---------- overlays / toast / nav plumbing ---------- */
 function overlayEl(){return document.getElementById('overlay');}
