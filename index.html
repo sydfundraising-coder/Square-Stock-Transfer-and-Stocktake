@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.03-1';
+const APP_VERSION='2026.11.03-2';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -4042,7 +4042,7 @@ function openPicking(id){
     const all=(t.lines||[]);const un=all.filter(l=>!pkTouched.has(l.id));
     if(un.length)return toast('Confirm every item first — enter a quantity (0 if not sending). '+un.length+' still to do.',true);
     if(isHub(t.from_location)){const miss=all.filter(l=>(+pkCounts[l.id]||0)>0&&!(pkFrom[l.id]||'').trim());if(miss.length)return toast('Central Warehouse: choose the pick-from area for every picked item ('+miss.length+' missing)',true);}
-    const over=all.filter(l=>(+pkCounts[l.id]||0)>srcOH(t.from_location,l.item_id));
+    const over=all.filter(l=>{const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;return q>0&&q>Math.max(0,+srcOH(t.from_location,l.item_id)||0);});   // lines sent as 0 are never checked (on-hand may be negative)
     if(over.length)return toast('Cannot dispatch — over available stock for: '+over.slice(0,3).map(l=>item(l.item_id).name).join(', ')+(over.length>3?'…':'')+'. Reduce those quantities.',true);
     const boxesStr=window.prompt('Picking complete. Total boxes being set aside for freight (optional — leave blank if not counted):','');
     if(boxesStr===null)return; // cancelled
