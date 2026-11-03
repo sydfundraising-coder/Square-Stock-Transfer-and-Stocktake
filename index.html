@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.03-2';
+const APP_VERSION='2026.11.03-3';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -3880,7 +3880,12 @@ window.addEventListener('beforeprint',()=>{ if(route!=='reports')return; _prePri
 window.addEventListener('afterprint',()=>{ if(route!=='reports')return; if(_prePrintTheme)document.documentElement.setAttribute('data-theme',_prePrintTheme);else document.documentElement.removeAttribute('data-theme'); try{destroyCharts();renderReportCharts(reportData());}catch(e){} });
 
 /* Transfers */
-let trFilter='all',trSearch='';
+let trFilter='all',trSearch='',trTab='open';
+const TR_DONE=['received','completed'],TR_CANC=['cancelled'];
+const trTabOf=t=>TR_DONE.includes(t.status)?'completed':TR_CANC.includes(t.status)?'cancelled':'open';
+function trTabsHtml(){const vis=S.transfers.filter(canSee);const n=k=>vis.filter(t=>trTabOf(t)===k).length;
+  const b=(k,l)=>`<button class="rep-tab ${trTab===k?'active':''}" data-trtab="${k}">${l} <span class="badge-count" style="margin-left:4px">${n(k)}</span></button>`;
+  return `<div class="rep-tabs no-print" style="margin:0 0 14px">${b('open','Open')}${b('completed','Completed')}${b('cancelled','Cancelled')}</div>`;}
 /* ---- categories left out of transfers and the transfer / PO templates (migration 95) ---- */
 async function tfExclLoad(){try{const{data,error}=await sb.from('transfer_excluded_categories').select('category');if(!error){S.tfExcl=new Set((data||[]).map(r=>String(r.category).trim().toLowerCase()));return S.tfExcl;}}catch(e){}S.tfExcl=S.tfExcl||new Set();return S.tfExcl;}
 const tfCatExcl=c=>!!(S.tfExcl&&c&&S.tfExcl.has(String(c).trim().toLowerCase()));
@@ -3922,21 +3927,23 @@ function openShortReport(){
     rows.map(r=>[r.it.sku||'',r.it.name,r.it.category||'',r.times,Object.entries(r.centres).map(([c,n])=>c+' x'+n).join('; '),r.req,r.short,r.sent,ppc(r.it)?pk2boxWhole(r.req,r.it):'',ppc(r.it)?pk2boxWhole(r.short,r.it):'',nowAv(r),r.last?String(r.last).slice(0,10):'',r.codes.join(' ')]));
 }
 function vTransfers(v){
-  v.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
-    <select class="filter" id="f"><option value="all">All statuses</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="received">Received</option><option value="cancelled">Cancelled</option></select>
+  if(TR_DONE.includes(trFilter)){trTab='completed';trFilter='all';}else if(TR_CANC.includes(trFilter)){trTab='cancelled';trFilter='all';}
+  v.innerHTML=`${trTabsHtml()}<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
+    ${trTab==='open'?`<select class="filter" id="f"><option value="all">All open</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="partially_received">Partly received</option></select>`:''}
     <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn" id="tr-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="tr-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="tr-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
   document.getElementById('tr-short').onclick=openShortReport;{const a=document.getElementById('tr-tpl'),b=document.getElementById('tr-upl'),c=document.getElementById('tr-uplf');if(a)a.onclick=tfTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';tfUploadMain(f);};}}{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
-  document.getElementById('f').value=trFilter;
-  document.getElementById('f').onchange=e=>{trFilter=e.target.value;trList();};
+  v.querySelectorAll('[data-trtab]').forEach(b=>b.onclick=()=>{trTab=b.dataset.trtab;trFilter='all';vTransfers(v);});
+  {const fe=document.getElementById('f');if(fe){fe.value=[...fe.options].some(o=>o.value===trFilter)?trFilter:'all';fe.onchange=e=>{trFilter=e.target.value;trList();};}}
   document.getElementById('q').oninput=e=>{trSearch=e.target.value;trList();};
   trList();
 }
 function trList(){
-  const q=trSearch.toLowerCase();let list=S.transfers.filter(canSee);
-  if(trFilter!=='all')list=list.filter(t=>t.status===trFilter);
+  const q=trSearch.toLowerCase();let list=S.transfers.filter(canSee).filter(t=>trTabOf(t)===trTab);
+  if(trTab==='open'&&trFilter!=='all')list=list.filter(t=>t.status===trFilter);
+  if(trTab!=='open'){const ts=t=>String(t.received_at||t.cancelled_at||t.updated_at||t.dispatched_at||t.created_at||'');list=list.slice().sort((a,b)=>ts(b).localeCompare(ts(a)));}
   if(q)list=list.filter(t=>t.code.toLowerCase().includes(q)||loc(t.from_location).name.toLowerCase().includes(q)||loc(t.to_location).name.toLowerCase().includes(q));
   const el=document.getElementById('list');
-  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>No transfers match.</div></div>`;
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>${trTab==='completed'?'No completed transfers'+(q?' match':' yet')+'.':trTab==='cancelled'?'No cancelled transfers'+(q?' match':'')+'.':'No open transfers match.'}</div></div>`;
 }
 async function openTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
@@ -4351,19 +4358,25 @@ function openReceive(id){
   };
 }
 /* Orders */
-let oSearch='';
+let oSearch='',oTab='open';
+const oTabOf=o=>o.status==='received'?'completed':o.status==='cancelled'?'cancelled':'open';
+function oTabsHtml(){const vis=S.orders.filter(o=>!scoped()||mine(o.location_id));const n=k=>vis.filter(o=>oTabOf(o)===k).length;
+  const b=(k,l)=>`<button class="rep-tab ${oTab===k?'active':''}" data-otab="${k}">${l} <span class="badge-count" style="margin-left:4px">${n(k)}</span></button>`;
+  return `<div class="rep-tabs no-print" style="margin:18px 0 0">${b('open','Open')}${b('completed','Completed')}${b('cancelled','Cancelled')}</div>`;}
 function vOrders(v){
   const inc=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).sort((a,b)=>new Date(a.expected_on)-new Date(b.expected_on));
   v.innerHTML=`<div class="banner info">${svg(I.order,17)}<div>Purchase orders and their expected arrival.</div></div>
     ${inc.length?`<div class="section-head"><h2>Incoming — ${inc.length}</h2></div><div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${inc.map(o=>{const n=daysUntil(o.expected_on);return `<div class="tile ${n!==null&&n<0?'crit':'transit'}" style="cursor:pointer" data-order="${o.id}"><div class="lbl">${svg(I.truck,14)} ${o.code} · ${loc(o.location_id).code}</div><div class="val tnum" style="font-size:20px">${etaText(o.expected_on)}</div><div class="meta">${oPill(o.status,o)} · ${money0(oValue(o))}</div></div>`;}).join('')}</div>`:''}
-    <div class="toolbar" style="margin-top:18px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')&&canPO()?`<button class="btn" id="po-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="po-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="po-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('order.create')&&canPO()?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New purchase order</button>`:''}</div><div id="list"></div>`;
+    ${oTabsHtml()}<div class="toolbar" style="margin-top:14px"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search order, supplier…" value="${esc(oSearch)}"></div><div class="spacer"></div>${can('order.create')&&canPO()?`<button class="btn" id="po-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="po-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="po-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('order.create')&&canPO()?`<button class="btn primary" data-act="new-order">${svg(I.plus,16)} New purchase order</button>`:''}</div><div id="list"></div>`;
   document.getElementById('q').oninput=e=>{oSearch=e.target.value;oList();};oList();
+  v.querySelectorAll('[data-otab]').forEach(b=>b.onclick=()=>{oTab=b.dataset.otab;vOrders(v);});
   {const a=document.getElementById('po-tpl'),b=document.getElementById('po-upl'),c=document.getElementById('po-uplf');if(a)a.onclick=poTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';poUploadMain(f);};}}
 }
 function oList(){
-  const q=oSearch.toLowerCase();let list=S.orders.filter(o=>!scoped()||mine(o.location_id));
+  const q=oSearch.toLowerCase();let list=S.orders.filter(o=>(!scoped()||mine(o.location_id))&&oTabOf(o)===oTab);
+  if(oTab!=='open'){const ts=o=>String(o.received_at||o.cancelled_at||o.updated_at||o.created_at||'');list=list.slice().sort((a,b)=>ts(b).localeCompare(ts(a)));}
   if(q)list=list.filter(o=>o.code.toLowerCase().includes(q)||supplier(o.supplier_id).name.toLowerCase().includes(q));
-  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Order</th><th>Supplier</th><th>Into</th><th>Status</th><th>ETA</th><th class="num">Value</th></tr></thead><tbody>${list.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="mono">${o.code}</span></td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td>${oPill(o.status,o)}</td><td style="font-size:12.5px;color:${daysUntil(o.expected_on)<0&&o.status!=='received'?'var(--crit)':'var(--muted)'}">${o.status==='received'?'—':fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.order,38)}<div>No orders yet.</div></div>`;
+  document.getElementById('list').innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Order</th><th>Supplier</th><th>Into</th><th>Status</th><th>ETA</th><th class="num">Value</th></tr></thead><tbody>${list.map(o=>`<tr class="clickable" data-order="${o.id}"><td><span class="mono">${o.code}</span></td><td>${esc(supplier(o.supplier_id).name)}</td><td>${loc(o.location_id).code}</td><td>${oPill(o.status,o)}</td><td style="font-size:12.5px;color:${daysUntil(o.expected_on)<0&&o.status!=='received'?'var(--crit)':'var(--muted)'}">${o.status==='received'?'—':fmtDate(o.expected_on)}</td><td class="num tnum">${money(oValue(o))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.order,38)}<div>${oTab==='completed'?'No received orders'+(q?' match':' yet')+'.':oTab==='cancelled'?'No cancelled orders'+(q?' match':'')+'.':'No open orders'+(q?' match':'')+'.'}</div></div>`;
 }
 function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
