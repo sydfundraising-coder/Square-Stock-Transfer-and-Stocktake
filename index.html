@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.03-3';
+const APP_VERSION='2026.11.04-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -6819,10 +6819,11 @@ const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE)
 let perfTab='sales';
 function vPerf(v){
   destroyCharts();
-  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${perfTab==='sales'?'active':''}" data-perftab="sales">Sales &amp; performance</button><button class="rep-tab ${perfTab==='insights'?'active':''}" data-perftab="insights">Centre insights</button></div><div id="perf-tab"></div>`;
+  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${perfTab==='sales'?'active':''}" data-perftab="sales">Sales &amp; performance</button><button class="rep-tab ${perfTab==='insights'?'active':''}" data-perftab="insights">Centre insights</button><button class="rep-tab ${perfTab==='cathall'?'active':''}" data-perftab="cathall">Catering &amp; Hall Hire</button></div><div id="perf-tab"></div>`;
   v.querySelectorAll('[data-perftab]').forEach(b=>b.onclick=()=>{perfTab=b.dataset.perftab;vPerf(v);});
   const box=document.getElementById('perf-tab');
   if(perfTab==='insights')return vInsights(box);
+  if(perfTab==='cathall')return vCatHall(box);
   if(ROLE==='super_admin')return vPerfNational(box);
   if(ROLE==='national_admin')return vPerfFull(box);
   return vPerfCentre(box);                      // Users and Admins: the centre report
@@ -6900,6 +6901,100 @@ async function renderPerf(){
   mkChart('pf-fy',{type:'bar',data:{labels:fys.map(f=>'FY'+f),datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].sales)),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
   mkChart('pf-basket',{type:'line',data:{labels:yms.map(mLabel),datasets:[{label:'Avg basket $',data:yms.map(y=>Math.round(avg(byYm[y].sales,byYm[y].orders)*100)/100),borderColor:t.accent,tension:.3,pointRadius:2,yAxisID:'y'},{label:'Items / order',data:yms.map(y=>Math.round(avg(byYm[y].units,byYm[y].orders)*100)/100),borderColor:t.warn,tension:.3,pointRadius:2,yAxisID:'y1'}]},options:{scales:{x:axes().x,y:{position:'left',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid}},y1:{position:'right',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{display:false}}}}});
 }
+/* ---------- Sales & Performance → Catering & Hall Hire revenue (migration 103: sales_category_monthly) ---------- */
+const CH_STREAMS=[{k:'catering',label:'Catering',color:'#d97706'},{k:'hall',label:'Hall Hire',color:'#2563eb'}];
+const chStream=c=>{const l=String(c||'').toLowerCase();if(/hall|venue|room hire/.test(l))return 'hall';if(/cater/.test(l))return 'catering';return null;};
+let chFy=null,chData=null;
+function vCatHall(v){
+  const cs=perfCentres();
+  if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
+  const rf=perfCanRefresh();
+  v.innerHTML=`<div class="rep-controls">
+      <div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Catering</b> and <b>Hall Hire</b> revenue from <b>Square</b>, by month and financial year (Jul–Jun). Counts every sale in the catering and hall-hire categories (e.g. Catering, Hall Hire, Hall Hire Services), plus custom-amount sales named “catering” / “hall hire”. Gross sales before discounts, same basis as Net sales.</div></div>
+      <div class="rep-actions no-print">${perfPickerHtml()}<select class="filter" id="ch-fy" title="Financial year"></select><button class="btn" id="ch-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="ch-xls">${svg(I.receipt,15)} Excel</button>${rf?`<button class="btn primary" id="ch-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div>
+    </div><div id="ch-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
+  perfPickerBind(()=>chLoad());
+  document.getElementById('ch-csv').onclick=()=>chExport('csv');
+  document.getElementById('ch-xls').onclick=()=>chExport('xlsx');
+  const rb=document.getElementById('ch-refresh');if(rb)rb.onclick=runPerfSync;
+  document.getElementById('ch-fy').onchange=e=>{chFy=+e.target.value;chRender();};
+  chLoad();
+}
+async function chLoad(){
+  const el=document.getElementById('ch-body');if(!el)return;
+  const ids=perfSelIds();let rows=[];
+  try{for(let from=0;;from+=1000){const{data,error}=await sb.from('sales_category_monthly').select('location_id,ym,category,orders,units,sales').in('location_id',ids).or('category.ilike.*cater*,category.ilike.*hall*,category.ilike.*venue*').range(from,from+999);
+      if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<1000)break;}}
+  catch(e){console.error('sales_category_monthly',e);el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Catering &amp; Hall Hire figures aren’t set up yet. A Super Admin needs to run <b>103_category_sales_monthly.sql</b>, deploy the updated <b>square-perf</b> function, then press <b>Refresh sales</b> once.</div></div>`;return;}
+  chData={ids,rows:rows.map(r=>({...r,stream:chStream(r.category)})).filter(r=>r.stream)};
+  chRender();
+}
+function chRender(){
+  const el=document.getElementById('ch-body');if(!el||!chData)return;destroyCharts();
+  const rows=chData.rows;const ids=chData.ids;
+  // totals for the % share: all sales of these centres per month
+  const tot={};(S.salesMonthly||[]).filter(r=>ids.includes(r.location_id)).forEach(r=>{tot[r.ym]=(tot[r.ym]||0)+(+r.sales||0);});
+  const allYm=Object.keys(tot).concat(rows.map(r=>r.ym));
+  if(!rows.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No catering or hall hire sales found for ${esc(perfScopeName())}. ${perfCanRefresh()?'If you’ve just set this up, press <b>Refresh sales</b> once to pull the past months from Square.':'Ask an admin to press <b>Refresh sales</b> if this was just set up.'} Items must be in a category whose name contains “Catering” or “Hall”.</div></div>`;return;}
+  const fys=[...new Set(allYm.map(fyOfYm))].sort((a,b)=>a-b);
+  const latest=allYm.slice().sort().pop();const curFy=fyOfYm(latest);
+  if(!chFy||!fys.includes(chFy))chFy=curFy;
+  const fySel=document.getElementById('ch-fy');if(fySel){fySel.innerHTML=fys.slice().reverse().map(f=>`<option value="${f}"${f===chFy?' selected':''}>FY${f} (Jul ${String(f-1).slice(2)} – Jun ${String(f).slice(2)})</option>`).join('');}
+  // aggregate: ym -> stream -> {sales, orders, units}
+  const M={};const add=(ym,st,r)=>{const a=(M[ym]=M[ym]||{})[st]=(M[ym]||{})[st]||{sales:0,orders:0,units:0};a.sales+=+r.sales||0;a.orders+=+r.orders||0;a.units+=+r.units||0;};
+  rows.forEach(r=>add(r.ym,r.stream,r));
+  const g=(ym,st,f)=>((M[ym]||{})[st]||{})[f]||0;
+  const months=FY_MONTHS.map((_,i)=>fyYm(chFy,i)),prevMonths=FY_MONTHS.map((_,i)=>fyYm(chFy-1,i));
+  // like-for-like: only months of the chosen FY that have happened
+  const lastYm=latest;const doneIdx=months.map((ym,i)=>ym<=lastYm?i:-1).filter(i=>i>=0);
+  const sum=(list,st,f)=>list.reduce((a,ym)=>a+(st?g(ym,st,f):CH_STREAMS.reduce((b,s)=>b+g(ym,s.k,f),0)),0);
+  const cur=doneIdx.map(i=>months[i]),lfl=doneIdx.map(i=>prevMonths[i]);
+  const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
+  const chg=(a,b)=>{const q=pct(a,b);if(q==null)return '<span style="color:var(--faint)">no sales same period last year</span>';const up=q>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(q)}%</span> vs FY${chFy-1} same months`;};
+  const totFy=cur.reduce((a,ym)=>a+(tot[ym]||0),0);const both=sum(cur,null,'sales');
+  const tile=(st,label,cls)=>{const a=sum(cur,st,'sales'),b=sum(lfl,st,'sales'),o=sum(cur,st,'orders');return `<div class="tile ${cls||''}"><div class="lbl">${svg(I.cost,14)} ${label} · FY${chFy}${chFy===curFy?' to date':''}</div><div class="val tnum">${money0(a)}</div><div class="meta">${chg(a,b)} · ${o.toLocaleString()} order${o===1?'':'s'}</div></div>`;};
+  // by centre (chosen FY, months so far)
+  const byLoc={};rows.forEach(r=>{if(!cur.includes(r.ym)&&!lfl.includes(r.ym))return;const k=r.location_id;const a=byLoc[k]=byLoc[k]||{catering:0,hall:0,pc:0,ph:0};if(cur.includes(r.ym))a[r.stream]+=+r.sales||0;else a[r.stream==='hall'?'ph':'pc']+=+r.sales||0;});
+  const locRows=Object.entries(byLoc).map(([id,a])=>({id,...a,t:a.catering+a.hall,pt:a.pc+a.ph})).sort((x,y)=>y.t-x.t);
+  // categories counted
+  const byCat={};rows.forEach(r=>{if(!cur.includes(r.ym))return;const k=r.category;const a=byCat[k]=byCat[k]||{stream:r.stream,sales:0,orders:0};a.sales+=+r.sales||0;a.orders+=+r.orders||0;});
+  // FY history
+  const fyT=fys.map(f=>{const ms=FY_MONTHS.map((_,i)=>fyYm(f,i));return {f,c:sum(ms,'catering','sales'),h:sum(ms,'hall','sales'),co:sum(ms,'catering','orders'),ho:sum(ms,'hall','orders'),all:ms.reduce((a,ym)=>a+(tot[ym]||0),0)};}).filter(x=>x.c||x.h);
+  window._chData={months,prevMonths,g,tot,locRows,fyT,chFy};
+  const pctOf=(a,b)=>b>0?(Math.round(a/b*1000)/10)+'%':'—';
+  el.innerHTML=`
+    <div class="tiles" style="margin-bottom:14px">
+      ${tile('catering','Catering','accent')}${tile('hall','Hall Hire')}
+      <div class="tile"><div class="lbl">${svg(I.chart,14)} Combined · FY${chFy}${chFy===curFy?' to date':''}</div><div class="val tnum">${money0(both)}</div><div class="meta">${chg(both,sum(lfl,null,'sales'))}</div></div>
+      <div class="tile"><div class="lbl">${svg(I.trend,14)} Share of all sales</div><div class="val tnum">${pctOf(both,totFy)}</div><div class="meta">of ${money0(totFy)} total sales, same months</div></div>
+    </div>
+    <div class="section-head"><h2>By month · FY${chFy}</h2><span class="tag">${esc(perfScopeName())}</span></div>
+    <div class="card pad"><div style="height:260px"><canvas id="ch-month"></canvas></div></div>
+    <div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>Month</th><th class="num">Catering</th><th class="num">Last year</th><th class="num">Hall Hire</th><th class="num">Last year</th><th class="num">Combined</th><th class="num">Orders</th><th class="num">Share of sales</th></tr></thead><tbody>
+      ${months.map((ym,i)=>{const c=g(ym,'catering','sales'),h=g(ym,'hall','sales'),pc=g(prevMonths[i],'catering','sales'),ph=g(prevMonths[i],'hall','sales'),o=g(ym,'catering','orders')+g(ym,'hall','orders');const fut=ym>lastYm;return `<tr style="${fut?'color:var(--faint)':''}"><td><b>${FY_MONTHS[i]}</b> <span style="color:var(--faint);font-size:11.5px">${ym.slice(0,4)}</span></td><td class="num tnum">${fut?'—':money0(c)}</td><td class="num tnum" style="color:var(--muted)">${money0(pc)}</td><td class="num tnum">${fut?'—':money0(h)}</td><td class="num tnum" style="color:var(--muted)">${money0(ph)}</td><td class="num tnum"><b>${fut?'—':money0(c+h)}</b></td><td class="num tnum">${fut?'—':o.toLocaleString()}</td><td class="num tnum">${fut?'—':pctOf(c+h,tot[ym]||0)}</td></tr>`;}).join('')}
+      <tr style="border-top:2px solid var(--border-strong)"><td><b>Total${chFy===curFy?' to date':''}</b></td><td class="num tnum"><b>${money0(sum(cur,'catering','sales'))}</b></td><td class="num tnum" style="color:var(--muted)">${money0(sum(lfl,'catering','sales'))}</td><td class="num tnum"><b>${money0(sum(cur,'hall','sales'))}</b></td><td class="num tnum" style="color:var(--muted)">${money0(sum(lfl,'hall','sales'))}</td><td class="num tnum"><b>${money0(both)}</b></td><td class="num tnum"><b>${sum(cur,null,'orders').toLocaleString()}</b></td><td class="num tnum"><b>${pctOf(both,totFy)}</b></td></tr>
+    </tbody></table></div>
+    ${locRows.length>1||perfCentres().length>1?`<div class="section-head" style="margin-top:16px"><h2>By centre · FY${chFy}${chFy===curFy?' to date':''}</h2><small>Last year = same months of FY${chFy-1}</small></div>
+    <div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">Catering</th><th class="num">Hall Hire</th><th class="num">Combined</th><th class="num">Last year</th><th class="num">Change</th></tr></thead><tbody>${locRows.map(r=>`<tr><td>${esc(loc(r.id).name)}</td><td class="num tnum">${money0(r.catering)}</td><td class="num tnum">${money0(r.hall)}</td><td class="num tnum"><b>${money0(r.t)}</b></td><td class="num tnum" style="color:var(--muted)">${money0(r.pt)}</td><td class="num">${pct(r.t,r.pt)==null?'<span style="color:var(--faint)">—</span>':`<span style="color:${r.t>=r.pt?'var(--good)':'var(--crit)'};font-weight:600">${r.t>=r.pt?'▲':'▼'} ${Math.abs(pct(r.t,r.pt))}%</span>`}</td></tr>`).join('')}</tbody></table></div>`:''}
+    <div class="grid2" style="align-items:start;margin-top:16px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">By financial year</h3><div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>FY</th><th class="num">Catering</th><th class="num">Hall Hire</th><th class="num">Combined</th><th class="num">Share</th></tr></thead><tbody>${fyT.slice().reverse().map(x=>`<tr><td><b>FY${x.f}</b>${x.f===curFy?' <span class="tag">to date</span>':''}</td><td class="num tnum">${money0(x.c)}</td><td class="num tnum">${money0(x.h)}</td><td class="num tnum"><b>${money0(x.c+x.h)}</b></td><td class="num tnum">${pctOf(x.c+x.h,x.all)}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Categories counted · FY${chFy}</h3>${Object.keys(byCat).length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Category</th><th>Counted as</th><th class="num">Orders</th><th class="num">Sales</th></tr></thead><tbody>${Object.entries(byCat).sort((a,b)=>b[1].sales-a[1].sales).map(([c,a])=>`<tr><td>${esc(c)}</td><td>${a.stream==='hall'?'Hall Hire':'Catering'}</td><td class="num tnum">${a.orders.toLocaleString()}</td><td class="num tnum">${money0(a.sales)}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No sales in this financial year yet.</div>'}</div>
+    </div>`;
+  mkChart('ch-month',{type:'bar',data:{labels:months.map(mLabel),datasets:[
+      ...CH_STREAMS.map(st=>({label:st.label+' FY'+chFy,data:months.map(ym=>ym>lastYm?null:Math.round(g(ym,st.k,'sales'))),backgroundColor:st.color,borderRadius:4,stack:'cur'})),
+      {type:'line',label:'Combined FY'+(chFy-1),data:prevMonths.map(ym=>Math.round(g(ym,'catering','sales')+g(ym,'hall','sales'))),borderColor:'#94a3b8',borderDash:[5,4],pointRadius:2,tension:.3,fill:false}]},
+    options:{scales:{x:{...axes().x,stacked:true},y:{...axes().y,stacked:true}},plugins:{legend:{display:true,position:'bottom'}}}});
+}
+function chExport(fmt){const d=window._chData;if(!d)return toast('Nothing to export yet',true);
+  const header=['Month','Catering (AUD)','Catering orders','Catering last year (AUD)','Hall Hire (AUD)','Hall Hire orders','Hall Hire last year (AUD)','Combined (AUD)','All sales (AUD)','Share of sales %'];
+  const data=d.months.map((ym,i)=>{const c=d.g(ym,'catering','sales'),h=d.g(ym,'hall','sales'),t=d.tot[ym]||0;return [ym,c.toFixed(2),d.g(ym,'catering','orders'),d.g(d.prevMonths[i],'catering','sales').toFixed(2),h.toFixed(2),d.g(ym,'hall','orders'),d.g(d.prevMonths[i],'hall','sales').toFixed(2),(c+h).toFixed(2),t.toFixed(2),t>0?((c+h)/t*100).toFixed(1):''];});
+  const name=`catering-hall-hire_FY${d.chFy}_${perfScopeCode()}_${today()}`;
+  if(fmt==='xlsx'&&window.XLSX){const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([header,...data]),'By month');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Centre','Catering (AUD)','Hall Hire (AUD)','Combined (AUD)','Same months last year (AUD)'],...d.locRows.map(r=>[loc(r.id).name,+r.catering.toFixed(2),+r.hall.toFixed(2),+r.t.toFixed(2),+r.pt.toFixed(2)])]),'By centre');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Financial year','Catering (AUD)','Hall Hire (AUD)','Combined (AUD)','All sales (AUD)'],...d.fyT.map(x=>['FY'+x.f,+x.c.toFixed(2),+x.h.toFixed(2),+(x.c+x.h).toFixed(2),+x.all.toFixed(2)])]),'By FY');
+    XLSX.writeFile(wb,name+'.xlsx');toast('Excel exported');}
+  else downloadCSV(name+'.csv',header,data);}
 /* ---------- Sales & Performance for Users and Admins: current FY vs last FY, month by month ---------- */
 const FY_MONTHS=['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun'];
 const fyYm=(fy,i)=>{const m=(6+i)%12+1;const y=i<6?fy-1:fy;return y+'-'+String(m).padStart(2,'0');};
