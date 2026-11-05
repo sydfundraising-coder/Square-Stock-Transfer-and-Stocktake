@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.05-3';
+const APP_VERSION='2026.11.06-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -1396,7 +1396,7 @@ function plRender(key,loc,hub){const host=document.getElementById('pl-'+key);if(
   host.querySelectorAll('[data-plrm]').forEach(el=>el.onclick=e=>{const[k,ix]=e.target.closest('[data-plrm]').dataset.plrm.split('|');PL[k].splice(+ix,1);plRender(k,loc,hub);});
   const add=host.querySelector('[data-pladd]');if(add)add.onclick=()=>{const max=PLMAX[key];const rem=max!=null?Math.max(0,max-plSum(key)):'';PL[key].push({qty:rem,area:'',aisle:'',exp:''});plRender(key,loc,hub);};
   host.querySelectorAll('[data-plsel]').forEach(sel=>{sel.onchange=async e=>{const s=e.target;const kind=s.dataset.plsel;const[k,ix]=s.dataset.plref.split('|');if(s.value==='__add'){const nm=(window.prompt('Add a new '+(kind==='area'?'store area':'aisle #')+' for '+loc0name(loc)+':')||'').trim();if(!nm){s.value=PL[k][+ix][kind]||'';return;}const{error}=await sb.from('store_areas').upsert({location_id:loc,name:nm,kind},{onConflict:'location_id,kind,name',ignoreDuplicates:true});if(error){toast(error.message||'Could not save',true);s.value=PL[k][+ix][kind]||'';return;}await reloadStoreAreas();PL[k][+ix][kind]=nm;plRender(k,loc,hub);return;}PL[k][+ix][kind]=s.value;};});
-  if(document.getElementById('rcf-count'))rcvSoon();}
+  if(document.getElementById('rcf-count'))rcvSoon();if(typeof rasTouch==='function')rasTouch();}
 /* one best-before for the whole delivery (PO or transfer receiving) */
 function plBulkDateHtml(){return `<div class="pl-bulk"><div><b>Whole delivery has one best-before?</b><div class="hint" style="margin:0">Fill it in once for every line.</div></div><input type="date" id="plb-date" data-bbfuture min="${today()}" max="2100-12-31"><button type="button" class="btn sm primary" id="plb-go">${svg(I.check,14)} Apply to all lines</button></div>`;}
 function plBulkDateBind(keys,loc,hub){const b=document.getElementById('plb-go');if(!b)return;
@@ -1410,9 +1410,49 @@ function plTot(key){const el=document.getElementById('pltot-'+key);if(!el)return
 /* validate + return placements for a line; returns {ok, qty, rows} */
 function plCollect(key,hub){const rows=(PL[key]||[]).filter(r=>(+r.qty||0)>0);const qty=rows.reduce((s,r)=>s+(+r.qty||0),0);return {qty,rows};}
 /* ---- save / resume an in-progress receipt ---- */
-async function plSaveDraft(kind,refId,locId,note,keys){const payload={};(keys||Object.keys(PL)).forEach(k=>{payload[k]=(PL[k]||[]).map(r=>({qty:+r.qty||0,area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));});const{error}=await sb.from('receive_drafts').upsert({kind,ref_id:refId,location_id:locId,payload,note:note||null,updated_at:new Date().toISOString()},{onConflict:'kind,ref_id'});if(error){toast(error.message||'Could not save draft',true);return false;}await reloadRecvDrafts();closeOverlay();toast('Saved — you can finish this receipt later');renderView();return true;}
+async function plSaveDraft(kind,refId,locId,note,keys){if(RAS&&RAS.kind===kind&&RAS.ref===refId){clearTimeout(RAS.t);RAS.changed=false;}const payload={};(keys||Object.keys(PL)).forEach(k=>{payload[k]=(PL[k]||[]).map(r=>({qty:+r.qty||0,area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));});const{error}=await sb.from('receive_drafts').upsert({kind,ref_id:refId,location_id:locId,payload,note:note||null,updated_at:new Date().toISOString()},{onConflict:'kind,ref_id'});if(error){toast(error.message||'Could not save draft',true);return false;}await reloadRecvDrafts();closeOverlay();toast('Saved — you can finish this receipt later');renderView();return true;}
 function plApplyDraft(kind,refId){const d=recvDraftFor(kind,refId);if(!d||!d.payload)return null;Object.keys(d.payload).forEach(k=>{if(PL[k]!==undefined&&Array.isArray(d.payload[k])&&d.payload[k].length){PL[k]=d.payload[k].map(r=>({qty:(r.qty===0?0:(r.qty||'')),area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));}});return d;}
-async function plDeleteDraft(kind,refId){const d=recvDraftFor(kind,refId);if(!d)return;try{await sb.from('receive_drafts').delete().eq('id',d.id);}catch(e){console.error('del recv draft',e);}await reloadRecvDrafts();}
+/* ---- receiving AUTOSAVE (PO + transfer): every change is kept on this device at once and saved to the
+   server as a draft a couple of seconds later, so leaving the window, refreshing or going back loses nothing ---- */
+let RAS=null;
+const rasKey=(k,r)=>'rcv.'+k+'.'+r;
+function rasLocal(kind,ref){try{return JSON.parse(localStorage.getItem(rasKey(kind,ref))||'null');}catch(e){return null;}}
+function rasRestore(kind,ref,dbDraft){const l=rasLocal(kind,ref);if(!l||!l.payload)return dbDraft;
+  if(dbDraft&&dbDraft.updated_at&&new Date(dbDraft.updated_at).getTime()>=new Date(l.at).getTime()-1000)return dbDraft;
+  Object.keys(l.payload).forEach(k=>{if(PL[k]!==undefined&&Array.isArray(l.payload[k])&&l.payload[k].length)PL[k]=l.payload[k].map(r=>({qty:(r.qty===0?0:(r.qty||'')),area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));});
+  return {payload:l.payload,note:l.note,updated_at:l.at,local:true};}
+function rasDraftBanner(draft){if(!draft)return '';const when=draft.updated_at?new Date(draft.updated_at).toLocaleString('en-AU',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):'';
+  return `<div class="banner warn" style="align-items:center">${svg(I.receipt,17)}<div style="flex:1">Picked up where you left off${when?' ('+when+')':''} — everything entered so far is back. Finish and confirm when ready.</div><button type="button" class="btn sm" id="rcv-fresh">Start again</button></div>`;}
+function rasCostsApply(draft){const c=draft&&draft.payload&&draft.payload.__cost;if(!c)return;Object.entries(c).forEach(([k,v])=>{const ce=document.querySelector('[data-rcost="'+k+'"]');if(ce)ce.value=v;});}
+function rasInd(txt,warn){const el=document.getElementById('rcv-as');if(el){el.innerHTML=`${svg(warn?I.alert:I.check,13)} ${txt}`;el.style.color=warn?'var(--warn)':'var(--faint)';}}
+function rasStart(kind,ref,loc,keys,noteId,reopen){
+  if(RAS&&!RAS.done&&RAS.changed){clearTimeout(RAS.t);rasFlush(RAS);}
+  RAS={kind,ref,loc,keys,noteId,t:null,changed:false,done:false,pending:null,inflight:null};
+  const host=document.querySelector('.panel-body');if(!host)return;
+  const ind=document.createElement('div');ind.id='rcv-as';ind.style.cssText='font-size:12px;color:var(--faint);margin:0 0 8px;display:flex;align-items:center;gap:6px';
+  ind.innerHTML=`${svg(I.check,13)} Everything you enter is saved automatically — you can close this and come back.`;host.insertBefore(ind,host.firstChild);
+  const on=e=>{if(e.target&&e.target.closest&&(e.target.closest('#por-scan,.rcv-filt,.pl-bulk')))return;rasTouch();};
+  host.addEventListener('input',on);host.addEventListener('change',on);
+  const fb=document.getElementById('rcv-fresh');
+  if(fb)fb.onclick=()=>stackConfirm('Start this receipt again?','',`<div>Clears everything entered so far for this receipt and starts from the expected quantities.</div>`,{okLabel:'Start again',danger:true,onOk:async()=>{await rasStop();await plDeleteDraft(kind,ref);closeOverlay();setTimeout(()=>reopen&&reopen(),0);}});
+}
+function rasPayload(){const p={};RAS.keys.forEach(k=>{p[k]=(PL[k]||[]).map(r=>({qty:r.qty===''?'':(+r.qty||0),area:r.area||'',aisle:r.aisle||'',exp:r.exp||''}));});
+  const c={};document.querySelectorAll('[data-rcost]').forEach(i=>{if(i.value!=='')c[i.dataset.rcost]=i.value;});if(Object.keys(c).length)p.__cost=c;return p;}
+function rasTouch(){if(!RAS||RAS.done||!document.getElementById('rcv-as'))return;
+  RAS.pending={payload:rasPayload(),note:(document.getElementById(RAS.noteId)||{}).value||'',at:new Date().toISOString()};RAS.changed=true;
+  try{localStorage.setItem(rasKey(RAS.kind,RAS.ref),JSON.stringify(RAS.pending));}catch(e){}
+  rasInd('Saving…');clearTimeout(RAS.t);const R=RAS;RAS.t=setTimeout(()=>rasFlush(R),1800);}
+async function rasFlush(R){if(!R||R.done||!R.changed||!R.pending)return;R.changed=false;const P=R.pending;
+  R.inflight=sb.from('receive_drafts').upsert({kind:R.kind,ref_id:R.ref,location_id:R.loc,payload:P.payload,note:P.note||null,updated_at:P.at},{onConflict:'kind,ref_id'});
+  let error=null;try{({error}=await R.inflight);}catch(e){error=e;}R.inflight=null;
+  if(R.done)return;
+  const mine=R===RAS;
+  if(error){if(mine)rasInd('Saved on this device — the server copy will retry',true);R.changed=true;clearTimeout(R.t);R.t=setTimeout(()=>rasFlush(R),10000);return;}
+  if(mine)rasInd('Saved automatically · '+new Date().toLocaleTimeString('en-AU',{hour:'numeric',minute:'2-digit'}));reloadRecvDrafts();}
+/* stop autosaving (before confirming / starting again) and wait for a save in flight */
+async function rasStop(){if(!RAS)return;RAS.done=true;clearTimeout(RAS.t);if(RAS.inflight){try{await RAS.inflight;}catch(e){}}}
+window.addEventListener('beforeunload',e=>{if(RAS&&!RAS.done&&document.getElementById('rcv-as')&&RAS.changed){if(RAS.pending)try{localStorage.setItem(rasKey(RAS.kind,RAS.ref),JSON.stringify(RAS.pending));}catch(_){}e.preventDefault();e.returnValue='';}});
+async function plDeleteDraft(kind,refId){try{localStorage.removeItem(rasKey(kind,refId));}catch(e){}if(RAS&&RAS.kind===kind&&RAS.ref===refId){RAS.done=true;clearTimeout(RAS.t);}try{await sb.from('receive_drafts').delete().eq('kind',kind).eq('ref_id',refId);}catch(e){console.error('del recv draft',e);}await reloadRecvDrafts();}
 /* discrepancies = lines whose received total ≠ expected. returns [{name,expected,received}] */
 function plDiscrepancies(lines){return lines.map(l=>{const rec=plCollect(l.key).qty;return {name:l.name,expected:l.expected,received:rec,diff:rec-l.expected};}).filter(x=>x.diff!==0);}
 function discrepancyHtml(disc){return `<div class="banner warn">${svg(I.alert,17)}<div>Some lines don't match what was expected. Confirm only if this is correct — shortfalls are recorded as a costed discrepancy.</div></div><div class="tablewrap"><table style="font-size:12.5px"><thead><tr><th>Item</th><th class="num">Expected</th><th class="num">Receiving</th><th class="num">Diff</th></tr></thead><tbody>${disc.map(d=>`<tr><td>${esc(d.name)}</td><td class="num tnum">${d.expected}</td><td class="num tnum">${d.received}</td><td class="num tnum" style="font-weight:700;color:${d.diff<0?'var(--crit)':'var(--warn)'}">${d.diff>0?'+':''}${d.diff}</td></tr>`).join('')}</tbody></table></div>`;}
@@ -4333,11 +4373,12 @@ function openReceive(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
   const hubR=isHub(t.to_location);
   PL={};PLMAX={};(t.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.id,pk2boxWhole(l.qty_dispatched-l.qty_received,it),areaOf(t.to_location,l.item_id),aisleOf(t.to_location,l.item_id));if(l.pick_expiry&&PL[l.id]&&PL[l.id][0])PL[l.id][0].exp=l.pick_expiry;});
-  const draft=plApplyDraft('transfer',id);
+  const draft=rasRestore('transfer',id,plApplyDraft('transfer',id));
   const rows=(t.lines||[]).map(l=>{const it=item(l.item_id),rem=l.qty_dispatched-l.qty_received;return `<div class="card por-card" data-poritem="${l.id}" data-pitem="${l.item_id}" data-porq="${esc((it.name+' '+(it.sku||'')+' '+(it.barcode||'')).toLowerCase())}" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div style="text-align:right;display:flex;gap:14px"><div><div class="cap">Sent</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_dispatched,it)} bx</div></div><div><div class="cap">Got</div><div class="tnum" style="font-weight:600">${pk2boxWhole(l.qty_received,it)} bx</div></div></div></div><div id="pl-${l.id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${plBulkDateHtml()}
+  modal('Receive '+t.code,'Into '+loc(t.to_location).name,`${rasDraftBanner(draft)}<div class="banner info">${svg(I.box,17)}<div>Enter what actually arrived. Split a line across several <b>store areas / best-before dates</b> with <b>+ Add location / best-before</b>. Shortfalls are recorded as a costed discrepancy.</div></div>${plBulkDateHtml()}
     <div class="por-find"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="por-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${('BarcodeDetector' in window)?`<button type="button" class="btn" id="por-cam">${svg(I.box,16)} Camera</button>`:''}</div>${rcvFilterHtml()}${rows}<div class="field" style="margin-top:14px"><label>Comment (optional — saved to the audit trail)</label><textarea id="rc-note" rows="2" placeholder="e.g. 2 boxes crushed on arrival, driver noted; short by 3">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
   (t.lines||[]).forEach(l=>plRender(l.id,t.to_location,hubR));
+  rasStart('transfer',id,t.to_location,(t.lines||[]).map(l=>l.id),'rc-note',()=>openReceive(id));
   plBulkDateBind((t.lines||[]).map(l=>l.id),t.to_location,hubR);
   porWireFind(t);
   rcvWire((t.lines||[]).map(l=>l.id),t.to_location,Object.fromEntries((t.lines||[]).map(l=>[l.id,l.item_id])));
@@ -4346,6 +4387,7 @@ function openReceive(id){
     const note=(document.getElementById('rc-note')||{}).value||'';
     if(rcvStop({hub:hubR,lines:(t.lines||[]).map(l=>({key:l.id,max:pk2boxWhole(l.qty_dispatched-l.qty_received,item(l.item_id)),maxLbl:'in transit'}))}))return;
     const finish=async()=>{
+      await rasStop();
       const recv=(t.lines||[]).map(l=>({line:l.id,qty:box2pk(plCollect(l.id,hubR).qty,item(l.item_id))}));
       await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
       const locPrimary=[],binRows=[],batchOps=[];
@@ -9552,12 +9594,14 @@ function poReceiveUpload(o,file,hub){
 function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   const hub=isHub(o.location_id);
   PL={};PLMAX={};(o.lines||[]).forEach(l=>{const it=item(l.item_id);plInit(l.item_id,pk2boxWhole(+l.qty||0,it),areaOf(o.location_id,l.item_id),aisleOf(o.location_id,l.item_id));});
-  const draft=plApplyDraft('order',id);
+  const draft=rasRestore('order',id,plApplyDraft('order',id));
   const lineRows=(o.lines||[]).map(l=>{const it=item(l.item_id);const oBox=pk2boxWhole(+l.qty||0,it);return `<div class="card por-card" data-poritem="${l.item_id}" data-pitem="${l.item_id}" data-porq="${esc((it.name+' '+(it.sku||'')+' '+(it.barcode||'')).toLowerCase())}" style="padding:10px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></div><div style="display:flex;gap:12px;align-items:flex-start"><div style="text-align:right"><div class="cap">Cost / packet ($)</div><input type="number" min="0" step="0.01" inputmode="decimal" data-rcost="${l.item_id}" value="${(+l.unit_cost||0).toFixed(2)}" title="Actual cost per packet on the supplier invoice" style="width:92px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right;font-weight:600"></div><div style="text-align:right"><div class="cap">Ordered</div><div class="tnum" style="font-weight:600">${oBox} bx</div><div style="font-size:9px;color:var(--faint)">${+l.qty||0} pk</div></div></div></div><div id="pl-${l.item_id}" style="margin-top:6px"></div></div>`;}).join('');
-  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${draft?`<div class="banner warn">${svg(I.receipt,17)}<div>Resumed a saved draft${draft.updated_at?' from '+fmtDate(draft.updated_at):''}. Finish and confirm, or keep saving.</div></div>`:''}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item, with its <b>best-before</b> date${hub?', <b>store area</b> and <b>aisle #</b> (all required)':' (required) and, if you like, the <b>store area</b> and <b>aisle #</b> (optional)'}, and the <b>cost per packet</b> from the supplier invoice. Split a line across several areas or dates with <b>+ Add location / best-before</b>.</div></div>${plBulkDateHtml()}
+  modal('Receive '+o.code,'Into '+loc(o.location_id).name,`${rasDraftBanner(draft)}<div class="banner info">${svg(I.box,17)}<div>Enter what arrived <b>in boxes</b> for each item, with its <b>best-before</b> date${hub?', <b>store area</b> and <b>aisle #</b> (all required)':' (required) and, if you like, the <b>store area</b> and <b>aisle #</b> (optional)'}, and the <b>cost per packet</b> from the supplier invoice. Split a line across several areas or dates with <b>+ Add location / best-before</b>.</div></div>${plBulkDateHtml()}
     <div class="por-find"><div class="search" style="flex:1;max-width:none">${svg(I.search,16)}<input id="por-scan" placeholder="Scan a barcode, or search name / code" autocomplete="off"></div>${('BarcodeDetector' in window)?`<button type="button" class="btn" id="por-cam">${svg(I.box,16)} Camera</button>`:''}</div>${rcvFilterHtml()}
     <div class="por-tools"><span>Receiving a big order?</span><button type="button" class="btn sm" id="por-dl">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="por-up">${svg(I.box,14)} Upload filled</button><input type="file" id="por-file" accept=".csv,text/csv,.xlsx,.xls" hidden></div>${lineRows}<div class="field" style="margin-top:12px"><label>Comment (optional — saved to the audit trail)</label><textarea id="po-rnote" rows="2" placeholder="e.g. all cartons received in good condition; 1 pack expired, set aside">${draft&&draft.note?esc(draft.note):''}</textarea></div>`,`<button class="btn" data-close>Cancel</button><button class="btn" id="go-draft">${svg(I.receipt,15)} Save &amp; finish later</button><button class="btn primary" id="go">${svg(I.check,16)} Confirm receipt</button>`,'full form');
   (o.lines||[]).forEach(l=>plRender(l.item_id,o.location_id,hub));
+  rasCostsApply(draft);
+  rasStart('order',id,o.location_id,(o.lines||[]).map(l=>l.item_id),'po-rnote',()=>doReceiveOrder(id));
   plBulkDateBind((o.lines||[]).map(l=>l.item_id),o.location_id,hub);
   document.getElementById('go-draft').onclick=()=>plSaveDraft('order',id,o.location_id,(document.getElementById('po-rnote')||{}).value||'',(o.lines||[]).map(l=>l.item_id));
   porWireFind(o);
@@ -9568,6 +9612,7 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
   document.getElementById('go').onclick=async()=>{const note=(document.getElementById('po-rnote')||{}).value||'';
     if(rcvStop({hub,lines:(o.lines||[]).map(l=>({key:l.item_id,max:pk2boxWhole(+l.qty||0,item(l.item_id)),maxLbl:'ordered',cost:true}))}))return;
     const finish=async()=>{
+      await rasStop();
       const recv=(o.lines||[]).map(l=>{const ce=document.querySelector('[data-rcost="'+l.item_id+'"]');const cost=ce&&ce.value.trim()!==''?Math.max(0,+ce.value):+l.unit_cost||0;return {item:l.item_id,qty:box2pk(plCollect(l.item_id,hub).qty,item(l.item_id)),cost};});
       await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
       const locPrimary=[],binRows=[],batchOps=[];
