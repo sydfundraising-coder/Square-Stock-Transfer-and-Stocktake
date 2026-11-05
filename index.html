@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.05-2';
+const APP_VERSION='2026.11.05-3';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -6871,54 +6871,127 @@ function mfgRelease(r){
     {okLabel:'Save',onOk:async()=>{const d=document.getElementById('mrl-d').value;const{error}=await sb.rpc('mfg_set_disposition',{p_run:r.id,p_disp:d,p_released_by:(document.getElementById('mrl-by')||{}).value||null});
       if(error){toast(error.message,true);return false;}closeOverlay();if(d==='released')sb.functions.invoke('square-push',{body:{mode:'queue'}}).catch(()=>{});toast(d==='released'?'Released — added to Central Warehouse stock':'Lot rejected');await mfgReload();try{await refreshOps([]);}catch(_){}}});
 }
-/* ---------- products & recipes ---------- */
+/* ---------- products (product details only — ingredients live in the BOM screen) ---------- */
 function mfgEditProd(p){
   const ed=mfgCanEdit();const used=new Set(MFG.prods.map(x=>x.item_id));
   const items=(S.allItems||S.items||[]).filter(i=>!i.hidden&&(p?i.id===p.item_id:!used.has(i.id))).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
-  let rec=p?mRecipe(p.id).map(r=>({ing:r.ingredient_id,qty:r.qty})):[];if(!rec.length)rec=[{ing:'',qty:''}];
-  const ingOpts=MFG.ing.filter(g=>g.active!==false).map(g=>`<option value="${g.id}">${esc(g.code)} — ${esc(g.name)} (${esc(g.unit)})</option>`).join('');
   const opt=(a,v)=>a.map(([k,l])=>`<option value="${k}"${String(v??'')===k?' selected':''}>${l}</option>`).join('');
   const f=(id,l,val,attrs)=>`<div class="field"><label>${l}</label><input id="${id}" value="${esc(val??'')}" ${attrs||''} ${ed?'':'disabled'}></div>`;
-  modal(p?mProdItem(p).name:'Add a manufactured product',p?'Product, batch and recipe':'Pick the catalogue item you make',`
+  const nb=p?mRecipe(p.id).length:0;
+  modal(p?mProdItem(p).name:'Add a manufactured product',p?'Product details':'Pick the catalogue item you make — set up its BOM next',`
     <div class="field"><label>Catalogue item</label><select id="mpe-item" data-adji ${p||!ed?'disabled':''}><option value="">Select item…</option>${items.map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}"${p&&p.item_id===i.id?' selected':''}>${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('')}</select><div class="hint">Not in the catalogue yet? Create it in Square first, run Square Sync, then add it here.</div></div>
+    <section class="sec"><div class="sec-h"><h3>Batch &amp; packet</h3><span class="sec-hint" id="mpe-yield"></span></div>
     <div class="grid2">${f('mpe-bs','Batch size (total batch weight / volume / count)',p&&p.batch_size,'type="number" min="0" step="any"')}<div class="field"><label>Batch unit</label><select id="mpe-bu" ${ed?'':'disabled'}>${opt(MFG_UNITS.map(u=>[u,u]),p?p.batch_unit:'kg')}</select></div></div>
     <div class="grid2"><div class="field"><label>Pack type</label><select id="mpe-pt" ${ed?'':'disabled'}>${opt([['weight','By weight (g per packet)'],['volume','By volume (ml per packet)'],['pieces','By pieces (pieces per packet)']],p?p.pack_type:'weight')}</select></div>${f('mpe-ps','Packet size — g / ml / pieces per packet',p&&p.pack_size,'type="number" min="0" step="any"')}</div>
     <div class="grid2">${f('mpe-pw','Grams per piece (only “By pieces” made by weight)',p&&p.piece_weight_g,'type="number" min="0" step="any"')}${f('mpe-loss','Process loss per batch (in the batch unit)',p&&p.loss_per_batch,'type="number" min="0" step="any"')}</div>
-    <div class="grid2">${f('mpe-ppb','Packets per batch — leave blank to calculate',p&&p.packs_per_batch,'type="number" min="0" step="1"')}${f('mpe-sl','Shelf life (days)',p&&p.shelf_life_days,'type="number" min="0" step="1"')}</div>
+    <div class="grid2">${f('mpe-ppb','Packets per batch — leave blank to calculate',p&&p.packs_per_batch,'type="number" min="0" step="1"')}${f('mpe-sl','Shelf life (days)',p&&p.shelf_life_days,'type="number" min="0" step="1"')}</div></section>
+    <section class="sec"><div class="sec-h"><h3>Label</h3></div>
     <div class="grid2">${f('mpe-nw','Net weight on label (e.g. 275 g)',p&&p.net_weight)}${f('mpe-st','Storage conditions',p&&p.storage)}</div>
-    <div class="field"><label>Label ingredients (exact wording — blank = built from the recipe)</label><textarea id="mpe-li" rows="3" ${ed?'':'disabled'}>${esc(p&&p.label_ingredients||'')}</textarea></div>
+    <div class="field"><label>Label ingredients (exact wording — blank = built from the BOM, heaviest first)</label><textarea id="mpe-li" rows="3" ${ed?'':'disabled'}>${esc(p&&p.label_ingredients||'')}</textarea></div></section>
     <div class="field"><label>Notes</label><textarea id="mpe-no" rows="2" ${ed?'':'disabled'}>${esc(p&&p.notes||'')}</textarea></div>
     <label style="font-size:13px;display:block;margin:-4px 0 10px"><input type="checkbox" id="mpe-act" ${!p||p.active!==false?'checked':''} ${ed?'':'disabled'}> Active (can be planned)</label>
-    <section class="sec"><div class="sec-h"><h3>Recipe — ingredients for ONE batch</h3><span class="sec-hint" id="mpe-yield"></span></div><div id="mpe-rec"></div>${ed?`<button type="button" class="addmore" id="mpe-add">${svg(I.plus,16)} Add ingredient</button>`:''}${!MFG.ing.length?'<div class="hint">Add ingredients first in the Ingredients tab.</div>':''}</section>`,
-    `${p&&ed?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mpe-del">Delete</button><span class="spacer"></span>`:''}<button class="btn" data-close>Close</button>${ed?`<button class="btn primary" id="mpe-go">${svg(I.check,16)} Save</button>`:''}`,'full form');
+    ${p?`<div class="banner info">${svg(I.catalog,16)}<div>${nb?`BOM: <b>${nb}</b> ingredient${nb===1?'':'s'} · ${money(mBatchCost(p.id))} per batch.`:'<b>No BOM yet.</b>'} Ingredients are managed in the <b>BOM</b> screen.</div></div>`:''}`,
+    `${p&&ed?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mpe-del">Delete</button><span class="spacer"></span>`:''}${p?`<button class="btn" id="mpe-bom">${svg(I.catalog,15)} Open BOM</button>`:''}<button class="btn" data-close>Close</button>${ed?`<button class="btn primary" id="mpe-go">${svg(I.check,16)} ${p?'Save':'Save & set up BOM'}</button>`:''}`,'full form');
   const $=id=>document.getElementById(id);
-  const prodNow=()=>({batch_size:$('mpe-bs').value,batch_unit:$('mpe-bu').value,pack_type:$('mpe-pt').value,pack_size:$('mpe-ps').value,piece_weight_g:$('mpe-pw').value,loss_per_batch:$('mpe-loss').value,packs_per_batch:$('mpe-ppb').value});
-  const draw=()=>{const host=$('mpe-rec');
-    host.innerHTML=rec.map((r,ix)=>{const g=mIng(r.ing);return `<div class="linerow" style="grid-template-columns:1fr 120px 60px 90px 34px;display:grid;gap:6px;align-items:center;margin-bottom:6px"><select data-mri="${ix}" ${ed?'':'disabled'} style="${mFieldStyle}"><option value="">Select ingredient…</option>${ingOpts}</select><input type="number" min="0" step="any" value="${esc(r.qty)}" data-mrq="${ix}" placeholder="Qty" ${ed?'':'disabled'} style="${mFieldStyle}"><span style="color:var(--muted);font-size:12px">${esc(r.ing?g.unit:'')}</span><span class="tnum" style="color:var(--muted);font-size:12px;text-align:right">${r.ing&&mNum(r.qty)>0?money(mNum(r.qty)*mCpu(g)):''}</span>${ed?`<button type="button" class="rm" data-mrx="${ix}">${svg(I.x,15)}</button>`:'<span></span>'}</div>`;}).join('');
-    rec.forEach((r,ix)=>{const s=host.querySelector(`[data-mri="${ix}"]`);if(s)s.value=r.ing||'';});
-    host.querySelectorAll('[data-mri]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.mri;if(e.target.value&&rec.some((x,j)=>j!==ix&&x.ing===e.target.value)){toast('That ingredient is already in the recipe',true);e.target.value=rec[ix].ing||'';return;}rec[ix].ing=e.target.value;draw();});
-    host.querySelectorAll('[data-mrq]').forEach(s=>s.onchange=e=>{rec[+e.target.dataset.mrq].qty=e.target.value;draw();});
-    host.querySelectorAll('[data-mrx]').forEach(b=>b.onclick=()=>{rec.splice(+b.dataset.mrx,1);if(!rec.length)rec=[{ing:'',qty:''}];draw();});
-    const y=mYield(prodNow());const bc=rec.reduce((a,r)=>a+(r.ing?mNum(r.qty)*mCpu(mIng(r.ing)):0),0);
-    $('mpe-yield').textContent=(y!=null?y.toLocaleString()+' packets per batch · ':'')+'ingredient cost '+money(bc)+' per batch'+(y>0?' · '+money(bc/y)+' per packet':'');};
-  draw();
-  ['mpe-bs','mpe-bu','mpe-pt','mpe-ps','mpe-pw','mpe-loss','mpe-ppb'].forEach(id=>{const e=$(id);if(e)e.addEventListener('input',draw);if(e)e.addEventListener('change',draw);});
-  const ad=$('mpe-add');if(ad)ad.onclick=()=>{rec.push({ing:'',qty:''});draw();};
-  const del=$('mpe-del');if(del)del.onclick=()=>stackConfirm('Delete this product?',mProdItem(p).name,`<div>Removes the product and its recipe from Manufacturing (the catalogue item stays). A product with production runs can’t be deleted — untick <b>Active</b> instead.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_products').delete().eq('id',p.id);if(error){toast(/foreign|violat/i.test(error.message)?'It has production runs — untick Active instead':error.message,true);return false;}closeOverlay();toast('Product removed');mfgReload();}});
+  const yl=()=>{const y=mYield({batch_size:$('mpe-bs').value,batch_unit:$('mpe-bu').value,pack_type:$('mpe-pt').value,pack_size:$('mpe-ps').value,piece_weight_g:$('mpe-pw').value,loss_per_batch:$('mpe-loss').value,packs_per_batch:$('mpe-ppb').value});$('mpe-yield').textContent=y!=null?'≈ '+y.toLocaleString()+' packets per batch':'';};
+  ['mpe-bs','mpe-bu','mpe-pt','mpe-ps','mpe-pw','mpe-loss','mpe-ppb'].forEach(id=>{const e=$(id);if(e){e.addEventListener('input',yl);e.addEventListener('change',yl);}});yl();
+  const bb=$('mpe-bom');if(bb)bb.onclick=()=>{closeOverlay();mGo('bom',()=>mfgBomSel=p.id);};
+  const del=$('mpe-del');if(del)del.onclick=()=>stackConfirm('Delete this product?',mProdItem(p).name,`<div>Removes the product and its BOM from Manufacturing (the catalogue item stays). A product with production runs can’t be deleted — untick <b>Active</b> instead.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_products').delete().eq('id',p.id);if(error){toast(/foreign|violat/i.test(error.message)?'It has production runs — untick Active instead':error.message,true);return false;}closeOverlay();toast('Product removed');mfgReload();}});
   const go=$('mpe-go');if(go)go.onclick=async()=>{const iid=p?p.item_id:$('mpe-item').value;if(!iid)return toast('Choose the catalogue item',true);
-    const lines=rec.filter(r=>r.ing&&mNum(r.qty)>0);if(rec.some(r=>r.ing&&!(mNum(r.qty)>0)))return toast('Enter a quantity for every ingredient',true);
     const nv=v=>v===''||v==null?null:mNum(v);
     const row={item_id:iid,batch_size:nv($('mpe-bs').value),batch_unit:$('mpe-bu').value,pack_type:$('mpe-pt').value,pack_size:nv($('mpe-ps').value),piece_weight_g:nv($('mpe-pw').value),loss_per_batch:nv($('mpe-loss').value)||0,
       packs_per_batch:nv($('mpe-ppb').value),shelf_life_days:$('mpe-sl').value===''?null:Math.round(mNum($('mpe-sl').value)),net_weight:$('mpe-nw').value.trim()||null,storage:$('mpe-st').value.trim()||null,
       label_ingredients:$('mpe-li').value.trim()||null,notes:$('mpe-no').value.trim()||null,active:$('mpe-act').checked};
     go.disabled=true;
-    let pid=p&&p.id;
-    if(p){const{error}=await sb.from('mfg_products').update(row).eq('id',p.id);if(error){go.disabled=false;return toast(error.message,true);}}
-    else{const{data,error}=await sb.from('mfg_products').insert(row).select('id').single();if(error){go.disabled=false;return toast(error.message,true);}pid=data.id;}
-    const{error:de}=await sb.from('mfg_recipe').delete().eq('product_id',pid);
-    if(!de&&lines.length){const{error:ie}=await sb.from('mfg_recipe').insert(lines.map(r=>({product_id:pid,ingredient_id:r.ing,qty:mNum(r.qty)})));if(ie){go.disabled=false;return toast('Product saved, but the recipe failed: '+ie.message,true);}}
-    if(de){go.disabled=false;return toast('Product saved, but the recipe failed: '+de.message,true);}
-    closeOverlay();toast('Product saved');mfgReload();};
+    if(p){const{error}=await sb.from('mfg_products').update(row).eq('id',p.id);go.disabled=false;if(error)return toast(error.message,true);closeOverlay();toast('Product saved');mfgReload();return;}
+    const{data,error}=await sb.from('mfg_products').insert(row).select('id').single();go.disabled=false;if(error)return toast(error.message,true);
+    closeOverlay();toast('Product added — now set up its BOM');mfgBomSel=data.id;mfgTab='bom';mfgReload();};
+}
+/* ---------- BOM (bill of materials): ingredients per ONE batch, per product ---------- */
+let mfgBomSel=null,mfgBomQ='',BOMW=null;
+function mBomRowsOf(pid){return mRecipe(pid).map(r=>({ing:r.ingredient_id,qty:String(r.qty)})).sort((a,b)=>mNum(b.qty)*mCpu(mIng(b.ing))-mNum(a.qty)*mCpu(mIng(a.ing)));}
+function mfgBom(el){
+  const prods=MFG.prods.slice().sort((a,b)=>(b.active!==false)-(a.active!==false)||String(mProdItem(a).name).localeCompare(String(mProdItem(b).name)));
+  if(!prods.length){el.innerHTML=`<div class="card empty">${svg(I.catalog,34)}<div>No products yet. Add one in <b>Products</b> first, then set up its BOM here.</div></div>`;return;}
+  if(!mfgBomSel||!prods.some(p=>p.id===mfgBomSel))mfgBomSel=(prods.find(p=>!mRecipe(p.id).length&&p.active!==false)||prods[0]).id;
+  if(!BOMW||BOMW.pid!==mfgBomSel)BOMW={pid:mfgBomSel,rows:mBomRowsOf(mfgBomSel),dirty:false};
+  const ed=mfgCanEdit(),q=mfgBomQ.trim().toLowerCase();
+  const list=prods.filter(p=>!q||(mProdItem(p).name+' '+(mProdItem(p).sku||'')).toLowerCase().includes(q));
+  el.innerHTML=`<div class="mf-tb"><div class="banner info" style="margin:0;flex:1">${svg(I.catalog,16)}<div><b>Bill of materials</b> — the ingredients and quantities for <b>one batch</b> of each product. Production runs take these out of ingredient stock, and labels list them heaviest first.</div></div><button class="btn" id="bom-xls">${svg(I.receipt,16)} Export all BOMs</button></div>
+    <div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:14px;align-items:start" class="mf-bomgrid">
+      <div class="mf-panel" style="padding:10px"><div class="search" style="max-width:none;margin-bottom:8px">${svg(I.search,15)}<input id="bom-q" placeholder="Find a product…" value="${esc(mfgBomQ)}"></div>
+        <div class="mf-layers" style="max-height:62vh">${list.map(p=>{const n=mRecipe(p.id).length;return `<div data-bomp="${p.id}" class="${p.id===mfgBomSel?'on':''}" style="${p.active===false?'opacity:.55':''}"><span style="flex:1;min-width:0"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(mProdItem(p).name)}</span><span style="font-size:11px;color:var(--faint)">${esc(mProdItem(p).sku||'')}</span></span>${n?`<span class="mf-chip">${n}</span>`:'<span class="mf-chip warn">No BOM</span>'}</div>`;}).join('')||'<div style="color:var(--faint)">No match</div>'}</div></div>
+      <div id="bom-ed"></div></div>`;
+  const css=document.getElementById('mf-css');if(css&&!/mf-bomgrid/.test(css.textContent))css.textContent+='@media(max-width:900px){.mf-bomgrid{grid-template-columns:minmax(0,1fr)!important}}';
+  const qi=document.getElementById('bom-q');qi.oninput=e=>{mfgBomQ=e.target.value;const pos=e.target.selectionStart;mfgBom(el);const n=document.getElementById('bom-q');n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}};
+  el.querySelectorAll('[data-bomp]').forEach(x=>x.onclick=()=>{if(x.dataset.bomp===mfgBomSel)return;const go=()=>{mfgBomSel=x.dataset.bomp;BOMW=null;mfgBom(el);};
+    if(BOMW&&BOMW.dirty)return stackConfirm('Unsaved BOM changes',mProdName(BOMW.pid),`<div>You changed this BOM but didn’t save it. Switch product and lose the changes?</div>`,{okLabel:'Switch',cancelLabel:'Stay',onOk:go});go();});
+  document.getElementById('bom-xls').onclick=mfgBomExport;
+  mfgBomEditor(document.getElementById('bom-ed'));
+}
+function mfgBomEditor(box){
+  const p=mProd(BOMW.pid),it=mProdItem(p),ed=mfgCanEdit(),y=mYield(p);
+  const ingOpts=MFG.ing.filter(g=>g.active!==false||BOMW.rows.some(r=>r.ing===g.id)).map(g=>`<option value="${g.id}">${esc(g.name)} · ${esc(g.code)} (${esc(g.unit)})</option>`).join('');
+  const draw=()=>{const rows=BOMW.rows;const lines=rows.map(r=>({...r,g:mIng(r.ing),cost:r.ing?mNum(r.qty)*mCpu(mIng(r.ing)):0}));const tot=lines.reduce((a,l)=>a+l.cost,0);
+    const cpp=y>0?tot/y:null,pr=mNum(it.price),mg=cpp!=null&&pr>0?Math.round((pr-cpp)/pr*100):null;
+    const cm=lines.filter(l=>l.ing&&mNum(l.qty)>0).length?Math.min(...lines.filter(l=>l.ing&&mNum(l.qty)>0).map(l=>Math.floor(mStock(l.ing)/mNum(l.qty)+1e-9))):null;
+    const wt=lines.filter(l=>l.ing&&mUnitG(l.g.unit)).reduce((a,l)=>a+mNum(l.qty)*mUnitG(l.g.unit),0);const bw=mNum(p.batch_size)*(mUnitG(p.batch_unit)||0);
+    box.innerHTML=`<div class="mf-panel">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px"><div><div style="font-size:18px;font-weight:800">${esc(it.name)}</div><div style="font-size:12.5px;color:var(--muted)">${esc(it.sku||'')}${p.batch_size?' · 1 batch = '+mQ(p.batch_size,p.batch_unit):''}${y!=null?' → ≈ '+y.toLocaleString()+' packets':''}${p.active===false?' · <span class="mf-chip">Inactive</span>':''}</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="bom-prod">${svg(I.edit||I.settings,13)} Product details</button><button class="btn sm" id="bom-print">${svg(I.receipt,13)} Print for kitchen</button>${ed?`<button class="btn sm" id="bom-copy">Copy from…</button>`:''}</div></div>
+      <div class="mf-kpis" style="margin-bottom:12px"><div class="mf-kpi"><div class="l">Ingredient cost / batch</div><div class="v">${money(tot)}</div></div><div class="mf-kpi"><div class="l">Cost / packet</div><div class="v">${cpp!=null?money(cpp):'—'}</div><div class="m">${y==null?'set batch & packet size':''}</div></div><div class="mf-kpi"><div class="l">Margin</div><div class="v" style="color:${mg==null?'inherit':mg>=40?'var(--good)':mg>=25?'var(--warn)':'var(--crit)'}">${mg!=null?mg+'%':'—'}</div><div class="m">${pr?'price '+money(pr):'no price in catalogue'}</div></div><div class="mf-kpi"><div class="l">Can make now</div><div class="v">${cm!=null?cm:'—'}</div><div class="m">batch${cm===1?'':'es'} from ingredient stock</div></div></div>
+      ${bw&&wt?`<div class="hint" style="margin:-4px 0 10px">${svg(I.info,13)} Ingredients add up to <b>${mQ(wt>=1000?wt/1000:wt,wt>=1000?(p.batch_unit==='L'||p.batch_unit==='ml'?'L':'kg'):(p.batch_unit==='L'||p.batch_unit==='ml'?'ml':'g'))}</b> against a batch of <b>${mQ(p.batch_size,p.batch_unit)}</b>${Math.abs(wt-bw)/bw>0.15?' — <span style="color:var(--warn);font-weight:600">check the quantities</span>':''}.</div>`:''}
+      <div class="tablewrap" style="box-shadow:none"><table style="min-width:0"><thead><tr><th style="width:34px">#</th><th>Ingredient</th><th style="width:150px">Qty per batch</th><th class="num">Cost / unit</th><th class="num">Line cost</th><th style="width:110px">Share</th><th class="num">In stock</th>${ed?'<th style="width:40px"></th>':''}</tr></thead><tbody>
+      ${lines.map((l,ix)=>{const pc=tot>0?Math.round(l.cost/tot*100):0;const have=l.ing?mStock(l.ing):0;const bat=l.ing&&mNum(l.qty)>0?Math.floor(have/mNum(l.qty)+1e-9):null;
+        return `<tr data-br="${ix}"><td style="color:var(--faint)">${ix+1}</td><td><select data-bi="${ix}" ${ed?'':'disabled'} style="${mFieldStyle}"><option value="">Select ingredient…</option>${ingOpts}</select>${l.ing&&l.g.allergens?`<div style="font-size:11px;color:var(--warn);margin-top:3px">Allergens: ${esc(l.g.allergens)}</div>`:''}</td>
+          <td><div style="display:flex;align-items:center;gap:6px"><input type="number" min="0" step="any" value="${esc(l.qty)}" data-bq="${ix}" ${ed?'':'disabled'} style="${mFieldStyle}"><span style="color:var(--muted);font-size:12px;min-width:26px">${esc(l.ing?l.g.unit:'')}</span></div></td>
+          <td class="num tnum" style="color:var(--muted)">${l.ing?money(mCpu(l.g))+'/'+esc(l.g.unit):''}</td><td class="num tnum"><b>${l.ing&&mNum(l.qty)>0?money(l.cost):''}</b></td>
+          <td>${l.ing&&tot>0?`<div style="font-size:11.5px;color:var(--muted)">${pc}%</div><div class="mf-bar"><i style="width:${pc}%;background:var(--accent)"></i></div>`:''}</td>
+          <td class="num tnum">${l.ing?`<span style="color:${bat===0?'var(--crit)':'var(--muted)'}">${mQ(have,l.g.unit)}</span>${bat!=null?`<div style="font-size:10.5px;color:var(--faint)">${bat} batch${bat===1?'':'es'}</div>`:''}`:''}</td>
+          ${ed?`<td><button type="button" class="rm" data-bx="${ix}" title="Remove">${svg(I.x,15)}</button></td>`:''}</tr>`;}).join('')||`<tr><td colspan="8" style="color:var(--faint);padding:16px">No ingredients yet.</td></tr>`}
+      <tr style="border-top:2px solid var(--border-strong)"><td></td><td><b>Total for one batch</b></td><td></td><td></td><td class="num tnum"><b>${money(tot)}</b></td><td></td><td></td>${ed?'<td></td>':''}</tr>
+      </tbody></table></div>
+      ${!MFG.ing.length?`<div class="banner warn" style="margin-top:10px">${svg(I.alert,16)}<div>Add ingredients first in the <b>Ingredients</b> screen.</div></div>`:''}
+      ${ed?`<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="addmore" id="bom-add" style="flex:1;margin:0">${svg(I.plus,16)} Add ingredient</button>
+        ${BOMW.dirty?`<span class="mf-chip warn">Unsaved changes</span><button class="btn" id="bom-undo">Discard</button>`:''}<button class="btn primary" id="bom-save" ${BOMW.dirty?'':'disabled'}>${svg(I.check,16)} Save BOM</button></div>`:''}
+    </div>`;
+    BOMW.rows.forEach((r,ix)=>{const s=box.querySelector(`[data-bi="${ix}"]`);if(s)s.value=r.ing||'';});
+    const $=id=>document.getElementById(id);
+    box.querySelectorAll('[data-bi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.bi;if(e.target.value&&BOMW.rows.some((x,j)=>j!==ix&&x.ing===e.target.value)){toast('That ingredient is already in the BOM',true);e.target.value=BOMW.rows[ix].ing||'';return;}BOMW.rows[ix].ing=e.target.value;BOMW.dirty=true;draw();const q=box.querySelector(`[data-bq="${ix}"]`);if(q&&!q.value)q.focus();});
+    box.querySelectorAll('[data-bq]').forEach(s=>{s.oninput=e=>{BOMW.rows[+e.target.dataset.bq].qty=e.target.value;BOMW.dirty=true;};s.onchange=()=>draw();s.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();draw();}};});
+    box.querySelectorAll('[data-bx]').forEach(b=>b.onclick=()=>{BOMW.rows.splice(+b.dataset.bx,1);BOMW.dirty=true;draw();});
+    if($('bom-add'))$('bom-add').onclick=()=>{BOMW.rows.push({ing:'',qty:''});BOMW.dirty=true;draw();const ss=box.querySelectorAll('[data-bi]');if(ss.length)ss[ss.length-1].focus();};
+    if($('bom-undo'))$('bom-undo').onclick=()=>{BOMW={pid:BOMW.pid,rows:mBomRowsOf(BOMW.pid),dirty:false};draw();};
+    if($('bom-save'))$('bom-save').onclick=async e=>{const rows=BOMW.rows.filter(r=>r.ing||String(r.qty).trim()!=='');
+      if(rows.some(r=>!r.ing))return toast('Choose the ingredient on every line (or remove the empty line)',true);
+      if(rows.some(r=>!(mNum(r.qty)>0)))return toast('Enter a quantity greater than 0 on every line',true);
+      e.target.disabled=true;
+      const{error:de}=await sb.from('mfg_recipe').delete().eq('product_id',BOMW.pid);
+      if(de){e.target.disabled=false;return toast(de.message,true);}
+      if(rows.length){const{error:ie}=await sb.from('mfg_recipe').insert(rows.map(r=>({product_id:BOMW.pid,ingredient_id:r.ing,qty:mNum(r.qty)})));if(ie){e.target.disabled=false;return toast('BOM not saved: '+ie.message,true);}}
+      try{await sb.rpc('log_action',{p_action:'Manufacturing: BOM saved for '+it.name+' ('+rows.length+' ingredients)',p_loc:null});}catch(_){}
+      BOMW=null;toast('BOM saved — '+rows.length+' ingredient'+(rows.length===1?'':'s'));await mfgReload();};
+    $('bom-prod').onclick=()=>mfgEditProd(p);
+    $('bom-print').onclick=()=>mfgBomPrint(p);
+    const cp=$('bom-copy');if(cp)cp.onclick=()=>{const others=MFG.prods.filter(x=>x.id!==p.id&&mRecipe(x.id).length);if(!others.length)return toast('No other product has a BOM yet',true);
+      stackConfirm('Copy a BOM','into '+it.name,`<div class="field"><label>Copy from</label><select id="bom-from">${others.map(x=>`<option value="${x.id}">${esc(mProdItem(x).name)} (${mRecipe(x.id).length})</option>`).join('')}</select></div><div class="hint">Replaces the lines on screen. Nothing is saved until you press <b>Save BOM</b>.</div>`,
+        {okLabel:'Copy',onOk:()=>{BOMW.rows=mBomRowsOf(document.getElementById('bom-from').value);BOMW.dirty=true;draw();}});};
+  };
+  draw();
+}
+function mfgBomPrint(p){
+  const it=mProdItem(p);
+  stackConfirm('Print BOM for the kitchen',it.name,`<div class="field"><label>Number of batches</label><input type="number" id="bomp-n" min="0.5" step="0.5" value="1"></div>`,{okLabel:'Print',onOk:()=>{const n=mNum(document.getElementById('bomp-n').value)||1;const y=mYield(p);
+    const rows=mRecipe(p.id).slice().sort((a,b)=>mNum(b.qty)-mNum(a.qty)).map(r=>{const g=mIng(r.ingredient_id);return `<tr><td>☐</td><td>${esc(g.code)}</td><td>${esc(g.name)}</td><td style="text-align:right"><b>${mQ(mNum(r.qty)*n,g.unit)}</b></td><td>${esc(g.allergens||'')}</td><td style="width:90px"></td></tr>`;}).join('');
+    const w=window.open('','_blank')||printFrame();
+    w.document.write(`<html><head><title>BOM ${esc(it.name)}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}table{border-collapse:collapse;width:100%;margin-top:14px;font-size:13px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#eee}</style></head><body><h2 style="margin:0">${esc(it.name)} — bill of materials</h2><div style="color:#555;font-size:13px;margin-top:4px">${mQ(n)} batch${n===1?'':'es'}${p.batch_size?' · '+mQ(mNum(p.batch_size)*n,p.batch_unit):''}${y!=null?' · ≈ '+Math.floor(y*n).toLocaleString()+' packets':''} · printed ${new Date().toLocaleString('en-AU')}</div><table><thead><tr><th>✓</th><th>Code</th><th>Ingredient</th><th style="text-align:right">Quantity</th><th>Allergens</th><th>Lot used</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No BOM</td></tr>'}</tbody></table><p style="margin-top:22px;font-size:12px">Batch no: ______________ &nbsp; Made by: ______________ &nbsp; Checked by: ______________ &nbsp; Date: __________</p></body></html>`);
+    w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);}});
+}
+function mfgBomExport(){
+  const H=['Product code','Product','Batch size','Batch unit','Packets per batch','Ingredient code','Ingredient','Qty per batch','Unit','Cost per unit','Line cost','Allergens'];const rows=[];
+  MFG.prods.forEach(p=>{const it=mProdItem(p),y=mYield(p);mRecipe(p.id).forEach(r=>{const g=mIng(r.ingredient_id);rows.push([it.sku||'',it.name,p.batch_size??'',p.batch_unit||'',y??'',g.code,g.name,mNum(r.qty),g.unit,+mCpu(g).toFixed(4),+(mNum(r.qty)*mCpu(g)).toFixed(2),g.allergens||'']);});});
+  if(!rows.length)return toast('No BOMs to export yet',true);
+  if(window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([H,...rows]),'BOMs');XLSX.writeFile(wb,'mfg-boms_'+today()+'.xlsx');}else downloadCSV('mfg-boms_'+today()+'.csv',H,rows);
 }
 /* ---------- ingredients ---------- */
 async function mfgImportIngs(file,rows){
@@ -6952,7 +7025,7 @@ function mfgEditIng(g){
     `${g&&ed?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mie-del">Delete</button><button class="btn" id="mie-recv">${svg(I.inbox,15)} Receive</button><span class="spacer"></span>`:''}<button class="btn" data-close>Close</button>${ed?`<button class="btn primary" id="mie-go">${svg(I.check,16)} Save</button>`:''}`,'form');
   const $=id=>document.getElementById(id);
   const rv=$('mie-recv');if(rv)rv.onclick=()=>mfgReceive(g);
-  const del=$('mie-del');if(del)del.onclick=()=>stackConfirm('Delete '+g.name+'?','',`<div>Only possible if it isn’t in any recipe or production run. Otherwise untick <b>Active</b>.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_ingredients').delete().eq('id',g.id);if(error){toast(/foreign|violat/i.test(error.message)?'It is used in a recipe or run — untick Active instead':error.message,true);return false;}closeOverlay();toast('Ingredient deleted');mfgReload();}});
+  const del=$('mie-del');if(del)del.onclick=()=>stackConfirm('Delete '+g.name+'?','',`<div>Only possible if it isn’t in any BOM or production run. Otherwise untick <b>Active</b>.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_ingredients').delete().eq('id',g.id);if(error){toast(/foreign|violat/i.test(error.message)?'It is used in a BOM or run — untick Active instead':error.message,true);return false;}closeOverlay();toast('Ingredient deleted');mfgReload();}});
   const go=$('mie-go');if(go)go.onclick=async()=>{const code=$('mie-code').value.trim(),name=$('mie-name').value.trim();if(!code||!name)return toast('Enter the code and name',true);
     const nv=v=>v===''?null:mNum(v);
     const row={code,name,category:$('mie-cat').value.trim()||null,unit:$('mie-unit').value,pack_size:nv($('mie-ps').value),pack_label:$('mie-pl').value.trim()||null,cost_per_pack:nv($('mie-cp').value)||0,
@@ -7141,7 +7214,7 @@ const mDayChip=d=>{if(!d)return '<span class="mf-chip">No date</span>';const t=t
   if(diff<0)return `<span class="mf-chip crit">${-diff}d overdue</span>`;if(diff===0)return '<span class="mf-chip acc">Today</span>';if(diff===1)return '<span class="mf-chip info">Tomorrow</span>';
   return `<span class="mf-chip">${new Date(d+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'})}</span>`;};
 function mReady(r){const nb=mNum(r.num_batches);return mRecipe(r.product_id).map(x=>{const g=mIng(x.ingredient_id),need=mNum(x.qty)*nb,have=mStock(g.id);return {g,need,have,short:Math.max(0,need-have)};}).filter(x=>x.short>1e-9);}
-const mReadyChip=r=>{if(!mRecipe(r.product_id).length)return '<span class="mf-chip warn">No recipe</span>';const s=mReady(r);return s.length?`<span class="mf-chip crit" title="${esc(s.map(x=>x.g.name+' '+mQ(x.short,x.g.unit)+' short').join(', '))}">${s.length} ingredient${s.length===1?'':'s'} short</span>`:'<span class="mf-chip good">Ingredients ready</span>';};
+const mReadyChip=r=>{if(!mRecipe(r.product_id).length)return '<span class="mf-chip warn">No BOM</span>';const s=mReady(r);return s.length?`<span class="mf-chip crit" title="${esc(s.map(x=>x.g.name+' '+mQ(x.short,x.g.unit)+' short').join(', '))}">${s.length} ingredient${s.length===1?'':'s'} short</span>`:'<span class="mf-chip good">Ingredients ready</span>';};
 function mCanMake(pid){const rec=mRecipe(pid);if(!rec.length)return null;return Math.min(...rec.map(x=>Math.floor(mStock(x.ingredient_id)/mNum(x.qty)+1e-9)));}
 function mHoldRuns(){return MFG.runs.filter(r=>r.status==='completed'&&!r.reversed_at&&r.disposition==='on_hold');}
 function mLowIngs(){return MFG.ing.filter(g=>g.active!==false&&(mStock(g.id)<=0||(mNum(g.reorder_level)>0&&mStock(g.id)<=mNum(g.reorder_level))));}
@@ -7152,13 +7225,13 @@ async function vMfg(v){
   if(!MFG.loaded){v.innerHTML=`<div class="card empty">${svg(I.factory||I.box,30)}<div>Loading the production kitchen…</div></div>`;
     try{await mfgLoad();}catch(e){console.error('mfg load',e);v.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Manufacturing isn’t set up yet. A Super Admin needs to run <b>104_manufacturing.sql</b> and <b>105_mfg_label_layouts.sql</b> in Supabase.${e&&e.message?' <span style="color:var(--faint)">('+esc(e.message)+')</span>':''}</div></div>`;return;}}
   const open=MFG.runs.filter(r=>r.status==='planned'||r.status==='in_progress').length,low=mLowIngs().length,hold=mHoldRuns().length;
-  const tabs=[['today','Today',I.home,open+hold||''],['runs','Production',I.calendar,''],['prods','Products & recipes',I.catalog,''],['ing','Ingredients',I.box,low?{n:low,c:'crit'}:''],['shop','Shopping list',I.order,''],['labels','Label designer',I.tag,''],['trace','Traceability',I.search,'']];
+  const tabs=[['today','Today',I.home,open+hold||''],['runs','Production',I.calendar,''],['prods','Products',I.box,''],['bom','BOM',I.catalog,MFG.prods.filter(p=>p.active!==false&&!mRecipe(p.id).length).length?{n:MFG.prods.filter(p=>p.active!==false&&!mRecipe(p.id).length).length,c:'crit'}:''],['ing','Ingredients',I.box,low?{n:low,c:'crit'}:''],['shop','Shopping list',I.order,''],['labels','Label designer',I.tag,''],['trace','Traceability',I.search,'']];
   if(mfgIsAdmin())tabs.push(['access','Access',I.users,'']);
   if(mfgTab==='dash')mfgTab='today';if(!tabs.some(t=>t[0]===mfgTab))mfgTab='today';
   v.innerHTML=`<div class="mf-nav no-print">${tabs.map(([k,l,ic,c])=>`<button class="${mfgTab===k?'on':''}" data-mfgtab="${k}">${svg(ic||I.box,15)} ${l}${c?`<span class="ct ${c.c||''}">${c.n||c}</span>`:''}</button>`).join('')}</div>${!mfgCanEdit()?`<div class="banner info" style="margin-bottom:12px">${svg(I.lock,16)}<div>You have <b>view only</b> access to Manufacturing.</div></div>`:''}<div id="mfg-body"></div>`;
   v.querySelectorAll('[data-mfgtab]').forEach(b=>b.onclick=()=>{mfgTab=b.dataset.mfgtab;vMfg(v);});
   const box=document.getElementById('mfg-body');
-  ({today:mfgToday,runs:mfgRuns,prods:mfgProds,ing:mfgIngs,shop:mfgShop,labels:mfgLabels,trace:mfgTrace,access:mfgAccess}[mfgTab]||mfgToday)(box);
+  ({today:mfgToday,runs:mfgRuns,prods:mfgProds,bom:mfgBom,ing:mfgIngs,shop:mfgShop,labels:mfgLabels,trace:mfgTrace,access:mfgAccess}[mfgTab]||mfgToday)(box);
   if(MFG.at&&Date.now()-MFG.at>120000&&mfgTab!=='labels'){const tab=mfgTab;mfgLoad().then(()=>{if(route==='mfg'&&mfgTab===tab&&!document.querySelector('.scrim')){const a=document.activeElement;if(!(a&&a.matches&&a.matches('input,textarea,select')))renderView();}}).catch(()=>{});}
 }
 const mGo=(tab,extra)=>{mfgTab=tab;if(extra)extra();renderView();window.scrollTo&&window.scrollTo(0,0);};
@@ -7200,7 +7273,7 @@ function mfgToday(el){
       <div class="mf-col"><h4><span class="dot" style="background:var(--crit)"></span>QC hold <span class="mf-chip">${hold.length}</span></h4>${hold.length?hold.map(mRunCard).join(''):'<div class="empty">No lots waiting for QC.</div>'}</div>
     </div>
     <div class="grid2" style="align-items:start;margin-top:16px">
-      <div class="mf-panel"><h3>Finished stock · Central Warehouse</h3>${MFG.prods.filter(p=>p.active!==false).length?MFG.prods.filter(p=>p.active!==false).map(p=>{const f=MFG.fg[p.item_id]||{},it=mProdItem(p),cm=mCanMake(p.id);return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><b>${esc(it.name)}</b><div style="font-size:11.5px;color:var(--faint)">${f.next_bb?'Next BB '+fmtDate(f.next_bb):'No dated stock'}${cm!=null?' · ingredients for '+cm+' batch'+(cm===1?'':'es'):''}</div></div><div class="tnum" style="font-weight:750">${mNum(f.on_hand).toLocaleString()} <span style="font-weight:400;color:var(--faint);font-size:12px">pk</span></div></div>`;}).join(''):'<div style="color:var(--faint);font-size:13px">No products yet — add them in Products &amp; recipes.</div>'}</div>
+      <div class="mf-panel"><h3>Finished stock · Central Warehouse</h3>${MFG.prods.filter(p=>p.active!==false).length?MFG.prods.filter(p=>p.active!==false).map(p=>{const f=MFG.fg[p.item_id]||{},it=mProdItem(p),cm=mCanMake(p.id);return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><b>${esc(it.name)}</b><div style="font-size:11.5px;color:var(--faint)">${f.next_bb?'Next BB '+fmtDate(f.next_bb):'No dated stock'}${cm!=null?' · ingredients for '+cm+' batch'+(cm===1?'':'es'):''}</div></div><div class="tnum" style="font-weight:750">${mNum(f.on_hand).toLocaleString()} <span style="font-weight:400;color:var(--faint);font-size:12px">pk</span></div></div>`;}).join(''):'<div style="color:var(--faint);font-size:13px">No products yet — add them in the Products screen.</div>'}</div>
       <div class="mf-panel"><h3>Needs attention</h3>${low.length||exp.length?`${low.map(g=>`<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span class="mf-chip ${mStock(g.id)<=0?'crit':'warn'}">${mStock(g.id)<=0?'Out':'Low'}</span><span style="flex:1">${esc(g.name)}</span><span class="tnum" style="color:var(--muted)">${mQ(mStock(g.id),g.unit)}</span></div>`).join('')}${exp.slice(0,8).map(l=>{const g=mIng(l.ingredient_id);return `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span class="mf-chip ${l.best_before<t?'crit':'warn'}">${l.best_before<t?'Expired':'BB soon'}</span><span style="flex:1">${esc(g.name)}${l.lot_code?` <span class="mono" style="color:var(--faint)">${esc(l.lot_code)}</span>`:''}</span><span style="color:var(--muted);font-size:12.5px">${fmtDate(l.best_before)}</span></div>`;}).join('')}`:'<div style="color:var(--faint);font-size:13px">All good — nothing low or expiring.</div>'}</div>
     </div>`;
   const $=id=>document.getElementById(id);
@@ -7234,7 +7307,7 @@ function mfgPlanRun(r,preProd){
   if(!mfgCanEdit()){if(r)toast('View only',true);return;}
   if(r&&r.status!=='planned'&&r.status!=='in_progress')return mfgViewRun(r);
   const prods=MFG.prods.filter(p=>p.active!==false||(r&&r.product_id===p.id));
-  if(!prods.length)return toast('Add a product first (Products & recipes)',true);
+  if(!prods.length)return toast('Add a product first (Products screen)',true);
   const po=prods.map(p=>`<option value="${p.id}">${esc(mProdItem(p).name)}${mProdItem(p).sku?' · '+esc(mProdItem(p).sku):''}</option>`).join('');
   modal(r?'Run '+r.code:'Plan a production run',r?mProdName(r.product_id):'Pick the product, how many batches and when',`
     <div class="field"><label>Product</label><select id="mp-prod" ${r?'disabled':''}>${po}</select></div>
@@ -7249,7 +7322,7 @@ function mfgPlanRun(r,preProd){
     const nb=mNum($('mp-nb').value),y=mYield(p),rec=mRecipe(p.id),cm=mCanMake(p.id);
     $('mp-cm').innerHTML=cm!=null?`Ingredients in stock for <b>${cm}</b> batch${cm===1?'':'es'}`:'';
     const rows=rec.map(x=>{const g=mIng(x.ingredient_id),need=mNum(x.qty)*nb,have=mStock(g.id),ok=have+1e-9>=need;return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><span class="mf-chip ${ok?'good':'crit'}">${ok?'✓':'Short'}</span><span style="flex:1">${esc(g.name)}</span><span class="tnum">${mQ(need,g.unit)}</span><span class="tnum" style="width:110px;text-align:right;color:${ok?'var(--faint)':'var(--crit)'}">${ok?'have '+mQ(have,g.unit):mQ(need-have,g.unit)+' short'}</span></div>`;}).join('');
-    $('mp-need').innerHTML=`<div class="mf-panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px"><b>${y!=null?'About '+Math.floor(y*nb).toLocaleString()+' packets':'Set batch &amp; pack size on the product to see packets'}</b><span style="color:var(--muted);font-size:12.5px">${y!=null?y.toLocaleString()+' per batch · ':''}ingredient cost ${money(mBatchCost(p.id)*nb)}</span></div>${rec.length?rows:'<div class="hint">This product has no recipe yet — add it in Products &amp; recipes.</div>'}</div>`;};
+    $('mp-need').innerHTML=`<div class="mf-panel" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px"><b>${y!=null?'About '+Math.floor(y*nb).toLocaleString()+' packets':'Set batch &amp; pack size on the product to see packets'}</b><span style="color:var(--muted);font-size:12.5px">${y!=null?y.toLocaleString()+' per batch · ':''}ingredient cost ${money(mBatchCost(p.id)*nb)}</span></div>${rec.length?rows:'<div class="hint">This product has no BOM yet — set it up in the BOM screen.</div>'}</div>`;};
   $('mp-prod').onchange=upd;$('mp-nb').oninput=upd;$('mp-code').oninput=e=>e.target.dataset.touched='1';
   $('mp-m').onclick=()=>{$('mp-nb').value=Math.max(0.5,mNum($('mp-nb').value)-1);upd();};$('mp-p').onclick=()=>{$('mp-nb').value=mNum($('mp-nb').value)+1;upd();};upd();
   $('mp-go').onclick=async()=>{const code=$('mp-code').value.trim(),nb=mNum($('mp-nb').value);
@@ -7287,8 +7360,8 @@ function mfgCompleteRun(r){
       const qh=()=>{const q=mNum($('mw-qty').value);$('mw-qh').innerHTML=(pl>0?`<b>${Math.round(q/pl*100)}%</b> of the ${pl.toLocaleString()} planned`:'')+(ppc(it)?(pl>0?' · ':'')+bxTag(q,it):'');};
       $('mw-qty').oninput=qh;$('mw-qm').onclick=()=>{$('mw-qty').value=Math.max(0,mNum($('mw-qty').value)-1);qh();};$('mw-qp').onclick=()=>{$('mw-qty').value=mNum($('mw-qty').value)+1;qh();};qh();
       $('mw-bb').oninput=()=>W.bbTouched=true;$('mw-date').onchange=()=>{if(!W.bbTouched)$('mw-bb').value=mAddDays($('mw-date').value,p.shelf_life_days);};}
-    if(W.step===2){b.innerHTML=W.use.length?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span style="color:var(--muted);font-size:13px;flex:1">Recipe amounts are filled in. Change any that differed on the day.</span>${pl>0&&mNum(W.qty)>0&&mNum(W.qty)!==pl?`<button class="btn sm" id="mw-scale">Scale to ${mNum(W.qty).toLocaleString()} packets made</button>`:''}<button class="btn sm" id="mw-reset">Use recipe amounts</button></div>
-        ${W.use.map((u,ix)=>{const g=mIng(u.ing);return `<div class="mf-irow" data-wu="${ix}"><div><b>${esc(g.name)}</b><div style="font-size:11.5px;color:var(--faint)">recipe ${mQ(u.base,g.unit)}</div></div><div style="display:flex;align-items:center;gap:6px"><input type="number" min="0" step="any" value="${u.qty}" data-wq style="${mFieldStyle};padding:8px"><span style="color:var(--faint);font-size:12px">${esc(g.unit)}</span></div><select data-wl style="${mFieldStyle};padding:8px"><option value="">Earliest best-before first</option>${lotOpts(g.id)}</select><div data-ws style="text-align:right"></div></div>`;}).join('')}`:`<div class="banner warn">${svg(I.alert,16)}<div>This product has no recipe, so no ingredients will be taken out of stock. Add the recipe in Products &amp; recipes.</div></div>`;
+    if(W.step===2){b.innerHTML=W.use.length?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span style="color:var(--muted);font-size:13px;flex:1">BOM amounts are filled in. Change any that differed on the day.</span>${pl>0&&mNum(W.qty)>0&&mNum(W.qty)!==pl?`<button class="btn sm" id="mw-scale">Scale to ${mNum(W.qty).toLocaleString()} packets made</button>`:''}<button class="btn sm" id="mw-reset">Use BOM amounts</button></div>
+        ${W.use.map((u,ix)=>{const g=mIng(u.ing);return `<div class="mf-irow" data-wu="${ix}"><div><b>${esc(g.name)}</b><div style="font-size:11.5px;color:var(--faint)">BOM ${mQ(u.base,g.unit)}</div></div><div style="display:flex;align-items:center;gap:6px"><input type="number" min="0" step="any" value="${u.qty}" data-wq style="${mFieldStyle};padding:8px"><span style="color:var(--faint);font-size:12px">${esc(g.unit)}</span></div><select data-wl style="${mFieldStyle};padding:8px"><option value="">Earliest best-before first</option>${lotOpts(g.id)}</select><div data-ws style="text-align:right"></div></div>`;}).join('')}`:`<div class="banner warn">${svg(I.alert,16)}<div>This product has no BOM, so no ingredients will be taken out of stock. Set up its BOM in the BOM screen.</div></div>`;
       const chk=()=>document.querySelectorAll('[data-wu]').forEach(row=>{const u=W.use[+row.dataset.wu],g=mIng(u.ing),q=mNum(row.querySelector('[data-wq]').value),have=mStock(u.ing);const s=q>have+1e-9;
         row.querySelector('[data-ws]').innerHTML=s?`<span class="mf-chip crit">${mQ(q-have,g.unit)} short</span>`:`<span class="mf-chip good">${mQ(have,g.unit)} in stock</span>`;});
       W.use.forEach((u,ix)=>{const s=document.querySelector(`[data-wu="${ix}"] [data-wl]`);if(s)s.value=u.lot||'';});
@@ -7335,12 +7408,13 @@ function mfgProds(el){
     ${list.length?`<div class="mf-grid">${list.map(p=>{const it=mProdItem(p),y=mYield(p),bc=mBatchCost(p.id),cpp=y>0?bc/y:null,pr=mNum(it.price),mg=cpp!=null&&pr>0?Math.round((pr-cpp)/pr*100):null,f=MFG.fg[p.item_id]||{},cm=mCanMake(p.id),nrec=mRecipe(p.id).length;
       return `<div class="mf-pc" data-mpe="${p.id}" style="${p.active===false?'opacity:.6':''}"><div style="display:flex;justify-content:space-between;gap:8px"><div style="min-width:0"><div class="nm">${esc(it.name)}</div><div class="sku">${esc(it.sku||'')}${p.net_weight?' · '+esc(p.net_weight):''}</div></div>${p.active===false?'<span class="mf-chip">Inactive</span>':mg!=null?`<span class="mf-chip ${mg>=40?'good':mg>=25?'warn':'crit'}">${mg}% margin</span>`:''}</div>
         <div class="mf-stats"><div><b>${y!=null?y.toLocaleString():'—'}</b><span>pk / batch</span></div><div><b>${cpp!=null?money(cpp):'—'}</b><span>cost / pk</span></div><div><b>${pr?money(pr):'—'}</b><span>price</span></div></div>
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)"><span>${svg(I.box,13)} ${mNum(f.on_hand).toLocaleString()} pk at CW${f.next_bb?' · BB '+fmtDate(f.next_bb):''}</span><span>${nrec?nrec+' ingredient'+(nrec===1?'':'s'):'<span style="color:var(--warn)">No recipe</span>'}</span></div>
-        <div style="display:flex;gap:6px;align-items:center">${cm!=null?`<span class="mf-chip ${cm>0?'good':'crit'}">${cm>0?'Can make '+cm+' batch'+(cm===1?'':'es'):'Not enough ingredients'}</span>`:''}<span style="flex:1"></span>${mfgCanEdit()&&p.active!==false?`<button class="btn sm" data-mpp="${p.id}">${svg(I.plus,13)} Plan</button>`:''}<button class="btn sm" data-mpl="${p.id}">${svg(I.tag,13)}</button></div></div>`;}).join('')}</div>`:`<div class="card empty">${svg(I.catalog,34)}<div>${q?'No products match.':'No products yet.'+(mfgCanEdit()?' Use <b>Add product</b> and pick the catalogue item you make.':'')}</div></div>`}`;
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)"><span>${svg(I.box,13)} ${mNum(f.on_hand).toLocaleString()} pk at CW${f.next_bb?' · BB '+fmtDate(f.next_bb):''}</span><span>${nrec?'BOM: '+nrec+' ingredient'+(nrec===1?'':'s'):'<span style="color:var(--warn)">No BOM</span>'}</span></div>
+        <div style="display:flex;gap:6px;align-items:center">${cm!=null?`<span class="mf-chip ${cm>0?'good':'crit'}">${cm>0?'Can make '+cm+' batch'+(cm===1?'':'es'):'Not enough ingredients'}</span>`:''}<span style="flex:1"></span><button class="btn sm" data-mpb="${p.id}">${svg(I.catalog,13)} BOM</button>${mfgCanEdit()&&p.active!==false?`<button class="btn sm" data-mpp="${p.id}">${svg(I.plus,13)} Plan</button>`:''}<button class="btn sm" data-mpl="${p.id}" title="Labels">${svg(I.tag,13)}</button></div></div>`;}).join('')}</div>`:`<div class="card empty">${svg(I.catalog,34)}<div>${q?'No products match.':'No products yet.'+(mfgCanEdit()?' Use <b>Add product</b> and pick the catalogue item you make.':'')}</div></div>`}`;
   const qi=document.getElementById('mpq');qi.oninput=e=>{mfgProdQ=e.target.value;const pos=e.target.selectionStart;mfgProds(el);const n=document.getElementById('mpq');n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}};
   const nb=document.getElementById('mpr-new');if(nb)nb.onclick=()=>mfgEditProd(null);
   el.querySelectorAll('[data-mpe]').forEach(x=>x.onclick=e=>{if(e.target.closest('button'))return;mfgEditProd(MFG.prods.find(p=>p.id===x.dataset.mpe));});
   el.querySelectorAll('[data-mpp]').forEach(x=>x.onclick=()=>mfgPlanRun(null,x.dataset.mpp));
+  el.querySelectorAll('[data-mpb]').forEach(x=>x.onclick=()=>mGo('bom',()=>mfgBomSel=x.dataset.mpb));
   el.querySelectorAll('[data-mpl]').forEach(x=>x.onclick=()=>mGo('labels',()=>mfgLabelSel={prod:x.dataset.mpl}));
 }
 /* ---------- ingredients with stock bars ---------- */
