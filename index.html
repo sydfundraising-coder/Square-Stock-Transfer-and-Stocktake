@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.04-1';
+const APP_VERSION='2026.11.05-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -1148,7 +1148,7 @@ function initClient(){
 }
 
 /* icons */
-const I={dash:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>',transfer:'<path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 20l-4-4 4-4"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',catalog:'<path d="M4 5h16v14H4zM4 9h16M9 5v14"/>',location:'<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.8M22 20a6 6 0 0 0-4-5.6"/>',audit:'<path d="M5 3h9l5 5v13H5zM14 3v5h5M8 13h8M8 17h6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',check:'<path d="M20 6 9 17l-5-5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',alert:'<path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',truck:'<path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>',box:'<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16M3 12A9 9 0 0 1 18.5 5.7L21 8"/><path d="M21 4v4h-4M3 20v-4h4"/>',arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.3c0-1 1.1-1.8 2.5-1.8s2.5.8 2.5 1.8-1.1 1.6-2.5 1.9-2.5.9-2.5 1.9 1.1 1.8 2.5 1.8 2.5-.8 2.5-1.8"/>',order:'<path d="M3 4h2l2.2 11a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.8L20 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/>',stocktake:'<path d="M9 3.5h6V6H9zM8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',supplier:'<path d="M3 7h12v9H3zM15 10h3.5l2.5 3v3H15z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'};
+const I={factory:'<path d="M3 21V10l6 3V10l6 3V6l6-3v18z"/><path d="M7 17h2M12 17h2M17 17h2"/>',dash:'<path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>',transfer:'<path d="M4 8h13M13 4l4 4-4 4M20 16H7M11 20l-4-4 4-4"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',catalog:'<path d="M4 5h16v14H4zM4 9h16M9 5v14"/>',location:'<path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/>',users:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.8M22 20a6 6 0 0 0-4-5.6"/>',audit:'<path d="M5 3h9l5 5v13H5zM14 3v5h5M8 13h8M8 17h6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',plus:'<path d="M12 5v14M5 12h14"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',check:'<path d="M20 6 9 17l-5-5"/>',x:'<path d="M6 6l12 12M18 6 6 18"/>',lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',alert:'<path d="M12 9v4M12 17h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',truck:'<path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/>',box:'<path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16M3 12A9 9 0 0 1 18.5 5.7L21 8"/><path d="M21 4v4h-4M3 20v-4h4"/>',arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.3c0-1 1.1-1.8 2.5-1.8s2.5.8 2.5 1.8-1.1 1.6-2.5 1.9-2.5.9-2.5 1.9 1.1 1.8 2.5 1.8 2.5-.8 2.5-1.8"/>',order:'<path d="M3 4h2l2.2 11a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.8L20 7H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/>',stocktake:'<path d="M9 3.5h6V6H9zM8 5h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M9 13l2 2 4-4"/>',calendar:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 9h16M9 3v4M15 3v4"/>',supplier:'<path d="M3 7h12v9H3zM15 10h3.5l2.5 3v3H15z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',chart:'<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'};
 /* menu icons (2026 layout refresh) — each menu item gets its own picture */
 Object.assign(I,{
   wallet:'<path d="M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 6v12a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-3"/>',
@@ -1702,6 +1702,7 @@ async function startApp(){
   document.getElementById('app').hidden=false;
   document.getElementById('avatar').textContent=(prof.full_name||prof.email||'?').split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
   await loadAll();
+  try{await mfgCheckAccess();}catch(e){}
   // if scoped but no home centre set, warn
   // reopen the screen this tab was on before a refresh; start the Back history here
   if(!HELPER){try{const r0=sessionStorage.getItem('nav.route');if(r0&&navItem(r0))route=r0;}catch(e){}}
@@ -1735,6 +1736,7 @@ const NAV=[
   {id:'expiry',label:'Near Expiry',kw:'best before bb dates',icon:I.hourglass,group:'Inventory',badge:()=>nearExpiryCount()},
   {id:'catalog',label:'Catalogue',kw:'items products prices',icon:I.catalog,group:'Inventory'},
   {id:'labels',label:'Shelf Labels',kw:'barcode print',icon:I.tag,group:'Inventory'},
+  {id:'mfg',label:'Manufacturing',kw:'production recipe batch ingredients kitchen dymo lot traceability',icon:I.factory,group:'Inventory',show:()=>!!(MFG&&MFG.access)},
   {id:'sales',label:'Sales',kw:'invoice customers statements credit',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
   {id:'online',label:'Online Orders',kw:'web square online pickup delivery customer',icon:I.inbox,group:'Sales & Cash',badge:()=>S.onlineActive||0},
   {id:'cash',label:'Cash on Hand',kw:'banking till drawer',icon:I.wallet,group:'Sales & Cash'},
@@ -2316,7 +2318,7 @@ function ssDownload(base,header,data,fmt){
 }
 
 /* ---------- views ---------- */
-const PAGE={stockadj:['Stock Adjustments','Move stock between codes, record found stock, correct a figure'],online:['Online Orders','Square online, pickup and delivery orders for your centre — customer, items and notes'],warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
+const PAGE={mfg:['Manufacturing','Recipes, production runs, ingredients, labels and traceability — Central Warehouse'],stockadj:['Stock Adjustments','Move stock between codes, record found stock, correct a figure'],online:['Online Orders','Square online, pickup and delivery orders for your centre — customer, items and notes'],warehouse:['Warehouse Allocation','Your share of Central Warehouse stock, allocation requests and the warehouse stock plan'],cash:['Cash on Hand','Cash counts, banking, paid outs and short / over against Square cash sales'],labels:['Shelf Labels','Barcode shelf labels, 30 per A4 sheet (70 × 29.7 mm)'],dashboard:['Home','Live view across your sites'],reports:['Reports','Performance across your centres'],stockstatus:['Stock Status','Excess, reorder & dead-stock by item and category'],insights:['Centre Insights','Top sellers and movers per centre'],perf:['Sales & Performance','Net sales, orders and baskets from Square'],transfers:['Stock Transfers','Move stock with full transit tracking'],orders:['Purchase Orders','Order and track what’s coming in'],stocktake:['Stock Take','Live-adjusted physical counts'],adjustments:['Damage & Expiry','Report, approve and track damaged/expired stock'],freight:['Freight','Track carrier consignments (connotes)'],receipts:['Goods Receipts','Record supplier deliveries'],expiry:['Near Expiry','Stock nearing best-before across your centres'],invoices:['Sales','Invoices, customers, statements and ageing'],sales:['Sales','Invoices, customers, statements and ageing'],catalog:['Catalogue','Items, stock and storage locations'],suppliers:['Suppliers','Who you order from'],locations:['Locations','Sites and stores'],users:['Users & Roles','Access control'],audit:['Audit Log','Every action, timestamped'],settings:['Square Sync','Connection & sync']};
 /* ---------- shelf labels (70 x 29.7 mm, 30 per A4) ---------- */
 const LBL={q:'',cat:'all',lines:[],src:'barcode',start:1,page:0,show:{price:true,weight:true,barcode:true},dx:0,dy:0};
 const LBL_COLS=3,LBL_ROWS=10,LBL_PER=30;
@@ -3419,7 +3421,7 @@ function renderView(){
   document.getElementById('pageTitle').textContent=PAGE[route][0];
   document.getElementById('pageSub').textContent=PAGE[route][1];
   const v=document.getElementById('view');
-  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,online:vOnline,stockadj:vStockAdj,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
+  ({dashboard:vDash,reports:vReports,stockstatus:vStockStatus,insights:v=>{perfTab='insights';vPerf(v);},perf:vPerf,transfers:vTransfers,orders:vOrders,stocktake:vStock,adjustments:vAdjustments,freight:vFreight,receipts:vReceipts,expiry:vExpiry,sales:vSales,invoices:v=>{salesTab='invoice';route='sales';vSales(v);},catalog:vCatalog,labels:vLabels,cash:vCash,online:vOnline,stockadj:vStockAdj,mfg:vMfg,warehouse:vWarehouse,suppliers:vSuppliers,locations:vLocations,users:vUsers,audit:vAudit,settings:vSettings}[route]||vDash)(v);
 }
 function vDash(v){
   const locs=visLocs(), visT=S.transfers.filter(canSee);
@@ -6365,7 +6367,7 @@ function importCostCarton(){
   };
 }
 /* ---- per-item stock ledger (history) ---- */
-const LKIND={sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},transit_loss:{l:'Lost in transit',c:'var(--crit)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},stocktake_amend:{l:'Stock take amendment',c:'var(--muted)'},stocktake_var:{l:'Stock take (count variance)',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'},
+const LKIND={mfg_output:{l:'Manufactured',c:'var(--good)'},mfg_reversal:{l:'Manufacturing reversal',c:'var(--crit)'},sale:{l:'Sold (Square)',c:'var(--transit)'},transfer_in:{l:'Transfer in',c:'var(--good)'},transfer_out:{l:'Transfer out',c:'var(--warn)'},transit_loss:{l:'Lost in transit',c:'var(--crit)'},purchase:{l:'Purchased',c:'var(--good)'},stocktake:{l:'Stock take',c:'var(--muted)'},stocktake_amend:{l:'Stock take amendment',c:'var(--muted)'},stocktake_var:{l:'Stock take (count variance)',c:'var(--muted)'},damage:{l:'Damage',c:'var(--crit)'},expire:{l:'Expired',c:'var(--crit)'},write_off:{l:'Write-off',c:'var(--crit)'},found:{l:'Found',c:'var(--good)'},correction:{l:'Correction',c:'var(--muted)'},reversal:{l:'Reversal',c:'var(--warn)'},return:{l:'Return',c:'var(--good)'},
   sq_added:{l:'Added in Square',c:'var(--good)'},sq_removed:{l:'Removed in Square',c:'var(--crit)'},sq_waste:{l:'Waste in Square',c:'var(--crit)'},
   sq_reserved:{l:'Held for a Square order',c:'var(--warn)'},sq_released:{l:'Released from a Square order',c:'var(--good)'},
   sq_transfer:{l:'Square transfer',c:'var(--transit)'},sq_count:{l:'Counted in Square',c:'var(--transit)'},sq_other:{l:'Square change',c:'var(--muted)'},
@@ -6788,6 +6790,504 @@ function exportInsights(){
   setTimeout(()=>downloadCSV(`most-received_${cn}_${stamp}.csv`,['Item','Product code','Times received','Units received'],d.topMovers.map(([id,m])=>[item(id).name,item(id).sku||'',m.count,m.units])),400);
   toast('Exported top items, worst items and most-received');
 }
+/* =====================================================================
+   MANUFACTURING (migration 104) — Sydney production kitchen → Central Warehouse
+   Ingredients (own lots, never in Square), products = catalogue items with a recipe,
+   production runs (plan → complete: ingredients out, finished packets into CW stock),
+   shopping list, Dymo labels, lot traceability, access list.
+   ===================================================================== */
+var MFG={access:null,loaded:false,ing:[],lots:[],moves:[],prods:[],recipe:[],runs:[],usage:[],fg:{},users:[]};
+let mfgTab='dash',mfgRunTab='open',mfgShopDays=14,mfgTraceQ='',mfgIngQ='';
+const MFG_UNITS=['kg','g','L','ml','each'];
+const mfgCanEdit=()=>MFG.access==='edit';
+const mfgIsAdmin=()=>ROLE==='super_admin'||ROLE==='national_admin';
+async function mfgCheckAccess(){
+  if(HELPER){MFG.access=null;return;}
+  if(mfgIsAdmin()){MFG.access='edit';return;}
+  try{const{data,error}=await sb.from('mfg_users').select('level').eq('user_id',ME&&ME.id).maybeSingle();MFG.access=(!error&&data)?data.level:null;}catch(e){MFG.access=null;}
+}
+async function mfgLoad(){
+  const q=t=>sbAll(()=>sb.from(t).select('*'));
+  const [ing,lots,prods,recipe,runs,usage,moves,fg,users]=await Promise.all([q('mfg_ingredients'),q('mfg_ing_lots'),q('mfg_products'),q('mfg_recipe'),q('mfg_runs'),q('mfg_run_usage'),
+    sbAll(()=>sb.from('mfg_ing_moves').select('*').order('created_at',{ascending:false})),sb.rpc('mfg_fg_stock'),mfgIsAdmin()?q('mfg_users'):Promise.resolve({data:[]})]);
+  const err=[ing,lots,prods,recipe,runs].find(r=>r.error);
+  if(err){MFG.loaded=false;throw err.error;}
+  MFG.ing=(ing.data||[]).sort((a,b)=>String(a.name).localeCompare(String(b.name)));MFG.lots=lots.data||[];MFG.prods=prods.data||[];MFG.recipe=recipe.data||[];
+  MFG.runs=(runs.data||[]).sort((a,b)=>String(b.planned_date||b.created_at||'').localeCompare(String(a.planned_date||a.created_at||'')));
+  MFG.usage=usage.data||[];MFG.moves=moves.data||[];MFG.users=users.data||[];
+  MFG.fg={};(fg.data||[]).forEach(r=>MFG.fg[r.item_id]=r);MFG.loaded=true;MFG.at=Date.now();
+}
+/* ---------- helpers ---------- */
+const mIng=id=>MFG.ing.find(g=>g.id===id)||{name:'—',code:'?',unit:''};
+const mProd=id=>MFG.prods.find(p=>p.id===id)||{};
+const mProdItem=p=>item(p&&p.item_id);
+const mProdName=id=>mProdItem(mProd(id)).name||'—';
+const mNum=v=>{const n=+v;return isFinite(n)?n:0;};
+const mQ=(n,u)=>{const v=Math.round(mNum(n)*1000)/1000;return v.toLocaleString('en-AU',{maximumFractionDigits:3})+(u?' '+u:'');};
+const mUnitG=u=>({kg:1000,g:1,L:1000,ml:1})[u]||null;
+const mCpu=g=>mNum(g.pack_size)>0?mNum(g.cost_per_pack)/mNum(g.pack_size):0;
+const mStock=id=>MFG.lots.filter(l=>l.ingredient_id===id).reduce((a,l)=>a+mNum(l.qty_left),0);
+const mRecipe=pid=>MFG.recipe.filter(r=>r.product_id===pid);
+function mYield(p){if(!p)return null;if(mNum(p.packs_per_batch)>0)return mNum(p.packs_per_batch);
+  const g=mUnitG(p.batch_unit),net=Math.max(0,mNum(p.batch_size)-mNum(p.loss_per_batch)),ps=mNum(p.pack_size);
+  if(p.pack_type==='pieces'){let pcs;if(g){if(!(mNum(p.piece_weight_g)>0))return null;pcs=Math.floor(net*g/mNum(p.piece_weight_g));}else pcs=Math.floor(net);return ps>0?Math.floor(pcs/ps):pcs;}
+  if(!g||!(ps>0))return null;return Math.floor(net*g/ps);}
+const mBatchCost=pid=>mRecipe(pid).reduce((a,r)=>a+mNum(r.qty)*mCpu(mIng(r.ingredient_id)),0);
+function mAllergens(pid){const s=new Set();mRecipe(pid).forEach(r=>String(mIng(r.ingredient_id).allergens||'').split(/[,;]/).forEach(a=>{a=a.trim();if(a&&a!=='-')s.add(a);}));return [...s].join(', ');}
+function mIngText(p){if(p&&String(p.label_ingredients||'').trim())return String(p.label_ingredients).trim();return mRecipe(p&&p.id).slice().sort((a,b)=>mNum(b.qty)-mNum(a.qty)).map(r=>mIng(r.ingredient_id).name).join(', ');}
+const mAddDays=(d,n)=>{if(!d||!(mNum(n)>0))return '';const t=new Date(d+'T00:00:00');t.setDate(t.getDate()+mNum(n));return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');};
+const M_RUN={planned:{l:'Planned',c:'p-req'},in_progress:{l:'In progress',c:'p-transit'},completed:{l:'Completed',c:'p-done'},cancelled:{l:'Cancelled',c:'p-cancel'}};
+const M_DISP={released:{l:'Released',c:'p-done'},on_hold:{l:'On hold',c:'p-req'},rejected:{l:'Rejected',c:'p-cancel'}};
+const mRunPill=r=>r.reversed_at?'<span class="pill p-cancel">Reversed</span>':`<span class="pill ${(M_RUN[r.status]||{}).c||''}">${(M_RUN[r.status]||{}).l||esc(r.status)}</span>`;
+const mDispPill=r=>r.disposition?`<span class="pill ${(M_DISP[r.disposition]||{}).c||''}">${(M_DISP[r.disposition]||{}).l||esc(r.disposition)}</span>`:'';
+const mMyName=()=>{const p=(S.profiles||[]).find(x=>x.id===(ME&&ME.id));return (p&&(p.full_name||p.email))||(ME&&ME.email)||'';};
+const mFieldStyle='width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)';
+const mPlanned=r=>{const y=mYield(mProd(r.product_id));return y!=null?Math.floor(y*mNum(r.num_batches)):null;};
+/* ---------- the view ---------- */
+async function vMfg(v){
+  if(!MFG.access){v.innerHTML=`<div class="card empty">${svg(I.lock,34)}<div>Manufacturing is only open to the Sydney production team. Ask a National or Super Admin to add you in Manufacturing → Access.</div></div>`;return;}
+  if(!MFG.loaded){v.innerHTML=`<div class="card empty">${svg(I.box,30)}<div>Loading manufacturing…</div></div>`;
+    try{await mfgLoad();}catch(e){console.error('mfg load',e);v.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Manufacturing isn’t set up yet. A Super Admin needs to run <b>104_manufacturing.sql</b> in Supabase.${e&&e.message?' <span style="color:var(--faint)">('+esc(e.message)+')</span>':''}</div></div>`;return;}}
+  const tabs=[['dash','Overview'],['runs','Production'],['prods','Products & recipes'],['ing','Ingredients'],['shop','Shopping list'],['labels','Labels'],['trace','Traceability']];
+  if(mfgIsAdmin())tabs.push(['access','Access']);
+  if(!tabs.some(t=>t[0]===mfgTab))mfgTab='dash';
+  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px">${tabs.map(([k,l])=>`<button class="rep-tab ${mfgTab===k?'active':''}" data-mfgtab="${k}">${l}</button>`).join('')}</div>${!mfgCanEdit()?`<div class="banner info" style="margin-bottom:12px">${svg(I.lock,16)}<div>You have <b>view only</b> access to Manufacturing.</div></div>`:''}<div id="mfg-body"></div>`;
+  v.querySelectorAll('[data-mfgtab]').forEach(b=>b.onclick=()=>{mfgTab=b.dataset.mfgtab;vMfg(v);});
+  const box=document.getElementById('mfg-body');
+  ({dash:mfgDash,runs:mfgRuns,prods:mfgProds,ing:mfgIngs,shop:mfgShop,labels:mfgLabels,trace:mfgTrace,access:mfgAccess}[mfgTab]||mfgDash)(box);
+  // others may have changed things: quietly refresh data older than 2 minutes (not on the label screen, not under an open window)
+  if(MFG.at&&Date.now()-MFG.at>120000&&mfgTab!=='labels'){const tab=mfgTab;mfgLoad().then(()=>{if(route==='mfg'&&mfgTab===tab&&!document.querySelector('.scrim')){const a=document.activeElement;if(!(a&&a.matches&&a.matches('input,textarea,select')))renderView();}}).catch(()=>{});}
+}
+async function mfgReload(){try{await mfgLoad();}catch(e){toast(e.message||'Reload failed',true);}if(route==='mfg')renderView();}
+/* ---------- overview ---------- */
+function mfgDash(el){
+  const t=today(),wk=mAddDays(t,7),ym=t.slice(0,7);
+  const open=MFG.runs.filter(r=>r.status==='planned'||r.status==='in_progress');
+  const soon=open.filter(r=>!r.planned_date||r.planned_date<=wk).sort((a,b)=>String(a.planned_date||'').localeCompare(String(b.planned_date||'')));
+  const done=MFG.runs.filter(r=>r.status==='completed'&&!r.reversed_at&&String(r.mfg_date||'').slice(0,7)===ym);
+  const hold=MFG.runs.filter(r=>r.status==='completed'&&!r.reversed_at&&r.disposition==='on_hold');
+  const low=MFG.ing.filter(g=>g.active!==false&&mStock(g.id)<=mNum(g.reorder_level)&&(mNum(g.reorder_level)>0||mStock(g.id)<=0));
+  const d30=mAddDays(t,30);const expLots=MFG.lots.filter(l=>mNum(l.qty_left)>0&&l.best_before&&l.best_before<=d30).sort((a,b)=>a.best_before.localeCompare(b.best_before));
+  el.innerHTML=`<div class="tiles" style="margin-bottom:14px">
+      <div class="tile accent" style="cursor:pointer" data-mgo="runs"><div class="lbl">${svg(I.calendar,14)} Runs in the next 7 days</div><div class="val tnum">${soon.length}</div><div class="meta">${open.length} planned / in progress in total</div></div>
+      <div class="tile"><div class="lbl">${svg(I.box,14)} Made this month</div><div class="val tnum">${done.reduce((a,r)=>a+mNum(r.actual_qty),0).toLocaleString()}</div><div class="meta">packets in ${done.length} run${done.length===1?'':'s'}</div></div>
+      <div class="tile ${hold.length?'warn':''}" style="cursor:pointer" data-mgo="runs" data-mgsub="done"><div class="lbl">${svg(I.lock,14)} Lots on hold</div><div class="val tnum">${hold.length}</div><div class="meta">not in stock until released</div></div>
+      <div class="tile ${low.length?'crit':''}" style="cursor:pointer" data-mgo="ing"><div class="lbl">${svg(I.alert,14)} Ingredients low / out</div><div class="val tnum">${low.length}</div><div class="meta">at or below reorder level</div></div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Coming up</h3>${soon.length?`<table style="min-width:0"><tbody>${soon.slice(0,10).map(r=>`<tr><td class="mono">${esc(r.code)}</td><td>${esc(mProdName(r.product_id))}</td><td>${r.planned_date?fmtDate(r.planned_date):'—'}</td><td class="num tnum">${mPlanned(r)!=null?mPlanned(r).toLocaleString()+' pk':'—'}</td><td>${mRunPill(r)}</td></tr>`).join('')}</tbody></table>`:'<div style="color:var(--faint);font-size:13px">Nothing planned for the next 7 days.</div>'}</div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Finished stock at Central Warehouse</h3>${MFG.prods.length?`<table style="min-width:0"><thead><tr><th>Product</th><th class="num">On hand</th><th>Next best-before</th></tr></thead><tbody>${MFG.prods.filter(p=>p.active!==false).map(p=>{const f=MFG.fg[p.item_id]||{};const it=mProdItem(p);return `<tr><td>${esc(it.name)}</td><td class="num tnum">${mNum(f.on_hand).toLocaleString()} pk${ppc(it)?`<div style="font-size:10.5px;color:var(--faint)">${bxTag(mNum(f.on_hand),it)}</div>`:''}</td><td style="${f.next_bb&&f.next_bb<=d30?'color:var(--crit);font-weight:600':''}">${f.next_bb?fmtDate(f.next_bb):'—'}</td></tr>`;}).join('')}</tbody></table>`:'<div style="color:var(--faint);font-size:13px">No products set up yet — add them in Products &amp; recipes.</div>'}</div>
+    </div>
+    <div class="grid2" style="align-items:start;margin-top:14px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Ingredients to reorder</h3>${low.length?`<table style="min-width:0"><tbody>${low.map(g=>`<tr><td>${esc(g.name)}</td><td class="num tnum" style="color:var(--crit);font-weight:600">${mQ(mStock(g.id),g.unit)}</td><td class="num tnum" style="color:var(--muted)">reorder at ${mQ(g.reorder_level,g.unit)}</td></tr>`).join('')}</tbody></table>`:'<div style="color:var(--faint);font-size:13px">All ingredients above their reorder level.</div>'}</div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Ingredient lots expiring within 30 days</h3>${expLots.length?`<table style="min-width:0"><tbody>${expLots.slice(0,12).map(l=>{const g=mIng(l.ingredient_id);return `<tr><td>${esc(g.name)}${l.lot_code?` <span class="mono" style="color:var(--faint)">${esc(l.lot_code)}</span>`:''}</td><td class="num tnum">${mQ(l.qty_left,g.unit)}</td><td style="color:${l.best_before<t?'var(--crit)':'var(--warn)'};font-weight:600">${fmtDate(l.best_before)}</td></tr>`;}).join('')}</tbody></table>`:'<div style="color:var(--faint);font-size:13px">None.</div>'}</div>
+    </div>`;
+  el.querySelectorAll('[data-mgo]').forEach(x=>x.onclick=()=>{mfgTab=x.dataset.mgo;if(x.dataset.mgsub)mfgRunTab=x.dataset.mgsub;renderView();});
+}
+/* ---------- production runs ---------- */
+function mfgRuns(el){
+  const groups={open:r=>r.status==='planned'||r.status==='in_progress',done:r=>r.status==='completed',cancelled:r=>r.status==='cancelled'};
+  const n=k=>MFG.runs.filter(groups[k]).length;
+  const list=MFG.runs.filter(groups[mfgRunTab]||groups.open);
+  if(mfgRunTab==='open')list.sort((a,b)=>String(a.planned_date||'9').localeCompare(String(b.planned_date||'9')));
+  else list.sort((a,b)=>String(b.mfg_date||b.updated_at||'').localeCompare(String(a.mfg_date||a.updated_at||'')));
+  const b=(k,l)=>`<button class="rep-tab ${mfgRunTab===k?'active':''}" data-mrt="${k}">${l} <span class="badge-count" style="margin-left:4px">${n(k)}</span></button>`;
+  el.innerHTML=`<div class="toolbar"><div class="rep-tabs" style="margin:0">${b('open','Planned & in progress')}${b('done','Completed')}${b('cancelled','Cancelled')}</div><div class="spacer"></div>${mfgCanEdit()?`<button class="btn primary" id="mr-new">${svg(I.plus,16)} Plan a run</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead>${mfgRunTab==='done'?`<tr><th>Batch / lot</th><th>Product</th><th>Made</th><th class="num">Packets</th><th class="num">Yield</th><th>Best before</th><th>QC</th><th>Status</th><th></th></tr>`:`<tr><th>Batch no</th><th>Product</th><th>Planned</th><th class="num">Batches</th><th class="num">Planned packets</th><th>Status</th><th></th></tr>`}</thead><tbody>
+    ${list.map(r=>{const pl=mPlanned(r);
+      if(mfgRunTab==='done'){const yp=pl>0?Math.round(mNum(r.actual_qty)/pl*100):null;
+        return `<tr class="clickable" data-mrv="${r.id}"><td><span class="mono">${esc(r.lot_code||r.code)}</span>${r.lot_code&&r.lot_code!==r.code?`<div style="font-size:11px;color:var(--faint)">${esc(r.code)}</div>`:''}</td><td>${esc(mProdName(r.product_id))}</td><td>${fmtDate(r.mfg_date)}</td><td class="num tnum">${mNum(r.actual_qty).toLocaleString()}</td><td class="num tnum" style="color:${yp!=null&&yp<95?'var(--warn)':'var(--muted)'}">${yp!=null?yp+'%':'—'}</td><td>${r.best_before?fmtDate(r.best_before):'—'}</td><td>${esc((r.qc_result||'').toUpperCase())}</td><td>${r.reversed_at?mRunPill(r):mDispPill(r)}</td><td style="white-space:nowrap">${!r.reversed_at?`<button class="btn sm" data-mlab="${r.id}" title="Print labels">${svg(I.tag,14)}</button>`:''}${!r.reversed_at&&r.disposition==='on_hold'&&mfgCanEdit()?` <button class="btn sm primary" data-mrel="${r.id}">Release</button>`:''}</td></tr>`;}
+      return `<tr><td class="mono">${esc(r.code)}</td><td>${esc(mProdName(r.product_id))}</td><td>${r.planned_date?fmtDate(r.planned_date):'—'}</td><td class="num tnum">${mQ(r.num_batches)}</td><td class="num tnum">${pl!=null?pl.toLocaleString():'—'}</td><td>${mRunPill(r)}</td><td style="white-space:nowrap;text-align:right">${mfgCanEdit()&&r.status!=='cancelled'?`${r.status==='planned'?`<button class="btn sm" data-mrs="${r.id}">Start</button> `:''}<button class="btn sm primary" data-mrc="${r.id}">${svg(I.check,14)} Complete</button> <button class="btn sm" data-mre="${r.id}">${svg(I.edit||I.settings,14)}</button>`:''}</td></tr>`;}).join('')}
+    </tbody></table></div>`:`<div class="card empty">${svg(I.calendar,34)}<div>${mfgRunTab==='open'?'No runs planned.'+(mfgCanEdit()?' Use <b>Plan a run</b>.':''):mfgRunTab==='done'?'No completed runs yet.':'No cancelled runs.'}</div></div>`}`;
+  el.querySelectorAll('[data-mrt]').forEach(x=>x.onclick=()=>{mfgRunTab=x.dataset.mrt;mfgRuns(el);});
+  const nb=document.getElementById('mr-new');if(nb)nb.onclick=()=>mfgPlanRun();
+  el.querySelectorAll('[data-mre]').forEach(x=>x.onclick=()=>mfgPlanRun(MFG.runs.find(r=>r.id===x.dataset.mre)));
+  el.querySelectorAll('[data-mrc]').forEach(x=>x.onclick=()=>mfgCompleteRun(MFG.runs.find(r=>r.id===x.dataset.mrc)));
+  el.querySelectorAll('[data-mrs]').forEach(x=>x.onclick=async()=>{const{error}=await sb.from('mfg_runs').update({status:'in_progress'}).eq('id',x.dataset.mrs);if(error)return toast(error.message,true);toast('Run started');mfgReload();});
+  el.querySelectorAll('[data-mrv]').forEach(x=>x.onclick=e=>{if(e.target.closest('button'))return;mfgViewRun(MFG.runs.find(r=>r.id===x.dataset.mrv));});
+  el.querySelectorAll('[data-mlab]').forEach(x=>x.onclick=()=>{const r=MFG.runs.find(y=>y.id===x.dataset.mlab);mfgLabelSel={prod:r.product_id,run:r.id};mfgTab='labels';renderView();});
+  el.querySelectorAll('[data-mrel]').forEach(x=>x.onclick=()=>mfgRelease(MFG.runs.find(r=>r.id===x.dataset.mrel)));
+}
+function mfgNextCode(p){const it=mProdItem(p);const base=String(it.sku||'MFG').replace(/[^A-Za-z0-9]/g,'').slice(0,6).toUpperCase()+'-'+today().slice(2).replace(/-/g,'');
+  let c=base,i=2;while(MFG.runs.some(r=>r.code===c))c=base+'-'+(i++);return c;}
+function mfgPlanRun(r){
+  if(!mfgCanEdit())return;
+  const prods=MFG.prods.filter(p=>p.active!==false||(r&&r.product_id===p.id));
+  if(!prods.length)return toast('Add a product first (Products & recipes)',true);
+  const po=prods.map(p=>`<option value="${p.id}">${esc(mProdItem(p).sku||'')} — ${esc(mProdItem(p).name)}</option>`).join('');
+  modal(r?'Edit run '+r.code:'Plan a production run','Central Warehouse · '+((S.locations.find(l=>l.is_hub)||{}).name||''),`
+    <div class="grid2"><div class="field"><label>Product</label><select id="mp-prod">${po}</select></div><div class="field"><label>Planned date</label><input type="date" id="mp-date" value="${esc(r?r.planned_date||'':today())}"></div></div>
+    <div class="grid2"><div class="field"><label>Number of batches</label><input type="number" id="mp-nb" min="0.1" step="0.1" value="${r?mNum(r.num_batches):1}"></div><div class="field"><label>Batch no (also the lot code)</label><input id="mp-code" value="${esc(r?r.code:'')}" ${r?'disabled':''}></div></div>
+    <div class="field"><label>Notes</label><textarea id="mp-notes" rows="2">${esc(r?r.notes||'':'')}</textarea></div>
+    <div id="mp-need"></div>`,
+    `${r?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mp-cancel">Cancel run</button><span class="spacer"></span>`:''}<button class="btn" data-close>Close</button><button class="btn primary" id="mp-go">${svg(I.check,16)} ${r?'Save':'Plan run'}</button>`,'form');
+  const $=id=>document.getElementById(id);
+  if(r)$('mp-prod').value=r.product_id;
+  const upd=()=>{const p=mProd($('mp-prod').value);if(!r){const c=$('mp-code');if(!c.dataset.touched)c.value=mfgNextCode(p);}
+    const nb=mNum($('mp-nb').value),y=mYield(p),rec=mRecipe(p.id);
+    $('mp-need').innerHTML=`<div class="banner info">${svg(I.box,16)}<div>${y!=null?`About <b>${Math.floor(y*nb).toLocaleString()}</b> packets (${y.toLocaleString()} per batch).`:'Set the batch and pack size on the product to see the expected packets.'}</div></div>
+      ${rec.length?`<table style="min-width:0;margin-top:6px"><thead><tr><th>Ingredient</th><th class="num">Needed</th><th class="num">In stock</th></tr></thead><tbody>${rec.map(x=>{const g=mIng(x.ingredient_id),need=mNum(x.qty)*nb,have=mStock(g.id);return `<tr><td>${esc(g.name)}</td><td class="num tnum">${mQ(need,g.unit)}</td><td class="num tnum" style="color:${have<need?'var(--crit)':'var(--muted)'};font-weight:${have<need?700:400}">${mQ(have,g.unit)}</td></tr>`;}).join('')}</tbody></table>`:'<div class="hint">This product has no recipe yet.</div>'}`;};
+  $('mp-prod').onchange=upd;$('mp-nb').oninput=upd;$('mp-code').oninput=e=>e.target.dataset.touched='1';upd();
+  $('mp-go').onclick=async()=>{const code=$('mp-code').value.trim(),nb=mNum($('mp-nb').value);
+    if(!code)return toast('Enter a batch no',true);if(!(nb>0))return toast('Enter the number of batches',true);
+    const row={product_id:$('mp-prod').value,planned_date:$('mp-date').value||null,num_batches:nb,notes:$('mp-notes').value.trim()||null};
+    const{error}=r?await sb.from('mfg_runs').update(row).eq('id',r.id):await sb.from('mfg_runs').insert({...row,code,status:'planned'});
+    if(error)return toast(/duplicate|unique/i.test(error.message)?'That batch no is already used':error.message,true);
+    closeOverlay();toast(r?'Run updated':'Run '+code+' planned');mfgReload();};
+  const cb=$('mp-cancel');if(cb)cb.onclick=()=>stackConfirm('Cancel run '+r.code+'?','Nothing has been made or used',`<div>The run moves to <b>Cancelled</b>. No stock changes.</div>`,{okLabel:'Cancel run',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_runs').update({status:'cancelled'}).eq('id',r.id);if(error){toast(error.message,true);return false;}closeOverlay();toast('Run cancelled');mfgReload();}});
+}
+function mfgCompleteRun(r){
+  if(!r||!mfgCanEdit())return;
+  const p=mProd(r.product_id),it=mProdItem(p),pl=mPlanned(r),nb=mNum(r.num_batches);
+  const rec=mRecipe(p.id);const mdate=r.planned_date&&r.planned_date<=today()?r.planned_date:today();
+  const lotOpts=gid=>MFG.lots.filter(l=>l.ingredient_id===gid&&mNum(l.qty_left)>0).sort((a,b)=>String(a.best_before||'9').localeCompare(String(b.best_before||'9'))).map(l=>`<option value="${l.id}">${esc(l.lot_code||'(no lot no)')} · ${mQ(l.qty_left,mIng(gid).unit)}${l.best_before?' · BB '+fmtDate(l.best_before):''}</option>`).join('');
+  const rows=rec.map(x=>{const g=mIng(x.ingredient_id);const need=mNum(x.qty)*nb;return `<tr data-mu="${g.id}"><td><b>${esc(g.name)}</b><div style="font-size:11px;color:var(--faint)">${esc(g.code)} · recipe ${mQ(need,g.unit)}</div></td><td><input type="number" min="0" step="any" value="${Math.round(need*1000)/1000}" data-muq style="width:100px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"> <span style="color:var(--faint);font-size:12px">${esc(g.unit)}</span></td><td><select data-mul style="max-width:230px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"><option value="">Earliest best-before first</option>${lotOpts(g.id)}</select></td><td class="num tnum" data-mus></td></tr>`;}).join('');
+  modal('Complete run '+r.code,it.name+' · '+mQ(nb)+' batch'+(nb===1?'':'es')+(pl!=null?' · planned '+pl.toLocaleString()+' packets':''),`
+    <div class="grid2"><div class="field"><label>Manufacturing date</label><input type="date" id="mc-date" value="${mdate}" max="${today()}"></div><div class="field"><label>Packets made</label><input type="number" id="mc-qty" min="0" step="1" value="${pl!=null?pl:''}"><div class="hint" id="mc-qtyh"></div></div></div>
+    <div class="grid2"><div class="field"><label>Lot code (printed on the label)</label><input id="mc-lot" value="${esc(r.code)}"></div><div class="field"><label>Best before / use by</label><input type="date" id="mc-bb" value="${mAddDays(mdate,p.shelf_life_days)}"><div class="hint">${p.shelf_life_days?'Manufacturing date + '+p.shelf_life_days+' days shelf life':'Set a shelf life on the product to fill this in automatically'}</div></div></div>
+    <div class="grid2"><div class="field"><label>Operator(s)</label><input id="mc-op" placeholder="Who made it"></div><div class="field"><label>Released by</label><input id="mc-rel" value="${esc(mMyName())}"></div></div>
+    <div class="grid2"><div class="field"><label>QC result</label><select id="mc-qc"><option value="pass">Pass</option><option value="hold">Hold</option><option value="fail">Fail</option></select></div><div class="field"><label>Disposition</label><select id="mc-disp"><option value="released">Released — add to Central Warehouse stock now</option><option value="on_hold">On hold — add to stock when released</option><option value="rejected">Rejected — don’t add to stock</option></select></div></div>
+    <section class="sec" style="margin-top:6px"><div class="sec-h"><h3>Ingredients used</h3><span class="sec-hint">Taken from ingredient stock — change a quantity if more or less was used</span></div>
+      ${rec.length?`<div class="tablewrap" style="box-shadow:none"><table style="min-width:0"><thead><tr><th>Ingredient</th><th>Used</th><th>From lot</th><th class="num">In stock</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="banner warn">'+svg(I.alert,16)+'<div>This product has no recipe, so no ingredients will be taken out. Add the recipe in Products &amp; recipes.</div></div>'}
+      <label id="mc-shortw" style="display:none;margin-top:8px;font-size:13px;color:var(--crit)"><input type="checkbox" id="mc-short"> Some ingredients show less in stock than used. <b>Ingredient stock isn’t up to date — record the run anyway</b> (the missing amount is noted on the run).</label></section>
+    <div class="field" style="margin-top:10px"><label>Notes (optional)</label><textarea id="mc-notes" rows="2" placeholder="e.g. oven 2 used; 3 packets damaged"></textarea></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="mc-go">${svg(I.check,16)} Complete run</button>`,'full form');
+  const $=id=>document.getElementById(id);let bbTouched=false;
+  $('mc-bb').oninput=()=>bbTouched=true;
+  $('mc-date').onchange=()=>{if(!bbTouched)$('mc-bb').value=mAddDays($('mc-date').value,p.shelf_life_days);};
+  $('mc-qc').onchange=()=>{const q=$('mc-qc').value;if(q==='fail')$('mc-disp').value='rejected';else if(q==='hold')$('mc-disp').value='on_hold';else $('mc-disp').value='released';};
+  const chk=()=>{let short=false;document.querySelectorAll('[data-mu]').forEach(tr=>{const gid=tr.dataset.mu,g=mIng(gid),used=mNum(tr.querySelector('[data-muq]').value),lot=tr.querySelector('[data-mul]').value;
+      const have=mStock(gid);const cell=tr.querySelector('[data-mus]');const s=used>have+1e-9;if(s)short=true;
+      cell.innerHTML=`<span style="color:${s?'var(--crit)':'var(--muted)'};font-weight:${s?700:400}">${mQ(have,g.unit)}</span>${s?`<div style="font-size:11px;color:var(--crit)">${mQ(used-have,g.unit)} short</div>`:''}`;});
+    $('mc-shortw').style.display=short?'':'none';
+    const q=mNum($('mc-qty').value);$('mc-qtyh').innerHTML=pl>0?`${Math.round(q/pl*100)}% of planned${ppc(it)?' · '+bxTag(q,it):''}`:(ppc(it)?bxTag(q,it):'');return short;};
+  document.querySelectorAll('[data-muq],[data-mul]').forEach(x=>x.oninput=chk);$('mc-qty').oninput=chk;chk();
+  $('mc-go').onclick=async e=>{const short=chk();
+    if(short&&!$('mc-short').checked)return toast('Some ingredients are short — receive them first, or tick the box to record it anyway',true);
+    const qty=Math.round(mNum($('mc-qty').value));const disp=$('mc-disp').value,bb=$('mc-bb').value||null;
+    if(!$('mc-date').value)return toast('Enter the manufacturing date',true);
+    if(disp==='released'&&qty>0&&!bb)return toast('Enter the best-before date',true);
+    const usage=[...document.querySelectorAll('[data-mu]')].map(tr=>({ingredient:tr.dataset.mu,qty:mNum(tr.querySelector('[data-muq]').value),lot:tr.querySelector('[data-mul]').value||null})).filter(u=>u.qty>0);
+    const go=async()=>{e.target.disabled=true;
+      const{data,error}=await sb.rpc('mfg_complete_run',{p_run:r.id,p_mfg_date:$('mc-date').value,p_qty:qty,p_lot:$('mc-lot').value.trim()||null,p_bb:bb,p_operator:$('mc-op').value.trim()||null,
+        p_qc:$('mc-qc').value,p_disp:disp,p_released_by:$('mc-rel').value.trim()||null,p_usage:usage,p_notes:$('mc-notes').value.trim()||null,p_allow_short:!!$('mc-short').checked});
+      e.target.disabled=false;
+      if(error){toast(error.message||'Could not complete the run',true);return false;}
+      closeOverlay();
+      if(data&&data.added){sb.functions.invoke('square-push',{body:{mode:'queue'}}).catch(()=>{});toast(`${qty.toLocaleString()} × ${it.name} added to Central Warehouse stock (lot ${data.lot})`);}
+      else toast('Run '+r.code+' completed — '+(disp==='on_hold'?'on hold, not in stock yet':'not added to stock'));
+      await mfgReload();try{await refreshOps([]);}catch(_){}
+      if(data&&qty>0&&disp!=='rejected')stackConfirm('Print labels?','Lot '+(data.lot||''),`<div>Print labels for <b>${esc(it.name)}</b>, lot <b>${esc(data.lot||'')}</b>?</div>`,{okLabel:'Open labels',cancelLabel:'Not now',onOk:()=>{mfgLabelSel={prod:p.id,run:r.id};mfgTab='labels';renderView();}});
+    };
+    if(pl>0&&(qty<pl*0.8||qty>pl*1.2))return stackConfirm('Check the packets made',r.code,`<div>You entered <b>${qty.toLocaleString()}</b> packets — the plan was <b>${pl.toLocaleString()}</b> (${Math.round(qty/pl*100)}%). Is that right?</div>`,{okLabel:'Yes, complete',cancelLabel:'Go back',onOk:go});
+    go();};
+}
+function mfgViewRun(r){
+  if(!r)return;const p=mProd(r.product_id),it=mProdItem(p),pl=mPlanned(r);
+  const us=MFG.usage.filter(u=>u.run_id===r.id);const cost=us.reduce((a,u)=>a+mNum(u.cost),0);
+  modal('Run '+r.code,it.name,`
+    ${r.reversed_at?`<div class="banner crit">${svg(I.alert,16)}<div><b>Reversed</b> ${fmtDate(r.reversed_at)} — ${esc(r.reverse_reason||'')}. Stock and ingredients were put back.</div></div>`:''}
+    <div class="card pad" style="margin-bottom:12px"><dl class="kv"><dt>Lot code</dt><dd class="mono">${esc(r.lot_code||r.code)}</dd><dt>Made</dt><dd>${fmtDate(r.mfg_date)}</dd><dt>Packets</dt><dd>${mNum(r.actual_qty).toLocaleString()}${pl>0?` <span style="color:var(--faint)">of ${pl.toLocaleString()} planned (${Math.round(mNum(r.actual_qty)/pl*100)}%)</span>`:''}</dd><dt>Best before</dt><dd>${r.best_before?fmtDate(r.best_before):'—'}</dd><dt>QC</dt><dd>${esc((r.qc_result||'').toUpperCase())}</dd><dt>Status</dt><dd>${r.reversed_at?mRunPill(r):mDispPill(r)} ${r.stock_added?'<span class="tag">in Central Warehouse stock</span>':''}</dd><dt>Operator</dt><dd>${esc(r.operator||'—')}</dd><dt>Released by</dt><dd>${esc(r.released_by||'—')}</dd><dt>Batches</dt><dd>${mQ(r.num_batches)}</dd></dl>${r.notes?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:13px;color:var(--muted);white-space:pre-line">${esc(r.notes)}</div>`:''}</div>
+    <h3 style="font-size:14px;margin:0 0 8px">Ingredients used</h3>
+    ${us.length?`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Ingredient</th><th>Lot</th><th>Best before</th><th class="num">Qty</th><th class="num">Cost</th></tr></thead><tbody>${us.map(u=>{const g=mIng(u.ingredient_id);return `<tr><td>${esc(g.name)}</td><td class="mono">${esc(u.lot_code||'—')}</td><td>${u.best_before?fmtDate(u.best_before):'—'}</td><td class="num tnum">${mQ(u.qty,g.unit)}</td><td class="num tnum">${money(u.cost)}</td></tr>`;}).join('')}<tr><td colspan="4" style="text-align:right"><b>Ingredient cost</b>${mNum(r.actual_qty)>0?` · <span style="color:var(--muted)">${money(cost/mNum(r.actual_qty))} per packet</span>`:''}</td><td class="num tnum"><b>${money(cost)}</b></td></tr></tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No ingredients recorded.</div>'}`,
+    `${!r.reversed_at&&r.disposition==='on_hold'&&mfgCanEdit()?`<button class="btn primary" id="mv-rel">Release / reject</button>`:''}${!r.reversed_at&&mfgIsAdmin()?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mv-rev">${svg(I.alert,15)} Reverse</button>`:''}${!r.reversed_at?`<button class="btn" id="mv-lab">${svg(I.tag,15)} Labels</button>`:''}<span class="spacer"></span><button class="btn" data-close>Close</button>`,'form');
+  const rl=document.getElementById('mv-rel');if(rl)rl.onclick=()=>mfgRelease(r);
+  const lb=document.getElementById('mv-lab');if(lb)lb.onclick=()=>{closeOverlay();mfgLabelSel={prod:p.id,run:r.id};mfgTab='labels';renderView();};
+  const rv=document.getElementById('mv-rev');if(rv)rv.onclick=()=>stackConfirm('Reverse run '+r.code+'?','National / Super Admin',`<div>${r.stock_added?`Takes <b>${mNum(r.actual_qty).toLocaleString()}</b> × ${esc(it.name)} back out of Central Warehouse stock (sent to Square as “Manufacturing reversal”) and`:'This lot isn’t in stock, so only'} puts the ingredients back into their lots.</div><div class="field" style="margin-top:10px"><label>Reason (required)</label><input id="mv-why" placeholder="e.g. entered twice"></div>`,
+    {okLabel:'Reverse run',danger:true,onOk:async()=>{const why=(document.getElementById('mv-why')||{}).value||'';if(!why.trim()){toast('Give a reason',true);return false;}
+      const{error}=await sb.rpc('mfg_reverse_run',{p_run:r.id,p_reason:why.trim()});if(error){toast(error.message,true);return false;}
+      closeOverlay();if(r.stock_added)sb.functions.invoke('square-push',{body:{mode:'queue'}}).catch(()=>{});toast('Run '+r.code+' reversed');await mfgReload();try{await refreshOps([]);}catch(_){}}});
+}
+function mfgRelease(r){
+  if(!r)return;
+  stackConfirm('Lot '+(r.lot_code||r.code)+' is on hold',mProdName(r.product_id),`<div><b>Release</b> adds ${mNum(r.actual_qty).toLocaleString()} packets to Central Warehouse stock (best before ${r.best_before?fmtDate(r.best_before):'—'}). <b>Reject</b> keeps it out of stock for good.</div><div class="field" style="margin-top:10px"><label>Decision</label><select id="mrl-d"><option value="released">Release to stock</option><option value="rejected">Reject</option></select></div><div class="field"><label>By</label><input id="mrl-by" value="${esc(mMyName())}"></div>`,
+    {okLabel:'Save',onOk:async()=>{const d=document.getElementById('mrl-d').value;const{error}=await sb.rpc('mfg_set_disposition',{p_run:r.id,p_disp:d,p_released_by:(document.getElementById('mrl-by')||{}).value||null});
+      if(error){toast(error.message,true);return false;}closeOverlay();if(d==='released')sb.functions.invoke('square-push',{body:{mode:'queue'}}).catch(()=>{});toast(d==='released'?'Released — added to Central Warehouse stock':'Lot rejected');await mfgReload();try{await refreshOps([]);}catch(_){}}});
+}
+/* ---------- products & recipes ---------- */
+function mfgProds(el){
+  const list=MFG.prods.slice().sort((a,b)=>String(mProdItem(a).name).localeCompare(String(mProdItem(b).name)));
+  el.innerHTML=`<div class="toolbar"><div class="banner info" style="margin:0;flex:1">${svg(I.info,16)}<div>Each product is a <b>catalogue item</b> (so it can be transferred and sold in Square). Costs are ingredient cost only.</div></div>${mfgCanEdit()?`<button class="btn primary" id="mpr-new">${svg(I.plus,16)} Add product</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Product</th><th>Batch</th><th class="num">Packets / batch</th><th class="num">Ingredients</th><th class="num">Cost / batch</th><th class="num">Cost / packet</th><th class="num">Price</th><th class="num">Margin</th><th class="num">CW stock</th></tr></thead><tbody>
+    ${list.map(p=>{const it=mProdItem(p),y=mYield(p),bc=mBatchCost(p.id),cpp=y>0?bc/y:null,pr=mNum(it.price),mg=cpp!=null&&pr>0?Math.round((pr-cpp)/pr*100):null;const f=MFG.fg[p.item_id]||{};
+      return `<tr class="clickable" data-mpe="${p.id}" style="${p.active===false?'opacity:.55':''}"><td><b><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</b>${p.active===false?' <span class="tag">inactive</span>':''}</td><td>${p.batch_size?mQ(p.batch_size,p.batch_unit):'—'}</td><td class="num tnum">${y!=null?y.toLocaleString():'—'}</td><td class="num tnum">${mRecipe(p.id).length}</td><td class="num tnum">${money(bc)}</td><td class="num tnum">${cpp!=null?money(cpp):'—'}</td><td class="num tnum">${pr?money(pr):'—'}</td><td class="num tnum" style="color:${mg!=null&&mg<30?'var(--crit)':'var(--good)'}">${mg!=null?mg+'%':'—'}</td><td class="num tnum">${mNum(f.on_hand).toLocaleString()}</td></tr>`;}).join('')}
+    </tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No products yet.${mfgCanEdit()?' Use <b>Add product</b> and pick the catalogue item you make.':''}</div></div>`}`;
+  const nb=document.getElementById('mpr-new');if(nb)nb.onclick=()=>mfgEditProd(null);
+  el.querySelectorAll('[data-mpe]').forEach(x=>x.onclick=()=>mfgEditProd(MFG.prods.find(p=>p.id===x.dataset.mpe)));
+}
+function mfgEditProd(p){
+  const ed=mfgCanEdit();const used=new Set(MFG.prods.map(x=>x.item_id));
+  const items=(S.allItems||S.items||[]).filter(i=>!i.hidden&&(p?i.id===p.item_id:!used.has(i.id))).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  let rec=p?mRecipe(p.id).map(r=>({ing:r.ingredient_id,qty:r.qty})):[];if(!rec.length)rec=[{ing:'',qty:''}];
+  const ingOpts=MFG.ing.filter(g=>g.active!==false).map(g=>`<option value="${g.id}">${esc(g.code)} — ${esc(g.name)} (${esc(g.unit)})</option>`).join('');
+  const opt=(a,v)=>a.map(([k,l])=>`<option value="${k}"${String(v??'')===k?' selected':''}>${l}</option>`).join('');
+  const f=(id,l,val,attrs)=>`<div class="field"><label>${l}</label><input id="${id}" value="${esc(val??'')}" ${attrs||''} ${ed?'':'disabled'}></div>`;
+  modal(p?mProdItem(p).name:'Add a manufactured product',p?'Product, batch and recipe':'Pick the catalogue item you make',`
+    <div class="field"><label>Catalogue item</label><select id="mpe-item" data-adji ${p||!ed?'disabled':''}><option value="">Select item…</option>${items.map(i=>`<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}"${p&&p.item_id===i.id?' selected':''}>${esc(i.sku||'')} — ${esc(i.name)}</option>`).join('')}</select><div class="hint">Not in the catalogue yet? Create it in Square first, run Square Sync, then add it here.</div></div>
+    <div class="grid2">${f('mpe-bs','Batch size (total batch weight / volume / count)',p&&p.batch_size,'type="number" min="0" step="any"')}<div class="field"><label>Batch unit</label><select id="mpe-bu" ${ed?'':'disabled'}>${opt(MFG_UNITS.map(u=>[u,u]),p?p.batch_unit:'kg')}</select></div></div>
+    <div class="grid2"><div class="field"><label>Pack type</label><select id="mpe-pt" ${ed?'':'disabled'}>${opt([['weight','By weight (g per packet)'],['volume','By volume (ml per packet)'],['pieces','By pieces (pieces per packet)']],p?p.pack_type:'weight')}</select></div>${f('mpe-ps','Packet size — g / ml / pieces per packet',p&&p.pack_size,'type="number" min="0" step="any"')}</div>
+    <div class="grid2">${f('mpe-pw','Grams per piece (only “By pieces” made by weight)',p&&p.piece_weight_g,'type="number" min="0" step="any"')}${f('mpe-loss','Process loss per batch (in the batch unit)',p&&p.loss_per_batch,'type="number" min="0" step="any"')}</div>
+    <div class="grid2">${f('mpe-ppb','Packets per batch — leave blank to calculate',p&&p.packs_per_batch,'type="number" min="0" step="1"')}${f('mpe-sl','Shelf life (days)',p&&p.shelf_life_days,'type="number" min="0" step="1"')}</div>
+    <div class="grid2">${f('mpe-nw','Net weight on label (e.g. 275 g)',p&&p.net_weight)}${f('mpe-st','Storage conditions',p&&p.storage)}</div>
+    <div class="field"><label>Label ingredients (exact wording — blank = built from the recipe)</label><textarea id="mpe-li" rows="3" ${ed?'':'disabled'}>${esc(p&&p.label_ingredients||'')}</textarea></div>
+    <div class="field"><label>Notes</label><textarea id="mpe-no" rows="2" ${ed?'':'disabled'}>${esc(p&&p.notes||'')}</textarea></div>
+    <label style="font-size:13px;display:block;margin:-4px 0 10px"><input type="checkbox" id="mpe-act" ${!p||p.active!==false?'checked':''} ${ed?'':'disabled'}> Active (can be planned)</label>
+    <section class="sec"><div class="sec-h"><h3>Recipe — ingredients for ONE batch</h3><span class="sec-hint" id="mpe-yield"></span></div><div id="mpe-rec"></div>${ed?`<button type="button" class="addmore" id="mpe-add">${svg(I.plus,16)} Add ingredient</button>`:''}${!MFG.ing.length?'<div class="hint">Add ingredients first in the Ingredients tab.</div>':''}</section>`,
+    `${p&&ed?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mpe-del">Delete</button><span class="spacer"></span>`:''}<button class="btn" data-close>Close</button>${ed?`<button class="btn primary" id="mpe-go">${svg(I.check,16)} Save</button>`:''}`,'full form');
+  const $=id=>document.getElementById(id);
+  const prodNow=()=>({batch_size:$('mpe-bs').value,batch_unit:$('mpe-bu').value,pack_type:$('mpe-pt').value,pack_size:$('mpe-ps').value,piece_weight_g:$('mpe-pw').value,loss_per_batch:$('mpe-loss').value,packs_per_batch:$('mpe-ppb').value});
+  const draw=()=>{const host=$('mpe-rec');
+    host.innerHTML=rec.map((r,ix)=>{const g=mIng(r.ing);return `<div class="linerow" style="grid-template-columns:1fr 120px 60px 90px 34px;display:grid;gap:6px;align-items:center;margin-bottom:6px"><select data-mri="${ix}" ${ed?'':'disabled'} style="${mFieldStyle}"><option value="">Select ingredient…</option>${ingOpts}</select><input type="number" min="0" step="any" value="${esc(r.qty)}" data-mrq="${ix}" placeholder="Qty" ${ed?'':'disabled'} style="${mFieldStyle}"><span style="color:var(--muted);font-size:12px">${esc(r.ing?g.unit:'')}</span><span class="tnum" style="color:var(--muted);font-size:12px;text-align:right">${r.ing&&mNum(r.qty)>0?money(mNum(r.qty)*mCpu(g)):''}</span>${ed?`<button type="button" class="rm" data-mrx="${ix}">${svg(I.x,15)}</button>`:'<span></span>'}</div>`;}).join('');
+    rec.forEach((r,ix)=>{const s=host.querySelector(`[data-mri="${ix}"]`);if(s)s.value=r.ing||'';});
+    host.querySelectorAll('[data-mri]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.mri;if(e.target.value&&rec.some((x,j)=>j!==ix&&x.ing===e.target.value)){toast('That ingredient is already in the recipe',true);e.target.value=rec[ix].ing||'';return;}rec[ix].ing=e.target.value;draw();});
+    host.querySelectorAll('[data-mrq]').forEach(s=>s.onchange=e=>{rec[+e.target.dataset.mrq].qty=e.target.value;draw();});
+    host.querySelectorAll('[data-mrx]').forEach(b=>b.onclick=()=>{rec.splice(+b.dataset.mrx,1);if(!rec.length)rec=[{ing:'',qty:''}];draw();});
+    const y=mYield(prodNow());const bc=rec.reduce((a,r)=>a+(r.ing?mNum(r.qty)*mCpu(mIng(r.ing)):0),0);
+    $('mpe-yield').textContent=(y!=null?y.toLocaleString()+' packets per batch · ':'')+'ingredient cost '+money(bc)+' per batch'+(y>0?' · '+money(bc/y)+' per packet':'');};
+  draw();
+  ['mpe-bs','mpe-bu','mpe-pt','mpe-ps','mpe-pw','mpe-loss','mpe-ppb'].forEach(id=>{const e=$(id);if(e)e.addEventListener('input',draw);if(e)e.addEventListener('change',draw);});
+  const ad=$('mpe-add');if(ad)ad.onclick=()=>{rec.push({ing:'',qty:''});draw();};
+  const del=$('mpe-del');if(del)del.onclick=()=>stackConfirm('Delete this product?',mProdItem(p).name,`<div>Removes the product and its recipe from Manufacturing (the catalogue item stays). A product with production runs can’t be deleted — untick <b>Active</b> instead.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_products').delete().eq('id',p.id);if(error){toast(/foreign|violat/i.test(error.message)?'It has production runs — untick Active instead':error.message,true);return false;}closeOverlay();toast('Product removed');mfgReload();}});
+  const go=$('mpe-go');if(go)go.onclick=async()=>{const iid=p?p.item_id:$('mpe-item').value;if(!iid)return toast('Choose the catalogue item',true);
+    const lines=rec.filter(r=>r.ing&&mNum(r.qty)>0);if(rec.some(r=>r.ing&&!(mNum(r.qty)>0)))return toast('Enter a quantity for every ingredient',true);
+    const nv=v=>v===''||v==null?null:mNum(v);
+    const row={item_id:iid,batch_size:nv($('mpe-bs').value),batch_unit:$('mpe-bu').value,pack_type:$('mpe-pt').value,pack_size:nv($('mpe-ps').value),piece_weight_g:nv($('mpe-pw').value),loss_per_batch:nv($('mpe-loss').value)||0,
+      packs_per_batch:nv($('mpe-ppb').value),shelf_life_days:$('mpe-sl').value===''?null:Math.round(mNum($('mpe-sl').value)),net_weight:$('mpe-nw').value.trim()||null,storage:$('mpe-st').value.trim()||null,
+      label_ingredients:$('mpe-li').value.trim()||null,notes:$('mpe-no').value.trim()||null,active:$('mpe-act').checked};
+    go.disabled=true;
+    let pid=p&&p.id;
+    if(p){const{error}=await sb.from('mfg_products').update(row).eq('id',p.id);if(error){go.disabled=false;return toast(error.message,true);}}
+    else{const{data,error}=await sb.from('mfg_products').insert(row).select('id').single();if(error){go.disabled=false;return toast(error.message,true);}pid=data.id;}
+    const{error:de}=await sb.from('mfg_recipe').delete().eq('product_id',pid);
+    if(!de&&lines.length){const{error:ie}=await sb.from('mfg_recipe').insert(lines.map(r=>({product_id:pid,ingredient_id:r.ing,qty:mNum(r.qty)})));if(ie){go.disabled=false;return toast('Product saved, but the recipe failed: '+ie.message,true);}}
+    if(de){go.disabled=false;return toast('Product saved, but the recipe failed: '+de.message,true);}
+    closeOverlay();toast('Product saved');mfgReload();};
+}
+/* ---------- ingredients ---------- */
+function mfgIngs(el){
+  const q=mfgIngQ.toLowerCase();
+  const list=MFG.ing.filter(g=>!q||(g.name+' '+g.code+' '+(g.supplier||'')+' '+(g.category||'')).toLowerCase().includes(q));
+  const val=MFG.ing.reduce((a,g)=>a+mStock(g.id)*mCpu(g),0);
+  el.innerHTML=`<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="mi-q" placeholder="Search ingredient, code, supplier…" value="${esc(mfgIngQ)}"></div><span class="tag">Stock value ${money0(val)}</span><div class="spacer"></div>
+      ${mfgCanEdit()?`<button class="btn" id="mi-tpl">${svg(I.receipt,16)} Template</button><button class="btn" id="mi-up">${svg(I.box,16)} Upload</button><input type="file" id="mi-upf" accept=".csv,.xlsx,.xls" hidden><button class="btn" id="mi-rec">${svg(I.inbox,16)} Receive delivery</button><button class="btn primary" id="mi-new">${svg(I.plus,16)} Add ingredient</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Ingredient</th><th>Supplier</th><th>Pack</th><th class="num">Cost / pack</th><th class="num">In stock</th><th class="num">Reorder at</th><th>Next best-before</th><th>Allergens</th><th></th></tr></thead><tbody>
+    ${list.map(g=>{const st=mStock(g.id),low=st<=mNum(g.reorder_level)&&(mNum(g.reorder_level)>0||st<=0);const nl=MFG.lots.filter(l=>l.ingredient_id===g.id&&mNum(l.qty_left)>0&&l.best_before).sort((a,b)=>a.best_before.localeCompare(b.best_before))[0];
+      return `<tr class="clickable" data-mie="${g.id}" style="${g.active===false?'opacity:.55':''}"><td><b><span class="icode">${esc(g.code)}</span>${esc(g.name)}</b>${g.category?`<div style="font-size:11px;color:var(--faint)">${esc(g.category)}</div>`:''}</td><td>${esc(g.supplier||'—')}</td><td>${esc(g.pack_label||(g.pack_size?mQ(g.pack_size,g.unit):'—'))}</td><td class="num tnum">${g.cost_per_pack?money(g.cost_per_pack):'—'}</td><td class="num tnum" style="${low?'color:var(--crit);font-weight:700':''}">${mQ(st,g.unit)}${mNum(g.pack_size)>0&&st>0?`<div style="font-size:10.5px;color:var(--faint);font-weight:400">${mQ(st/mNum(g.pack_size))} pack${st/mNum(g.pack_size)===1?'':'s'}</div>`:''}</td><td class="num tnum" style="color:var(--muted)">${g.reorder_level?mQ(g.reorder_level,g.unit):'—'}</td><td style="${nl&&nl.best_before<=mAddDays(today(),30)?'color:var(--crit);font-weight:600':''}">${nl?fmtDate(nl.best_before):'—'}</td><td style="font-size:12px">${esc(g.allergens||'')}</td><td style="white-space:nowrap"><button class="btn sm" data-mil="${g.id}">Lots</button></td></tr>`;}).join('')}
+    </tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>${q?'No ingredients match.':'No ingredients yet.'+(mfgCanEdit()?' Use <b>Add ingredient</b> or upload the template.':'')}</div></div>`}`;
+  const qi=document.getElementById('mi-q');qi.oninput=e=>{mfgIngQ=e.target.value;const pos=e.target.selectionStart;mfgIngs(el);const n=document.getElementById('mi-q');n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}};
+  const $=id=>document.getElementById(id);
+  if($('mi-new'))$('mi-new').onclick=()=>mfgEditIng(null);
+  if($('mi-rec'))$('mi-rec').onclick=()=>mfgReceive(null);
+  if($('mi-tpl'))$('mi-tpl').onclick=()=>downloadTemplate('ingredients-template.csv',['Code','Name','Category','Unit (kg/g/L/ml/each)','Pack size (in the unit)','Pack description','Cost per pack','Supplier','Allergens','Reorder level (in the unit)'],
+    (MFG.ing.length?MFG.ing:[{code:'ING001',name:'Wheat flour',category:'Flour',unit:'kg',pack_size:25,pack_label:'25 kg bag',cost_per_pack:32.5,supplier:'',allergens:'Gluten',reorder_level:50}]).map(g=>[g.code,g.name,g.category||'',g.unit,g.pack_size??'',g.pack_label||'',g.cost_per_pack??'',g.supplier||'',g.allergens||'',g.reorder_level??'']),[0]);
+  if($('mi-up')){$('mi-up').onclick=()=>$('mi-upf').click();$('mi-upf').onchange=e=>{const f=e.target.files[0];e.target.value='';readSheetRows(f,rows=>mfgImportIngs(f,rows));};}
+  el.querySelectorAll('[data-mie]').forEach(x=>x.onclick=e=>{if(e.target.closest('button'))return;mfgEditIng(MFG.ing.find(g=>g.id===x.dataset.mie));});
+  el.querySelectorAll('[data-mil]').forEach(x=>x.onclick=()=>mfgLots(MFG.ing.find(g=>g.id===x.dataset.mil)));
+}
+async function mfgImportIngs(file,rows){
+  if(!rows||rows.length<2)return toast('The file is empty',true);
+  const P=[],out=[];const seen=new Set();
+  rows.slice(1).forEach((r,i)=>{const n=i+2;const code=String(r[0]||'').trim(),name=String(r[1]||'').trim();if(!code&&!name)return;
+    if(!code||!name){P.push({row:n,code,name,problem:'Code and name are both needed',fix:'Fill in both columns',level:'err'});return;}
+    if(seen.has(code.toLowerCase())){P.push({row:n,code,name,problem:'Code appears twice in the file',fix:'Keep one row per code',level:'err'});return;}seen.add(code.toLowerCase());
+    let unit=String(r[3]||'kg').trim();const um={kgs:'kg',kilo:'kg',kilogram:'kg',grams:'g',gram:'g',l:'L',litre:'L',liter:'L',litres:'L',millilitre:'ml',ml:'ml',ea:'each',pcs:'each',pc:'each',piece:'each',pieces:'each'};unit=um[unit.toLowerCase()]||unit;
+    if(!MFG_UNITS.includes(unit)){P.push({row:n,code,name,problem:`Unit “${r[3]}” not understood`,fix:'Use kg, g, L, ml or each',level:'err'});return;}
+    const num=(v)=>{const s=String(v??'').replace(/[$,]/g,'').trim();return s===''?null:(isFinite(+s)?+s:NaN);};
+    const ps=num(r[4]),cp=num(r[6]),ro=num(r[9]);if([ps,cp,ro].some(x=>Number.isNaN(x))){P.push({row:n,code,name,problem:'A number column has text in it',fix:'Pack size, cost and reorder level must be numbers',level:'err'});return;}
+    out.push({code,name,category:String(r[2]||'').trim()||null,unit,pack_size:ps,pack_label:String(r[5]||'').trim()||null,cost_per_pack:cp??0,supplier:String(r[7]||'').trim()||null,allergens:String(r[8]||'').trim()||null,reorder_level:ro??0});});
+  if(!out.length){showUploadReport('Ingredients',file,{loaded:0,problems:P});return;}
+  const{error}=await sb.from('mfg_ingredients').upsert(out,{onConflict:'code'});
+  if(error)return toast(error.message,true);
+  await mfgReload();
+  if(P.length)showUploadReport('Ingredients',file,{loaded:out.length,problems:P});else toast(out.length+' ingredient'+(out.length===1?'':'s')+' saved');
+}
+function mfgEditIng(g){
+  const ed=mfgCanEdit();const opt=(a,v)=>a.map(u=>`<option${u===v?' selected':''}>${u}</option>`).join('');
+  const f=(id,l,val,attrs)=>`<div class="field"><label>${l}</label><input id="${id}" value="${esc(val??'')}" ${attrs||''} ${ed?'':'disabled'}></div>`;
+  modal(g?g.name:'Add an ingredient',g?'Ingredient details':'Ingredients and packaging you buy',`
+    <div class="grid2">${f('mie-code','Code',g&&g.code)}${f('mie-name','Name',g&&g.name)}</div>
+    <div class="grid2">${f('mie-cat','Category',g&&g.category)}<div class="field"><label>Unit you measure it in</label><select id="mie-unit" ${ed?'':'disabled'}>${opt(MFG_UNITS,g?g.unit:'kg')}</select><div class="hint">Recipes, stock and reorder level all use this unit.</div></div></div>
+    <div class="grid2">${f('mie-ps','Pack size — how much in one pack you buy (in the unit)',g&&g.pack_size,'type="number" min="0" step="any"')}${f('mie-pl','Pack description (e.g. 25 kg bag)',g&&g.pack_label)}</div>
+    <div class="grid2">${f('mie-cp','Cost per pack ($, ex GST)',g&&g.cost_per_pack,'type="number" min="0" step="0.01"')}${f('mie-sup','Supplier',g&&g.supplier)}</div>
+    <div class="grid2">${f('mie-ro','Reorder level (in the unit)',g&&g.reorder_level,'type="number" min="0" step="any"')}${f('mie-al','Allergens (comma separated)',g&&g.allergens)}</div>
+    <div class="field"><label>Notes</label><textarea id="mie-no" rows="2" ${ed?'':'disabled'}>${esc(g&&g.notes||'')}</textarea></div>
+    <label style="font-size:13px"><input type="checkbox" id="mie-act" ${!g||g.active!==false?'checked':''} ${ed?'':'disabled'}> Active</label>`,
+    `${g&&ed?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="mie-del">Delete</button><button class="btn" id="mie-recv">${svg(I.inbox,15)} Receive</button><span class="spacer"></span>`:''}<button class="btn" data-close>Close</button>${ed?`<button class="btn primary" id="mie-go">${svg(I.check,16)} Save</button>`:''}`,'form');
+  const $=id=>document.getElementById(id);
+  const rv=$('mie-recv');if(rv)rv.onclick=()=>mfgReceive(g);
+  const del=$('mie-del');if(del)del.onclick=()=>stackConfirm('Delete '+g.name+'?','',`<div>Only possible if it isn’t in any recipe or production run. Otherwise untick <b>Active</b>.</div>`,{okLabel:'Delete',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_ingredients').delete().eq('id',g.id);if(error){toast(/foreign|violat/i.test(error.message)?'It is used in a recipe or run — untick Active instead':error.message,true);return false;}closeOverlay();toast('Ingredient deleted');mfgReload();}});
+  const go=$('mie-go');if(go)go.onclick=async()=>{const code=$('mie-code').value.trim(),name=$('mie-name').value.trim();if(!code||!name)return toast('Enter the code and name',true);
+    const nv=v=>v===''?null:mNum(v);
+    const row={code,name,category:$('mie-cat').value.trim()||null,unit:$('mie-unit').value,pack_size:nv($('mie-ps').value),pack_label:$('mie-pl').value.trim()||null,cost_per_pack:nv($('mie-cp').value)||0,
+      supplier:$('mie-sup').value.trim()||null,reorder_level:nv($('mie-ro').value)||0,allergens:$('mie-al').value.trim()||null,notes:$('mie-no').value.trim()||null,active:$('mie-act').checked};
+    const{error}=g?await sb.from('mfg_ingredients').update(row).eq('id',g.id):await sb.from('mfg_ingredients').insert(row);
+    if(error)return toast(/duplicate|unique/i.test(error.message)?'That code is already used':error.message,true);
+    closeOverlay();toast('Ingredient saved');mfgReload();};
+}
+function mfgReceive(g){
+  if(!mfgCanEdit())return;
+  const act=MFG.ing.filter(x=>x.active!==false);if(!act.length)return toast('Add an ingredient first',true);
+  modal('Receive ingredients','Into Central Warehouse — production stock',`
+    <div class="field"><label>Ingredient</label><select id="mrc-ing">${act.map(x=>`<option value="${x.id}">${esc(x.code)} — ${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="grid2"><div class="field"><label>Packs received</label><input type="number" id="mrc-packs" min="0" step="any" placeholder="e.g. 4"><div class="hint" id="mrc-ph"></div></div><div class="field"><label>Or total quantity (in the unit)</label><input type="number" id="mrc-qty" min="0" step="any"><div class="hint" id="mrc-uh"></div></div></div>
+    <div class="grid2"><div class="field"><label>Supplier lot / batch no</label><input id="mrc-lot" placeholder="As printed on the pack"></div><div class="field"><label>Best before</label><input type="date" id="mrc-bb" data-bbfuture></div></div>
+    <div class="grid2"><div class="field"><label>Cost per pack ($, ex GST)</label><input type="number" id="mrc-cost" min="0" step="0.01"><div class="hint">Also updates the ingredient’s cost</div></div><div class="field"><label>Supplier</label><input id="mrc-sup"></div></div>
+    <div class="field"><label>Note (optional)</label><input id="mrc-note" placeholder="e.g. invoice 12345"></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="mrc-go">${svg(I.check,16)} Receive</button>`,'form');
+  const $=id=>document.getElementById(id);
+  const sync=src=>{const x=mIng($('mrc-ing').value),ps=mNum(x.pack_size);
+    if(src==='packs'&&ps>0)$('mrc-qty').value=$('mrc-packs').value===''?'':Math.round(mNum($('mrc-packs').value)*ps*1000)/1000;
+    if(src==='qty'&&ps>0)$('mrc-packs').value=$('mrc-qty').value===''?'':Math.round(mNum($('mrc-qty').value)/ps*1000)/1000;
+    $('mrc-ph').textContent=ps>0?('1 pack = '+mQ(ps,x.unit)+(x.pack_label?' ('+x.pack_label+')':'')):'No pack size set — enter the total quantity';$('mrc-uh').textContent='Unit: '+x.unit;};
+  const pick=()=>{const x=mIng($('mrc-ing').value);$('mrc-cost').value=x.cost_per_pack||'';$('mrc-sup').value=x.supplier||'';$('mrc-packs').disabled=!(mNum(x.pack_size)>0);sync('packs');};
+  if(g)$('mrc-ing').value=g.id;$('mrc-ing').onchange=pick;$('mrc-packs').oninput=()=>sync('packs');$('mrc-qty').oninput=()=>sync('qty');pick();
+  $('mrc-go').onclick=async()=>{const x=mIng($('mrc-ing').value),qty=mNum($('mrc-qty').value);if(!(qty>0))return toast('Enter how much arrived',true);
+    const cp=$('mrc-cost').value===''?null:mNum($('mrc-cost').value);const ps=mNum(x.pack_size);
+    const{error}=await sb.rpc('mfg_receive_ingredient',{p_ing:x.id,p_qty:qty,p_lot:$('mrc-lot').value.trim()||null,p_bb:$('mrc-bb').value||null,p_cost_per_unit:cp!=null&&ps>0?cp/ps:null,p_supplier:$('mrc-sup').value.trim()||null,p_note:$('mrc-note').value.trim()||null});
+    if(error)return toast(error.message,true);
+    if(cp!=null&&cp!==mNum(x.cost_per_pack))await sb.from('mfg_ingredients').update({cost_per_pack:cp}).eq('id',x.id);
+    closeOverlay();toast('Received '+mQ(qty,x.unit)+' of '+x.name);mfgReload();};
+}
+function mfgLots(g){
+  if(!g)return;const lots=MFG.lots.filter(l=>l.ingredient_id===g.id).sort((a,b)=>(mNum(b.qty_left)>0)-(mNum(a.qty_left)>0)||String(a.best_before||'9').localeCompare(String(b.best_before||'9')));
+  const mv=MFG.moves.filter(m=>m.ingredient_id===g.id).slice(0,40);const lotCode=id=>(MFG.lots.find(l=>l.id===id)||{}).lot_code||'';
+  slideover(g.name+' — lots',mQ(mStock(g.id),g.unit)+' in stock',`
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Lot</th><th>Received</th><th>Best before</th><th class="num">Received</th><th class="num">Left</th><th>Supplier</th><th></th></tr></thead><tbody>
+    ${lots.length?lots.map(l=>`<tr style="${mNum(l.qty_left)>0?'':'opacity:.5'}"><td class="mono">${esc(l.lot_code||'—')}</td><td>${fmtDate(l.received_on)}</td><td style="${l.best_before&&l.best_before<today()&&mNum(l.qty_left)>0?'color:var(--crit);font-weight:700':''}">${l.best_before?fmtDate(l.best_before):'—'}</td><td class="num tnum">${mQ(l.qty_received,g.unit)}</td><td class="num tnum"><b>${mQ(l.qty_left,g.unit)}</b></td><td>${esc(l.supplier||'')}</td><td>${mfgCanEdit()?`<button class="btn sm" data-mla="${l.id}">Adjust</button>`:''}</td></tr>`).join(''):'<tr><td colspan="7" style="color:var(--faint)">No stock received yet.</td></tr>'}
+    </tbody></table></div>
+    <h3 style="font-size:14px;margin:16px 0 8px">Recent movements</h3>
+    <div class="tablewrap"><table style="min-width:0"><thead><tr><th>When</th><th>What</th><th>Lot</th><th class="num">Change</th><th>Ref / note</th></tr></thead><tbody>${mv.length?mv.map(m=>`<tr><td style="font-size:12px">${fmtDate(m.created_at)}</td><td>${({receive:'Received',use:'Used',adjust:'Adjusted',reverse:'Run reversed'})[m.kind]||esc(m.kind)}</td><td class="mono">${esc(lotCode(m.lot_id))}</td><td class="num tnum" style="color:${mNum(m.delta)<0?'var(--crit)':'var(--good)'}">${mNum(m.delta)>0?'+':''}${mQ(m.delta,g.unit)}</td><td style="font-size:12px">${esc([m.ref,m.note].filter(Boolean).join(' — '))}</td></tr>`).join(''):'<tr><td colspan="5" style="color:var(--faint)">None yet.</td></tr>'}</tbody></table></div>`,
+    `${mfgCanEdit()?`<button class="btn" id="ml-rec">${svg(I.inbox,15)} Receive</button>`:''}<span class="spacer"></span><button class="btn" data-close>Close</button>`,'wide');
+  const rb=document.getElementById('ml-rec');if(rb)rb.onclick=()=>mfgReceive(g);
+  document.querySelectorAll('[data-mla]').forEach(b=>b.onclick=()=>{const l=MFG.lots.find(x=>x.id===b.dataset.mla);
+    stackConfirm('Adjust lot '+(l.lot_code||''),g.name+' · '+mQ(l.qty_left,g.unit)+' on record',`<div class="field"><label>Quantity there now (${esc(g.unit)}) — 0 if used up or thrown out</label><input type="number" id="mla-q" min="0" step="any" value="${mNum(l.qty_left)}"></div><div class="field"><label>Reason</label><select id="mla-r"><option>Counted — correction</option><option>Spoiled / expired — thrown out</option><option>Damaged</option><option>Used outside a production run</option><option>Other</option></select></div><div class="field"><label>Note (optional)</label><input id="mla-n"></div>`,
+      {okLabel:'Save',onOk:async()=>{const q=(document.getElementById('mla-q')||{}).value;if(q===''||mNum(q)<0){toast('Enter the quantity there now',true);return false;}const why=document.getElementById('mla-r').value+((document.getElementById('mla-n')||{}).value?' — '+document.getElementById('mla-n').value:'');
+        const{error}=await sb.rpc('mfg_adjust_lot',{p_lot:l.id,p_new_qty:mNum(q),p_reason:why});if(error){toast(error.message,true);return false;}closeOverlay();toast('Lot adjusted');mfgReload();}});});
+}
+/* ---------- shopping list (material requirements) ---------- */
+function mfgShopData(){
+  const lim=mfgShopDays>0?mAddDays(today(),mfgShopDays):null;
+  const runs=MFG.runs.filter(r=>(r.status==='planned'||r.status==='in_progress')&&(!lim||!r.planned_date||r.planned_date<=lim));
+  const need={};runs.forEach(r=>mRecipe(r.product_id).forEach(x=>{need[x.ingredient_id]=(need[x.ingredient_id]||0)+mNum(x.qty)*mNum(r.num_batches);}));
+  const ids=new Set(Object.keys(need));MFG.ing.forEach(g=>{if(g.active!==false&&mNum(g.reorder_level)>0&&mStock(g.id)<=mNum(g.reorder_level))ids.add(g.id);});
+  const rows=[...ids].map(id=>{const g=mIng(id),n=need[id]||0,have=mStock(id),ro=mNum(g.reorder_level);const short=Math.max(0,n-have),toRe=Math.max(0,n+ro-have);const ps=mNum(g.pack_size);
+    const packs=ps>0?Math.ceil(Math.max(short,have-n<ro?toRe:0)/ps-1e-9):null;return {g,need:n,have,short,ro,packs,cost:packs!=null?packs*mNum(g.cost_per_pack):Math.max(short,0)*mCpu(g)};}).sort((a,b)=>(b.short>0)-(a.short>0)||String(a.g.supplier||'').localeCompare(String(b.g.supplier||''))||a.g.name.localeCompare(b.g.name));
+  return {runs,rows};
+}
+function mfgShop(el){
+  const {runs,rows}=mfgShopData();const tot=rows.reduce((a,r)=>a+(r.packs>0||r.short>0?r.cost:0),0);
+  el.innerHTML=`<div class="toolbar"><select class="filter" id="ms-days">${[[7,'Runs in the next 7 days'],[14,'Next 14 days'],[30,'Next 30 days'],[0,'All planned runs']].map(([d,l])=>`<option value="${d}"${d===mfgShopDays?' selected':''}>${l}</option>`).join('')}</select><span class="tag">${runs.length} run${runs.length===1?'':'s'}</span><div class="spacer"></div><button class="btn" id="ms-print">${svg(I.receipt,16)} Print</button><button class="btn" id="ms-xls">${svg(I.receipt,16)} Excel</button></div>
+    <div class="banner info" style="margin-bottom:12px">${svg(I.order,16)}<div>What the planned runs need, against ingredient stock. <b>Packs to buy</b> covers the shortfall and brings the ingredient back above its reorder level. Estimated cost ${money(tot)} (ex GST).</div></div>
+    ${rows.length?`<div class="tablewrap"><table><thead><tr><th>Ingredient</th><th>Supplier</th><th class="num">Needed</th><th class="num">In stock</th><th class="num">Short</th><th class="num">Packs to buy</th><th class="num">Est. cost</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b><span class="icode">${esc(r.g.code)}</span>${esc(r.g.name)}</b></td><td>${esc(r.g.supplier||'—')}</td><td class="num tnum">${mQ(r.need,r.g.unit)}</td><td class="num tnum">${mQ(r.have,r.g.unit)}</td><td class="num tnum" style="color:${r.short>0?'var(--crit)':'var(--faint)'};font-weight:${r.short>0?700:400}">${r.short>0?mQ(r.short,r.g.unit):'—'}</td><td class="num tnum"><b>${r.packs!=null?(r.packs>0?r.packs+' × '+esc(r.g.pack_label||mQ(r.g.pack_size,r.g.unit)):'—'):(r.short>0?'set pack size':'—')}</b></td><td class="num tnum">${(r.packs>0||r.short>0)?money(r.cost):'—'}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.check,34)}<div>Nothing to buy for the planned runs.</div></div>`}`;
+  const $=id=>document.getElementById(id);
+  $('ms-days').onchange=e=>{mfgShopDays=+e.target.value;mfgShop(el);};
+  const H=['Code','Ingredient','Supplier','Unit','Needed','In stock','Short','Packs to buy','Pack','Est. cost (AUD)'];
+  const R=()=>rows.map(r=>[r.g.code,r.g.name,r.g.supplier||'',r.g.unit,Math.round(r.need*1000)/1000,Math.round(r.have*1000)/1000,Math.round(r.short*1000)/1000,r.packs??'',r.g.pack_label||(r.g.pack_size?r.g.pack_size+' '+r.g.unit:''),(r.packs>0||r.short>0)?+r.cost.toFixed(2):'']);
+  $('ms-xls').onclick=()=>{if(window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([H,...R()]),'Shopping list');XLSX.writeFile(wb,'mfg-shopping-list_'+today()+'.xlsx');}else downloadCSV('mfg-shopping-list_'+today()+'.csv',H,R());};
+  $('ms-print').onclick=()=>{const w=window.open('','_blank')||printFrame();w.document.write(`<html><head><title>Ingredient shopping list</title><style>body{font-family:Arial,sans-serif;padding:22px;color:#111}table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:12px}th,td{border:1px solid #bbb;padding:6px 8px;text-align:left}th{background:#eee}td.n{text-align:right}</style></head><body><h2 style="margin:0">Ingredient shopping list</h2><div style="color:#555;font-size:12px">${runs.length} planned run(s)${mfgShopDays?' in the next '+mfgShopDays+' days':''} · printed ${new Date().toLocaleString('en-AU')}</div><table><thead><tr><th>✓</th>${H.slice(0,9).map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${R().map(r=>`<tr><td>☐</td>${r.slice(0,9).map((c,i)=>`<td class="${i>=4&&i<=7?'n':''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`);w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);};
+}
+/* ---------- labels (Dymo) ---------- */
+const MFG_C128=["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112"];
+let mfgLabelSel=null;
+const MFG_LBL_SIZES={'89x36':[89,36],'57x32':[57,32],'54x25':[54,25]};
+function mCode128(text){const codes=[104];for(const ch of String(text)){const v=ch.charCodeAt(0)-32;if(v<0||v>94)continue;codes.push(v);}
+  let sum=104;for(let i=1;i<codes.length;i++)sum+=codes[i]*i;codes.push(sum%103);codes.push(106);let x=0;const bars=[];
+  for(const code of codes){const pat=MFG_C128[code];let bar=true;for(const d of pat){const w=+d;if(bar)bars.push([x,w]);x+=w;bar=!bar;}}return {bars,modules:x};}
+function mBarcodeV(text,thick,len){if(!text)return '';const b=mCode128(text);const q=12,tot=b.modules+2*q;
+  return `<svg viewBox="0 0 100 ${tot}" width="${thick}mm" height="${len}mm" preserveAspectRatio="none" style="display:block;shape-rendering:crispEdges"><rect x="0" y="0" width="100" height="${tot}" fill="#fff"/><g fill="#000">${b.bars.map(s=>`<rect x="0" y="${s[0]+q}" width="100" height="${s[1]}"/>`).join('')}</g></svg>`;}
+function mBoldAllergens(txt,alg){const safe=esc(txt);if(!alg)return safe;const toks=alg.split(/[,;]/).map(t=>t.trim()).filter(t=>t&&t!=='-');if(!toks.length)return safe;
+  const alts=toks.map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).sort((a,b)=>b.length-a.length);let re;try{re=new RegExp('\\b((?:'+alts.join('|')+')s?)\\b','gi');}catch(e){return safe;}return safe.replace(re,'<b>$1</b>');}
+function mLabelHtml(d,size){const dim=MFG_LBL_SIZES[size]||MFG_LBL_SIZES['89x36'],w=dim[0],h=dim[1],big=w>=80,mid=w>=56;
+  const nameSize=big?24:mid?19:14,base=big?14.5:mid?11.5:9.5,small=big?15:mid?12:10.5,wp=base+2,bcNum=big?9:mid?8:7,barThick=big?11:mid?9:7,barLen=Math.max(12,h-7);
+  const bcval=d.barcode||d.lot;const bc=bcval?mBarcodeV(bcval,barThick,barLen):'';
+  const price=d.price!==''&&d.price!=null&&isFinite(+d.price)?'$'+(+d.price).toFixed(2):(d.price||'');
+  return `<div class="label" style="width:${w}mm;height:${h}mm;display:flex;gap:1mm;align-items:stretch;box-sizing:border-box;padding:1.2mm 1.5mm;overflow:hidden;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;page-break-after:always">
+    <div style="flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden"><div style="overflow:hidden">
+      <div style="font-weight:bold;font-size:${nameSize}px;line-height:1.05">${esc(d.name)||'&nbsp;'}</div>
+      ${d.weight||price?`<div style="display:flex;justify-content:space-between;font-size:${wp}px;margin-top:.4mm"><span>${esc(d.weight||'')}</span><span style="font-weight:bold">${esc(price)}</span></div>`:''}
+      ${d.ingredients?`<div style="font-size:${small}px;line-height:1.15;margin-top:.6mm"><b>Ingredients:</b> ${mBoldAllergens(d.ingredients,d.allergens)}</div>`:''}
+      ${d.allergens?`<div style="font-size:${small}px;line-height:1.15;margin-top:.6mm;font-weight:bold">Contains: ${esc(d.allergens)}</div>`:''}
+      ${d.storage?`<div style="font-size:${small-1}px;line-height:1.1;margin-top:.4mm">${esc(d.storage)}</div>`:''}</div>
+      <div>${d.lot||d.useby?`<div style="display:flex;justify-content:space-between;font-size:${base}px;margin-top:.3mm"><span>${d.lot?`Batch: <b>${esc(d.lot)}</b>`:''}</span><span>${d.useby?`Best Before: <b>${esc(fmtDate(d.useby))}</b>`:''}</span></div>`:''}${d.business?`<div style="font-size:${small}px;color:#333;margin-top:.3mm">${esc(d.business)}</div>`:''}</div></div>
+    ${bc?`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 auto;padding-left:1mm">${bc}<div style="font-size:${bcNum}px;margin-top:.4mm;white-space:nowrap">${esc(bcval)}</div></div>`:''}</div>`;}
+function mfgLabels(el){
+  const prods=MFG.prods.filter(p=>p.active!==false||(mfgLabelSel&&mfgLabelSel.prod===p.id));
+  if(!prods.length){el.innerHTML=`<div class="card empty">${svg(I.tag,34)}<div>Add a product first.</div></div>`;return;}
+  let biz='';try{biz=localStorage.getItem('mfg.biz')||'';}catch(e){}
+  let size='89x36';try{size=localStorage.getItem('mfg.lsize')||'89x36';}catch(e){}
+  const sel=mfgLabelSel||{prod:prods[0].id};mfgLabelSel=null;
+  el.innerHTML=`<div class="grid2" style="align-items:start">
+    <div class="card pad">
+      <div class="field"><label>Product</label><select id="ml-prod">${prods.map(p=>`<option value="${p.id}"${p.id===sel.prod?' selected':''}>${esc(mProdItem(p).name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Lot</label><select id="ml-lot"></select></div>
+      <div class="grid2"><div class="field"><label>Name on label</label><input id="ml-name"></div><div class="field"><label>Net weight</label><input id="ml-wt"></div></div>
+      <div class="grid2"><div class="field"><label>Price</label><input id="ml-price"></div><div class="field"><label>Barcode</label><input id="ml-bc"></div></div>
+      <div class="grid2"><div class="field"><label>Batch / lot</label><input id="ml-lotc"></div><div class="field"><label>Best before</label><input type="date" id="ml-bb"></div></div>
+      <div class="field"><label>Ingredients</label><textarea id="ml-ing" rows="3"></textarea></div>
+      <div class="field"><label>Allergens (Contains:)</label><input id="ml-alg"></div>
+      <div class="field"><label>Storage line (optional)</label><input id="ml-st"></div>
+      <div class="field"><label>Business line (saved on this device)</label><input id="ml-biz" value="${esc(biz)}" placeholder="e.g. Made by Shayona, 1 Example St, Sydney"></div>
+      <div class="grid2"><div class="field"><label>Label size</label><select id="ml-size">${Object.keys(MFG_LBL_SIZES).map(k=>`<option${k===size?' selected':''}>${k}</option>`).join('')}</select></div><div class="field"><label>Copies</label><input type="number" id="ml-n" min="1" max="500" value="1"></div></div>
+      <button class="btn primary" id="ml-print">${svg(I.tag,16)} Print labels</button>
+      <div class="hint" style="margin-top:8px">In the print dialog pick the DYMO LabelWriter, Margins = None, Scale = 100%, and the matching label roll.</div>
+    </div>
+    <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">Preview</h3><div id="ml-prev" style="display:inline-block;border:1px dashed var(--border-strong);background:#fff;transform-origin:top left"></div></div></div>`;
+  const $=id=>document.getElementById(id);
+  const data=()=>({name:$('ml-name').value,weight:$('ml-wt').value,price:$('ml-price').value,barcode:$('ml-bc').value.trim(),lot:$('ml-lotc').value.trim(),useby:$('ml-bb').value,ingredients:$('ml-ing').value.trim(),allergens:$('ml-alg').value.trim(),storage:$('ml-st').value.trim(),business:$('ml-biz').value.trim()});
+  const prev=()=>{$('ml-prev').innerHTML=mLabelHtml(data(),$('ml-size').value);$('ml-prev').style.transform='scale(1.6)';$('ml-prev').parentNode.style.minHeight=(MFG_LBL_SIZES[$('ml-size').value][1]*3.78*1.6+60)+'px';};
+  const fillLot=()=>{const r=MFG.runs.find(x=>x.id===$('ml-lot').value);$('ml-lotc').value=r?(r.lot_code||r.code):'';$('ml-bb').value=r&&r.best_before?r.best_before:'';prev();};
+  const fillProd=(runId)=>{const p=mProd($('ml-prod').value),it=mProdItem(p);
+    const runs=MFG.runs.filter(r=>r.product_id===p.id&&r.status==='completed'&&!r.reversed_at&&r.disposition!=='rejected').sort((a,b)=>String(b.mfg_date||'').localeCompare(String(a.mfg_date||'')));
+    $('ml-lot').innerHTML=`<option value="">— no lot / type it in —</option>`+runs.map(r=>`<option value="${r.id}">${esc(r.lot_code||r.code)} · made ${fmtDate(r.mfg_date)}${r.best_before?' · BB '+fmtDate(r.best_before):''}</option>`).join('');
+    $('ml-lot').value=runId&&runs.some(r=>r.id===runId)?runId:(runs[0]?runs[0].id:'');
+    $('ml-name').value=it.name||'';$('ml-wt').value=p.net_weight||'';$('ml-price').value=mNum(it.price)>0?(+it.price).toFixed(2):'';$('ml-bc').value=it.barcode||it.sku||'';
+    $('ml-ing').value=mIngText(p);$('ml-alg').value=mAllergens(p.id);$('ml-st').value=p.storage||'';fillLot();};
+  $('ml-prod').onchange=()=>fillProd();$('ml-lot').onchange=fillLot;
+  ['ml-name','ml-wt','ml-price','ml-bc','ml-lotc','ml-bb','ml-ing','ml-alg','ml-st','ml-biz','ml-size'].forEach(id=>{$(id).addEventListener('input',prev);$(id).addEventListener('change',prev);});
+  $('ml-size').addEventListener('change',()=>{try{localStorage.setItem('mfg.lsize',$('ml-size').value);}catch(e){}});
+  fillProd(sel.run);
+  $('ml-print').onclick=()=>{const d=data();if(!d.name&&!d.lot)return toast('Enter a product name or lot',true);try{localStorage.setItem('mfg.biz',d.business);}catch(e){}
+    const sz=$('ml-size').value,dim=MFG_LBL_SIZES[sz],n=Math.max(1,Math.min(500,Math.round(mNum($('ml-n').value)||1)));const one=mLabelHtml(d,sz);
+    const w=window.open('','_blank')||printFrame();
+    w.document.write(`<html><head><title>Labels ${esc(d.lot||'')}</title><style>@page{size:${dim[0]}mm ${dim[1]}mm;margin:0}html,body{margin:0;padding:0}.label:last-child{page-break-after:auto!important}</style></head><body>${Array.from({length:n},()=>one).join('')}</body></html>`);
+    w.document.close();setTimeout(()=>{try{w.focus();w.print();}catch(e){}},400);};
+}
+/* ---------- traceability ---------- */
+function mfgTrace(el){
+  const q=mfgTraceQ.trim().toLowerCase();
+  let fin=[],ingLots=[];
+  if(q){fin=MFG.runs.filter(r=>r.status==='completed'&&(String(r.lot_code||'').toLowerCase().includes(q)||String(r.code).toLowerCase().includes(q)||String(mProdName(r.product_id)).toLowerCase().includes(q)));
+    ingLots=MFG.lots.filter(l=>String(l.lot_code||'').toLowerCase().includes(q)||String(mIng(l.ingredient_id).name).toLowerCase().includes(q)||String(mIng(l.ingredient_id).code).toLowerCase()===q);}
+  el.innerHTML=`<div class="toolbar"><div class="search" style="flex:1;max-width:520px">${svg(I.search,16)}<input id="mt-q" placeholder="Finished lot code, ingredient lot no, product or ingredient…" value="${esc(mfgTraceQ)}"></div><button class="btn" id="mt-x" ${fin.length||ingLots.length?'':'disabled'}>${svg(I.receipt,16)} Export</button></div>
+    ${!q?`<div class="banner info">${svg(I.info,16)}<div><b>Forward:</b> type an ingredient lot no to see every finished lot it went into (for a supplier recall). <b>Backward:</b> type a finished lot code to see exactly which ingredient lots were used.</div></div>`:''}
+    ${fin.length?`<div class="section-head"><h2>Finished lots</h2></div>${fin.map(r=>{const us=MFG.usage.filter(u=>u.run_id===r.id);return `<div class="card pad" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b class="mono">${esc(r.lot_code||r.code)}</b> · ${esc(mProdName(r.product_id))}</div><div style="font-size:12.5px;color:var(--muted)">Made ${fmtDate(r.mfg_date)} · ${mNum(r.actual_qty).toLocaleString()} packets · BB ${r.best_before?fmtDate(r.best_before):'—'} · ${r.reversed_at?'Reversed':mDispPill(r)}</div></div>
+      <table style="min-width:0;margin-top:8px"><thead><tr><th>Ingredient</th><th>Lot</th><th>Best before</th><th class="num">Qty</th></tr></thead><tbody>${us.map(u=>{const g=mIng(u.ingredient_id);return `<tr><td>${esc(g.name)}</td><td class="mono">${esc(u.lot_code||'—')}</td><td>${u.best_before?fmtDate(u.best_before):'—'}</td><td class="num tnum">${mQ(u.qty,g.unit)}</td></tr>`;}).join('')||'<tr><td colspan="4" style="color:var(--faint)">No ingredients recorded</td></tr>'}</tbody></table></div>`;}).join('')}`:''}
+    ${ingLots.length?`<div class="section-head" style="margin-top:12px"><h2>Ingredient lots</h2></div>${ingLots.map(l=>{const g=mIng(l.ingredient_id);const used=MFG.usage.filter(u=>u.lot_id===l.id);return `<div class="card pad" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b>${esc(g.name)}</b> · lot <b class="mono">${esc(l.lot_code||'—')}</b></div><div style="font-size:12.5px;color:var(--muted)">Received ${fmtDate(l.received_on)} from ${esc(l.supplier||'—')} · BB ${l.best_before?fmtDate(l.best_before):'—'} · ${mQ(l.qty_left,g.unit)} left of ${mQ(l.qty_received,g.unit)}</div></div>
+      ${used.length?`<table style="min-width:0;margin-top:8px"><thead><tr><th>Used in finished lot</th><th>Product</th><th>Made</th><th class="num">Qty used</th><th class="num">Packets made</th></tr></thead><tbody>${used.map(u=>{const r=MFG.runs.find(x=>x.id===u.run_id)||{};return `<tr><td class="mono">${esc(r.lot_code||r.code||'')}</td><td>${esc(mProdName(r.product_id))}</td><td>${fmtDate(r.mfg_date)}</td><td class="num tnum">${mQ(u.qty,g.unit)}</td><td class="num tnum">${mNum(r.actual_qty).toLocaleString()}${r.reversed_at?' (reversed)':''}</td></tr>`;}).join('')}</tbody></table>`:'<div style="color:var(--faint);font-size:13px;margin-top:6px">Not used in any run yet.</div>'}</div>`;}).join('')}`:''}
+    ${q&&!fin.length&&!ingLots.length?`<div class="card empty">${svg(I.search,30)}<div>Nothing matches “${esc(mfgTraceQ)}”.</div></div>`:''}`;
+  const qi=document.getElementById('mt-q');qi.oninput=e=>{mfgTraceQ=e.target.value;const pos=e.target.selectionStart;mfgTrace(el);const n=document.getElementById('mt-q');n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}};
+  const x=document.getElementById('mt-x');if(x)x.onclick=()=>{const H=['Finished lot','Product','Made','Packets','Best before','Status','Ingredient','Ingredient code','Ingredient lot','Ingredient BB','Qty used','Unit'];const rows=[];
+    const runs=new Map();fin.forEach(r=>runs.set(r.id,r));ingLots.forEach(l=>MFG.usage.filter(u=>u.lot_id===l.id).forEach(u=>{const r=MFG.runs.find(y=>y.id===u.run_id);if(r)runs.set(r.id,r);}));
+    runs.forEach(r=>MFG.usage.filter(u=>u.run_id===r.id).forEach(u=>{const g=mIng(u.ingredient_id);rows.push([r.lot_code||r.code,mProdName(r.product_id),r.mfg_date||'',mNum(r.actual_qty),r.best_before||'',r.reversed_at?'reversed':(r.disposition||''),g.name,g.code,u.lot_code||'',u.best_before||'',Math.round(mNum(u.qty)*1000)/1000,g.unit]);}));
+    downloadCSV('traceability_'+today()+'.csv',H,rows);};
+}
+/* ---------- access ---------- */
+function mfgAccess(el){
+  if(!mfgIsAdmin()){el.innerHTML='';return;}
+  const by=id=>(S.profiles||[]).find(p=>p.id===id)||{};
+  const centres=id=>(S.plocs||[]).filter(x=>x.profile_id===id).map(x=>loc(x.location_id).code).join(', ');
+  const cand=(S.profiles||[]).filter(p=>p.active!==false&&!MFG.users.some(u=>u.user_id===p.id)&&!['super_admin','national_admin'].includes(p.role)).sort((a,b)=>String(a.full_name||a.email).localeCompare(String(b.full_name||b.email)));
+  const syd=cand.filter(p=>/syd|central|warehouse/i.test(centres(p.id)));
+  el.innerHTML=`<div class="banner info" style="margin-bottom:12px">${svg(I.lock,16)}<div>National and Super Admins always have Manufacturing. Add the Sydney production team here — <b>Edit</b> can plan, complete runs, receive and adjust ingredients; <b>View</b> can only look. Others don’t see the Manufacturing menu at all.</div></div>
+    <div class="card pad" style="margin-bottom:12px"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field" style="flex:1;min-width:240px;margin:0"><label>Add a person</label><select id="ma-user"><option value="">Select…</option>${syd.length?`<optgroup label="Sydney / Central Warehouse">${syd.map(p=>`<option value="${p.id}">${esc(p.full_name||p.email)} · ${esc(centres(p.id))}</option>`).join('')}</optgroup>`:''}<optgroup label="Everyone else">${cand.filter(p=>!syd.includes(p)).map(p=>`<option value="${p.id}">${esc(p.full_name||p.email)}${centres(p.id)?' · '+esc(centres(p.id)):''}</option>`).join('')}</optgroup></select></div><div class="field" style="margin:0"><label>Access</label><select id="ma-lvl"><option value="edit">Edit</option><option value="view">View only</option></select></div><button class="btn primary" id="ma-add">${svg(I.plus,16)} Add</button></div></div>
+    ${MFG.users.length?`<div class="tablewrap"><table><thead><tr><th>Person</th><th>Email</th><th>Centre(s)</th><th>Access</th><th>Added</th><th></th></tr></thead><tbody>${MFG.users.map(u=>{const p=by(u.user_id);return `<tr><td><b>${esc(p.full_name||'—')}</b></td><td>${esc(p.email||'')}</td><td>${esc(centres(u.user_id))}</td><td><select data-mal="${u.user_id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)"><option value="edit"${u.level==='edit'?' selected':''}>Edit</option><option value="view"${u.level==='view'?' selected':''}>View only</option></select></td><td style="font-size:12px">${fmtDate(u.added_at)}</td><td><button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-mar="${u.user_id}">Remove</button></td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.users,30)}<div>Nobody added yet.</div></div>`}`;
+  document.getElementById('ma-add').onclick=async()=>{const id=document.getElementById('ma-user').value;if(!id)return toast('Choose a person',true);
+    const{error}=await sb.from('mfg_users').insert({user_id:id,level:document.getElementById('ma-lvl').value});if(error)return toast(error.message,true);
+    try{await sb.rpc('log_action',{p_action:'Manufacturing access given to '+(by(id).full_name||by(id).email),p_loc:null});}catch(e){}toast('Added');mfgReload();};
+  el.querySelectorAll('[data-mal]').forEach(s=>s.onchange=async()=>{const{error}=await sb.from('mfg_users').update({level:s.value}).eq('user_id',s.dataset.mal);if(error)return toast(error.message,true);toast('Access updated');mfgReload();});
+  el.querySelectorAll('[data-mar]').forEach(b=>b.onclick=()=>stackConfirm('Remove access?',by(b.dataset.mar).full_name||'',`<div>They will no longer see Manufacturing.</div>`,{okLabel:'Remove',danger:true,onOk:async()=>{const{error}=await sb.from('mfg_users').delete().eq('user_id',b.dataset.mar);if(error){toast(error.message,true);return false;}try{await sb.rpc('log_action',{p_action:'Manufacturing access removed from '+(by(b.dataset.mar).full_name||by(b.dataset.mar).email),p_loc:null});}catch(e){}closeOverlay();toast('Removed');mfgReload();}}));
+}
+
 /* ---------- Sales & Performance (Square, per centre) ---------- */
 /* centres picked for the report — several can be ticked; none ticked = all the centres you can see */
 let perfSel=[];try{perfSel=JSON.parse(localStorage.getItem('perf.sel')||'[]')||[];}catch(e){perfSel=[];}
