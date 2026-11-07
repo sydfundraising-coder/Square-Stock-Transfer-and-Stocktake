@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.06-1';
+const APP_VERSION='2026.11.07-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -3971,7 +3971,7 @@ function openShortReport(){
 function vTransfers(v){
   if(TR_DONE.includes(trFilter)){trTab='completed';trFilter='all';}else if(TR_CANC.includes(trFilter)){trTab='cancelled';trFilter='all';}
   v.innerHTML=`${trTabsHtml()}<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
-    ${trTab==='open'?`<select class="filter" id="f"><option value="all">All open</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="partially_received">Partly received</option></select>`:''}
+    ${trTab==='open'?`<select class="filter" id="f"><option value="all">All open</option><option value="draft">Draft (saved)</option><option value="requested">Requested</option><option value="approved">Approved</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="partially_received">Partly received</option><option value="__bo">Back orders</option></select>`:''}
     <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn" id="tr-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="tr-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="tr-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
   document.getElementById('tr-short').onclick=openShortReport;{const a=document.getElementById('tr-tpl'),b=document.getElementById('tr-upl'),c=document.getElementById('tr-uplf');if(a)a.onclick=tfTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';tfUploadMain(f);};}}{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
   v.querySelectorAll('[data-trtab]').forEach(b=>b.onclick=()=>{trTab=b.dataset.trtab;trFilter='all';vTransfers(v);});
@@ -3981,11 +3981,12 @@ function vTransfers(v){
 }
 function trList(){
   const q=trSearch.toLowerCase();let list=S.transfers.filter(canSee).filter(t=>trTabOf(t)===trTab);
-  if(trTab==='open'&&trFilter!=='all')list=list.filter(t=>t.status===trFilter);
+  if(trTab==='open'&&trFilter==='__bo')list=list.filter(t=>!!t.backorder_of);
+  else if(trTab==='open'&&trFilter!=='all')list=list.filter(t=>t.status===trFilter);
   if(trTab!=='open'){const ts=t=>String(t.received_at||t.cancelled_at||t.updated_at||t.dispatched_at||t.created_at||'');list=list.slice().sort((a,b)=>ts(b).localeCompare(ts(a)));}
   if(q)list=list.filter(t=>t.code.toLowerCase().includes(q)||loc(t.from_location).name.toLowerCase().includes(q)||loc(t.to_location).name.toLowerCase().includes(q));
   const el=document.getElementById('list');
-  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span></td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>${trTab==='completed'?'No completed transfers'+(q?' match':' yet')+'.':trTab==='cancelled'?'No cancelled transfers'+(q?' match':'')+'.':'No open transfers match.'}</div></div>`;
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Transfer</th><th>Route</th><th>Status</th><th class="num">Value</th><th class="num">Transit</th><th>By</th></tr></thead><tbody>${list.map(t=>`<tr class="clickable" data-tr="${t.id}"><td><span class="mono">${t.code}</span>${t.backorder_of?' <span class="tag" style="color:var(--warn)">Back order</span>':''}</td><td>${loc(t.from_location).code} ${svg(I.arrow,13)} ${loc(t.to_location).code}</td><td>${sPillT(t)}</td><td class="num tnum">${money(trValue(t))}</td><td class="num tnum" style="color:${trTransit(t)>0?'var(--transit)':'var(--faint)'}">${trTransit(t)>0?money(trTransit(t)):'—'}</td><td style="font-size:12.5px">${esc(pname(t.created_by))}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.transfer,38)}<div>${trTab==='completed'?'No completed transfers'+(q?' match':' yet')+'.':trTab==='cancelled'?'No cancelled transfers'+(q?' match':'')+'.':'No open transfers match.'}</div></div>`;
 }
 async function openTransfer(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
@@ -4024,7 +4025,10 @@ async function openTransfer(id){
     ${isReq?`<div class="banner info">${svg(I.info,17)}<div><b>${esc(loc(t.to_location).name)} snapshot.</b> <b>${esc(loc(t.to_location).code)} stock</b> = ${esc(loc(t.to_location).name)}'s stock on hand · <b>2-mo use</b> = ${esc(loc(t.to_location).code)}'s forecast usage for 2 months · <b>Extra/Short</b> = how much more (+extra) or less (−short) ${esc(loc(t.to_location).code)} is asking for versus that 2-month need after ${esc(loc(t.to_location).code)}'s stock on hand.</div></div>`:''}
     ${(()=>{const P=f=>qtyTot((t.lines||[]).map(l=>[item(l.item_id),l[f]]));const R=P('qty_requested'),D=P('qty_dispatched'),V=P('qty_received');return qtyStrip('Requested',R)+(D.pk?qtyStrip('Dispatched',D):'')+(V.pk?qtyStrip('Received',V):'');})()}
     <div class="tablewrap"><table style="min-width:0">${isReq?`<thead><tr><th>Item</th><th class="num">Req</th><th class="num">${esc(loc(t.to_location).code)} stock</th><th class="num">2-mo use</th><th class="num">Extra/Short</th></tr></thead><tbody>${approvalRows}</tbody>`:`<thead><tr><th>Item <span style="font-weight:400;color:var(--faint)">· boxes</span></th><th class="num">Req</th><th class="num">Pick</th><th class="num">Disp</th><th class="num">Recv</th><th class="num">Short</th></tr></thead><tbody>${rows}</tbody>`}</table></div>`;
-  slideover(t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,body,actions);
+  const boOf=t.backorder_of?S.transfers.find(x=>x.id===t.backorder_of):null,boKids=S.transfers.filter(x=>x.backorder_of===t.id);
+  const boHtml=(boOf||t.backorder_of?`<div class="banner warn">${svg(I.transfer,17)}<div><b>Back order</b> of <a data-tr="${t.backorder_of}" class="mono" style="cursor:pointer;text-decoration:underline">${esc(boOf?boOf.code:'an earlier transfer')}</a> — the items it couldn’t send at the time. Pick and send them when stock is available, or cancel it if no longer needed.</div></div>`:'')
+    +(boKids.length?`<div class="banner info">${svg(I.transfer,17)}<div><b>Sent short.</b> The rest is on back order ${boKids.map(k=>`<a data-tr="${k.id}" class="mono" style="cursor:pointer;text-decoration:underline">${esc(k.code)}</a> ${sPillT(k)}`).join(', ')}.</div></div>`:'');
+  slideover(t.code,loc(t.from_location).code+' → '+loc(t.to_location).code,boHtml+body,actions);
 }
 /* delete / edit a not-yet-dispatched transfer */
 function doDeleteTransfer(id){const t=S.transfers.find(x=>x.id===id);if(!window.confirm('Delete transfer '+(t?t.code:'')+'? This cannot be undone.'))return;callRpc('delete_transfer',{p_id:id},'Transfer deleted');}
@@ -4093,13 +4097,29 @@ function openPicking(id){
     if(isHub(t.from_location)){const miss=all.filter(l=>(+pkCounts[l.id]||0)>0&&!(pkFrom[l.id]||'').trim());if(miss.length)return toast('Central Warehouse: choose the pick-from area for every picked item ('+miss.length+' missing)',true);}
     const over=all.filter(l=>{const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;return q>0&&q>Math.max(0,+srcOH(t.from_location,l.item_id)||0);});   // lines sent as 0 are never checked (on-hand may be negative)
     if(over.length)return toast('Cannot dispatch — over available stock for: '+over.slice(0,3).map(l=>item(l.item_id).name).join(', ')+(over.length>3?'…':'')+'. Reduce those quantities.',true);
-    const boxesStr=window.prompt('Picking complete. Total boxes being set aside for freight (optional — leave blank if not counted):','');
-    if(boxesStr===null)return; // cancelled
-    await flushPicks(t);
-    const ok=await callRpc('complete_picking',{p_id:id},'Picked — stock set aside, waiting for freight',{location_id:t.from_location,item_ids:txItems(t)});
-    if(ok===undefined)return;
-    if(isHub(t.from_location)){for(const l of (t.lines||[])){const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;if(q>0){try{await sb.rpc('bin_pick_fifo',{p_loc:t.from_location,p_item:l.item_id,p_qty:q});}catch(e){console.error('bin_pick_fifo',e);}}}await loadBins();}
-    printPickingSlip(t,boxesStr.trim());
+    const doPick=async bo=>{
+      const boxesStr=window.prompt('Picking complete. Total boxes being set aside for freight (optional — leave blank if not counted):','');
+      if(boxesStr===null)return; // cancelled
+      await flushPicks(t);
+      let res=await sb.rpc('complete_picking',{p_id:id,p_backorder:bo});
+      if(res.error&&/schema cache|does not exist/i.test(res.error.message||''))res=await sb.rpc('complete_picking',{p_id:id});   // 106 not run yet
+      if(res.error)return toast(res.error.message||'Could not complete picking',true);
+      closeOverlay();
+      sb.functions.invoke('square-push',{body:{location_id:t.from_location,item_ids:txItems(t)}}).catch(e=>console.error('square-push',e));
+      const bc=res.data&&res.data.backorder_code;
+      toast(bc?`Picked — the rest is back-ordered on ${bc}`:'Picked — stock set aside, waiting for freight');
+      await refreshOps([t.from_location,t.to_location]);
+      if(isHub(t.from_location)){for(const l of (t.lines||[])){const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;if(q>0){try{await sb.rpc('bin_pick_fifo',{p_loc:t.from_location,p_item:l.item_id,p_qty:q});}catch(e){console.error('bin_pick_fifo',e);}}}await loadBins();}
+      printPickingSlip(t,boxesStr.trim());
+    };
+    // anything sent short (or not at all) → ask: back order the rest, or don't send it
+    const shortL=all.filter(l=>(pkTouched.has(l.id)?(+pkCounts[l.id]||0):0)<(+l.qty_requested||0));
+    if(!shortL.length)return doPick(true);
+    const B=(pk,it)=>ppc(it)?pk2boxWhole(pk,it)+' bx':pk+' pk';
+    stackConfirm('Part of this transfer can’t be sent',shortL.length+' item(s) short',`<div style="margin-bottom:8px">You’re sending less than ${esc(loc(t.to_location).name)} asked for:</div>
+      <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="min-width:0;font-size:13px"><thead><tr><th>Item</th><th class="num">Asked</th><th class="num">Sending</th><th class="num">Not sent</th></tr></thead><tbody>${shortL.map(l=>{const it=item(l.item_id),q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;return `<tr><td>${esc(it.name)}</td><td class="num tnum">${B(+l.qty_requested||0,it)}</td><td class="num tnum">${B(q,it)}</td><td class="num tnum" style="color:var(--crit);font-weight:700">${B((+l.qty_requested||0)-q,it)}</td></tr>`;}).join('')}</tbody></table></div>
+      <div class="field" style="margin-top:12px"><label>What happens to the rest?</label><select id="pk-bo"><option value="1">Keep it as a BACK ORDER — send it when stock arrives</option><option value="0">Don’t send the rest — close it off</option></select><div class="hint">A back order is a new transfer for just the missing items, already approved and waiting in your picking list.</div></div>`,
+      {okLabel:'Continue',onOk:()=>{const bo=(document.getElementById('pk-bo')||{}).value!=='0';setTimeout(()=>doPick(bo),0);}});
   };}
 }
 async function flushPicks(t){clearTimeout(pkSaveT);const picks=pkArray();if(picks.length){const{error}=await sb.rpc('save_picks',{p_id:t.id,p_picks:picks});if(error)toast('Save failed: '+error.message,true);}}
