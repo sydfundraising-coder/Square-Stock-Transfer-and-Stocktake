@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.08-1';
+const APP_VERSION='2026.11.08-2';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -2158,6 +2158,27 @@ function bbrRows(L){const out=[];const t=today();
   return out;}
 function bbrFiltered(L){const q=bbrQ.trim().toLowerCase();return bbrRows(L).filter(r=>(bbrF==='all'||r.st===bbrF)&&(!bbrCat||(r.it.category||'')===bbrCat)&&(!q||(r.it.name+' '+(r.it.sku||'')+' '+(r.it.barcode||'')+' '+r.ref).toLowerCase().includes(q)))
   .sort((a,b)=>(a.exp?0:1)-(b.exp?0:1)||String(a.exp||'').localeCompare(String(b.exp||''))||a.it.name.localeCompare(b.it.name));}
+/* a received PO whose best-before dates are missing: enter them again, line by line (or one date for all) */
+function bbrFromPO(L,done){
+  const pos=(S.orders||[]).filter(o=>o.status==='received'&&L.includes(o.location_id)&&(!scoped()||mine(o.location_id))).sort((a,b)=>String(b.received_at||b.updated_at||b.created_at||'').localeCompare(String(a.received_at||a.updated_at||a.created_at||''))).slice(0,80);
+  if(!pos.length)return toast('No received purchase orders for these centres',true);
+  modal('Re-enter best-before dates from a PO','Adds the dates to the stock that has none recorded',`<div class="field"><label>Purchase order</label><select id="bpo-o">${pos.map(o=>`<option value="${o.id}">${esc(o.code)} · ${esc(supplier(o.supplier_id).name)} · ${esc(loc(o.location_id).code||'')} · received ${fmtDate(o.received_at||o.updated_at)}</option>`).join('')}</select></div>
+    <div class="pl-bulk" style="margin-bottom:10px"><div><b>Whole delivery has one best-before?</b></div><input type="date" id="bpo-all" min="${today()}"><button type="button" class="btn sm primary" id="bpo-apply">Apply to all lines</button></div><div id="bpo-lines"></div>`,
+    `<button class="btn" data-close>Cancel</button><button class="btn primary" id="bpo-go">${svg(I.check,16)} Save dates</button>`,'full form');
+  const $=id=>document.getElementById(id);
+  const draw=()=>{const o=pos.find(x=>x.id===$('bpo-o').value);
+    $('bpo-lines').innerHTML=`<div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">On this PO</th><th class="num">No date now</th><th>Best before</th><th class="num">Packets</th></tr></thead><tbody>${(o.lines||[]).map(l=>{const it=item(l.item_id),c=batchComp(o.location_id,l.item_id),und=Math.round(c.untracked),q=Math.min(und,+l.qty||0);
+      return `<tr data-bpo="${l.item_id}"><td><b>${esc(it.name)}</b><div style="font-size:11px;color:var(--faint)">${esc(it.sku||'')}${c.batches.length?' · dates held: '+c.batches.map(b=>fmtDate(b.expiry)).join(', '):''}</div></td><td class="num tnum">${ppc(it)?pk2boxWhole(+l.qty||0,it)+' bx':(+l.qty||0)+' pk'}</td><td class="num tnum" style="color:${und>0?'var(--crit)':'var(--faint)'}">${und>0?(ppc(it)?boxDec(und,it)+' bx':und+' pk'):'—'}</td><td><input type="date" data-bpod min="${today()}" ${und>0?'':'disabled'} style="padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink)"></td><td class="num"><input type="number" data-bpoq min="0" max="${und}" value="${q}" ${und>0?'':'disabled'} style="width:90px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></td></tr>`;}).join('')}</tbody></table></div><div class="hint" style="margin-top:6px">Only stock with <b>no date</b> can get one here — lines already dated are left as they are.</div>`;};
+  $('bpo-o').onchange=draw;draw();
+  $('bpo-apply').onclick=()=>{const d=$('bpo-all').value;if(!d)return toast('Choose the date first',true);document.querySelectorAll('[data-bpod]:not([disabled])').forEach(i=>i.value=d);};
+  $('bpo-go').onclick=async e=>{const o=pos.find(x=>x.id===$('bpo-o').value);const rows=[...document.querySelectorAll('[data-bpo]')].map(tr=>({item:tr.dataset.bpo,exp:tr.querySelector('[data-bpod]').value,qty:Math.round(+tr.querySelector('[data-bpoq]').value||0)})).filter(r=>r.exp&&r.qty>0);
+    if(!rows.length)return toast('Enter at least one best-before date',true);
+    e.target.disabled=true;const fails=[];
+    for(const r of rows){const{error}=await sb.rpc('batch_add',{p_loc:o.location_id,p_item:r.item,p_qty:r.qty,p_expiry:r.exp,p_source:'po',p_ref:o.code});if(error)fails.push({...r,msg:error.message});}
+    e.target.disabled=false;await loadBatches();
+    if(fails.length){bbFailReport(o.location_id,o.code,'po',fails);return;}
+    closeOverlay();toast(`Best-before saved for ${rows.length} item(s) on ${o.code}`);if(done)done();};
+}
 function vBbRegister(box){
   const L=expLocs(),all=bbrRows(L),multi=L.length>1;
   const n=k=>all.filter(r=>k==='all'||r.st===k).length;
@@ -2168,7 +2189,7 @@ function vBbRegister(box){
   const srcTxt=r=>{const m=String(r.ref||'');if(!m)return r.exp?'':'';return `<span class="mono" style="font-size:11.5px">${esc(m)}</span>`;};
   box.innerHTML=`<div class="toolbar" style="margin-bottom:10px"><div class="search">${svg(I.search,16)}<input id="bbr-q" placeholder="Search item, code, barcode or PO / transfer no…" value="${esc(bbrQ)}"></div>
       <select class="filter" id="bbr-cat"><option value="">All categories</option>${cats.map(c=>`<option${c===bbrCat?' selected':''}>${esc(c)}</option>`).join('')}</select><div class="spacer"></div>
-      <button class="btn" id="bbr-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="bbr-xls">${svg(I.receipt,15)} Excel</button></div>
+      <button class="btn" id="bbr-po">${svg(I.order,15)} Re-enter dates from a PO</button><button class="btn" id="bbr-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="bbr-xls">${svg(I.receipt,15)} Excel</button></div>
     <div class="mf-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${[['all','All'],['expired','Past best-before'],['d30','≤ 30 days'],['d90','31–90 days'],['later','90+ days'],['none','No date recorded']].map(([k,l])=>`<button class="btn sm${bbrF===k?' primary':''}" data-bbrf="${k}">${l} <span style="opacity:.7">${n(k)}</span></button>`).join('')}</div>
     ${n('none')?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,16)}<div><b>${n('none')}</b> line(s) have stock with <b>no best-before recorded</b>. Use <b>Add date</b> on those lines to record it now (check the packs). New deliveries record it automatically when received.</div></div>`:''}
     ${rows.length?`<div class="tablewrap"><table><thead><tr><th>Item</th>${multi?'<th>Centre</th>':''}<th>Best before</th><th>Days left</th><th class="num">Qty</th><th>Came in on</th><th></th></tr></thead><tbody>${rows.slice(0,lim).map(r=>`<tr><td><b><span class="icode">${esc(r.it.sku||'')}</span>${esc(r.it.name)}</b>${r.it.category?`<div style="font-size:11px;color:var(--faint)">${esc(r.it.category)}</div>`:''}</td>${multi?`<td>${esc(loc(r.lc).code||loc(r.lc).name)}</td>`:''}<td>${r.exp?fmtDate(r.exp):'—'}</td><td>${chip(r)}</td><td class="num tnum">${qtyTxt(r)}</td><td>${srcTxt(r)}${r.rc?`<div style="font-size:11px;color:var(--faint)">${fmtDate(r.rc)}</div>`:''}</td><td style="text-align:right">${r.st==='none'&&(!scoped()||mine(r.lc))?`<button class="btn sm primary" data-bbadd="${r.lc}|${r.id}|${Math.round(r.qty)}">Add date</button>`:''}</td></tr>`).join('')}</tbody></table></div>${rows.length>lim?`<div class="hint" style="margin-top:6px">Showing the first ${lim} of ${rows.length} — search or filter to narrow it, or export everything.</div>`:''}`:`<div class="card empty">${svg(I.search,30)}<div>Nothing matches.</div></div>`}`;
@@ -2178,6 +2199,7 @@ function vBbRegister(box){
   const exp=fmt=>{const H=['Item','SKU','Category','Centre','Best before','Days left','Qty (packets)','Qty (boxes)','Came in on','Received'];
     const R=bbrFiltered(L).map(r=>[r.it.name,r.it.sku||'',r.it.category||'',loc(r.lc).name,r.exp||'NO DATE',r.dl??'',Math.round(r.qty),ppc(r.it)?+(r.qty/ppc(r.it)).toFixed(2):'',r.ref||'',r.rc?String(r.rc).slice(0,10):'']);
     const nm='best-before-register_'+today();if(fmt==='xlsx'&&window.XLSX){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([H,...R]),'Best-before');XLSX.writeFile(wb,nm+'.xlsx');}else downloadCSV(nm+'.csv',H,R);};
+  document.getElementById('bbr-po').onclick=()=>bbrFromPO(L,()=>vBbRegister(box));
   document.getElementById('bbr-csv').onclick=()=>exp('csv');document.getElementById('bbr-xls').onclick=()=>exp('xlsx');
   box.querySelectorAll('[data-bbadd]').forEach(b=>b.onclick=()=>{const[lc,id,q]=b.dataset.bbadd.split('|');const it=item(id);
     stackConfirm('Add best-before',it.name+' · '+loc(lc).name,`<div style="margin-bottom:8px">${Math.round(+q)} packet(s)${ppc(it)?' ('+boxDec(+q,it)+' boxes)':''} have no best-before recorded. Check the packs and enter the date. If they have different dates, add one date at a time with its quantity.</div><div class="grid2"><div class="field"><label>Best before</label><input type="date" id="bba-d" min="${today()}"></div><div class="field"><label>Packets with this date</label><input type="number" id="bba-q" min="1" max="${q}" step="1" value="${q}"></div></div>`,
@@ -4484,12 +4506,12 @@ function openReceive(id){
     const finish=async()=>{
       await rasStop();
       const recv=(t.lines||[]).map(l=>({line:l.id,qty:box2pk(plCollect(l.id,hubR).qty,item(l.item_id))}));
-      await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});notifyTransfer(id,'received');
+      const okR=await callRpc('receive_transfer',{p_id:id,p_recv:recv,p_note:note.trim()||null},'Receipt confirmed',{location_id:t.to_location,item_ids:txItems(t)});if(okR===undefined)return;notifyTransfer(id,'received');
       const locPrimary=[],binRows=[],batchOps=[];
       for(const l of (t.lines||[])){const it=item(l.item_id);const c=plCollect(l.id,hubR);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{const pk=box2pk(+r.qty||0,it);binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:pk});batchOps.push({item:l.item_id,qty:pk,exp:r.exp});});}
-      if(locPrimary.length)await setItemLocations(t.to_location,locPrimary);
-      await binReceiveLines(t.to_location,binRows);
       {const bbFail=[];for(const b of batchOps){if((+b.qty||0)<=0)continue;let er=null;try{({error:er}=await sb.rpc('batch_add',{p_loc:t.to_location,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'transfer',p_ref:t.code}));}catch(e){er=e;}if(er){console.error('batch_add',er);bbFail.push({item:b.item,qty:b.qty,exp:b.exp,msg:er.message||String(er)});}}if(bbFail.length)bbFailReport(t.to_location,t.code,'transfer',bbFail);}
+      try{if(locPrimary.length)await setItemLocations(t.to_location,locPrimary);
+      await binReceiveLines(t.to_location,binRows);}catch(e){console.error('locations / bins',e);}
       await plDeleteDraft('transfer',id);await loadBatches();};
     const disc=plDiscrepancies((t.lines||[]).map(l=>({key:l.id,name:item(l.item_id).name,expected:pk2boxWhole(l.qty_dispatched-l.qty_received,item(l.item_id))})));
     if(disc.length)stackConfirm('Receiving doesn’t match what was sent',t.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
@@ -6089,7 +6111,7 @@ async function submitReceipt(){
   let rcode=null;try{const{data:rc}=await sb.from('receipts').select('code').eq('id',rid).maybeSingle();rcode=rc&&rc.code;}catch(e){}
   if(area||aisle)await setItemLocations(lc,lines.map(l=>({item:l.item,area,aisle})));
   await binReceiveLines(lc,lines.map(l=>({item:l.item,area,aisle,qty:l.qty})));
-  for(const l of lines){const rowsX=(l.batches&&l.batches.length)?l.batches:[{qty:l.qty,exp:l.exp}];for(const r of rowsX){try{await sb.rpc('batch_add',{p_loc:lc,p_item:l.item,p_qty:r.qty,p_expiry:r.exp,p_source:'supplier',p_ref:rcode||sup});}catch(e){console.error('batch_add',e);}}}
+  {const bbFail=[];for(const l of lines){const rowsX=(l.batches&&l.batches.length)?l.batches:[{qty:l.qty,exp:l.exp}];for(const r of rowsX){if(!r.exp||!(+r.qty>0))continue;let er=null;try{({error:er}=await sb.rpc('batch_add',{p_loc:lc,p_item:l.item,p_qty:r.qty,p_expiry:r.exp,p_source:'supplier',p_ref:rcode||sup}));}catch(e){er=e;}if(er){console.error('batch_add',er);bbFail.push({item:l.item,qty:r.qty,exp:r.exp,msg:er.message||String(er)});}}}if(bbFail.length)bbFailReport(lc,rcode||sup,'supplier',bbFail);}
   await loadBatches();
 }
 /* Catalog */
@@ -9709,12 +9731,12 @@ function doReceiveOrder(id){const o=S.orders.find(x=>x.id===id);if(!o)return;
     const finish=async()=>{
       await rasStop();
       const recv=(o.lines||[]).map(l=>{const ce=document.querySelector('[data-rcost="'+l.item_id+'"]');const cost=ce&&ce.value.trim()!==''?Math.max(0,+ce.value):+l.unit_cost||0;return {item:l.item_id,qty:box2pk(plCollect(l.item_id,hub).qty,item(l.item_id)),cost};});
-      await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});
+      const okR=await callRpc('receive_order',{p_id:id,p_note:note.trim()||null,p_recv:recv},'Order received',{location_id:o.location_id,item_ids:(o.lines||[]).map(l=>l.item_id)});if(okR===undefined)return;
       const locPrimary=[],binRows=[],batchOps=[];
       for(const l of (o.lines||[])){const it=item(l.item_id);const c=plCollect(l.item_id,hub);if(!c.rows.length)continue;const prim=c.rows.slice().sort((a,b)=>(+b.qty||0)-(+a.qty||0))[0];if(prim&&(prim.area||prim.aisle))locPrimary.push({item:l.item_id,area:prim.area||'',aisle:prim.aisle||''});c.rows.forEach(r=>{const pk=box2pk(+r.qty||0,it);binRows.push({item:l.item_id,area:r.area||'',aisle:r.aisle||'',qty:pk});batchOps.push({item:l.item_id,qty:pk,exp:r.exp});});}
-      if(locPrimary.length)await setItemLocations(o.location_id,locPrimary);
-      await binReceiveLines(o.location_id,binRows);
       {const bbFail=[];for(const b of batchOps){if((+b.qty||0)<=0)continue;let er=null;try{({error:er}=await sb.rpc('batch_add',{p_loc:o.location_id,p_item:b.item,p_qty:+b.qty||0,p_expiry:b.exp,p_source:'po',p_ref:o.code}));}catch(e){er=e;}if(er){console.error('batch_add',er);bbFail.push({item:b.item,qty:b.qty,exp:b.exp,msg:er.message||String(er)});}}if(bbFail.length)bbFailReport(o.location_id,o.code,'po',bbFail);}
+      try{if(locPrimary.length)await setItemLocations(o.location_id,locPrimary);
+      await binReceiveLines(o.location_id,binRows);}catch(e){console.error('locations / bins',e);}
       await plDeleteDraft('order',id);await loadBatches();};
     const disc=plDiscrepancies((o.lines||[]).map(l=>({key:l.item_id,name:item(l.item_id).name,expected:pk2boxWhole(+l.qty||0,item(l.item_id))})));
     if(disc.length)stackConfirm('Receiving doesn’t match the order',o.code,discrepancyHtml(disc),{okLabel:'Confirm anyway',cancelLabel:'Go back',danger:true,onOk:finish});
