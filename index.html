@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.09-2';
+const APP_VERSION='2026.11.13-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -4170,7 +4170,7 @@ function printPickList(t){
 /* picking (shared, scan-to-pick) */
 let pkCounts={}, pkId=null, pkSaveT=null, pkDirty=new Set(), pkFrom={}, pkAisle={}, pkTouched=new Set(), pkSrc={loc:null,onhand:{}}, pkExp={};
 const srcOH=(loc,id)=>(pkSrc.loc===loc&&pkSrc.onhand[id]!=null)?pkSrc.onhand[id]:onHand(loc,id);
-function pkArray(){return [...pkDirty].map(k=>({line:k,qty:Math.max(0,+pkCounts[k]||0),exp:pkExp[k]||''}));}
+function pkArray(){return [...pkDirty].map(k=>{const o={line:k,qty:Math.max(0,+pkCounts[k]||0),exp:pkExp[k]||''};if((pkSplit[k]||[]).length)o.splits=pkSplitsPk(k);else o.splits=[];return o;});}
 /* Build the best-before <select> for a pick line from the source centre's dated batches. */
 function pkExpSelect(t,l){const it=item(l.item_id);const comp=batchComp(t.from_location,l.item_id);const cur=pkExp[l.id]||'';const opts=(comp.batches||[]).map(b=>{const bx=ppc(it)?pk2boxWhole(b.qty,it)+' bx':Math.round(b.qty)+' pk';return `<option value="${b.expiry}"${b.expiry===cur?' selected':''}>${fmtDate(b.expiry)} · ${bx}</option>`;}).join('');
   const known=(comp.batches||[]).some(b=>b.expiry===cur);const manual=cur&&!known;
@@ -4183,7 +4183,7 @@ function pkWarnInner(t,l){const it=item(l.item_id);const pickPk=Math.max(0,+pkCo
   return msgs.length?`<div style="margin-top:3px;font-size:11.5px;color:var(--crit);font-weight:700">${svg(I.alert,13)} ${msgs.join(' · ')}</div>`:'';}
 function openPicking(id){
   const t=S.transfers.find(x=>x.id===id);if(!t)return;
-  pkId=id; pkCounts={}; pkDirty=new Set(); pkFrom={};pkAisle={};pkOther=new Set(); pkTouched=new Set(); pkSrc={loc:null,onhand:{}}; pkExp={}; (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);if((l.qty_picked||0)>0)pkTouched.add(l.id);pkFrom[l.id]=areaOf(t.from_location,l.item_id);pkAisle[l.id]=aisleOf(t.from_location,l.item_id);pkExp[l.id]=l.pick_expiry||'';});
+  pkId=id; pkCounts={}; pkDirty=new Set(); pkFrom={};pkAisle={};pkOther=new Set();pkSplit={};pkLineItem={}; pkTouched=new Set(); pkSrc={loc:null,onhand:{}}; pkExp={}; (t.lines||[]).forEach(l=>{pkCounts[l.id]=(l.qty_picked||0);if((l.qty_picked||0)>0)pkTouched.add(l.id);pkFrom[l.id]=areaOf(t.from_location,l.item_id);pkAisle[l.id]=aisleOf(t.from_location,l.item_id);pkExp[l.id]=l.pick_expiry||'';pkLineItem[l.id]=l.item_id;if(Array.isArray(l.pick_splits)&&l.pick_splits.length>1){const it0=item(l.item_id);pkFrom[l.id]=l.pick_splits[0].area||'';pkAisle[l.id]=l.pick_splits[0].aisle||'';pkSplit[l.id]=l.pick_splits.slice(1).map(r=>({k:(r.area||'')+'||'+(r.aisle||''),qty:ppc(it0)?pk2boxWhole(+r.qty||0,it0):(+r.qty||0)}));}});
   sb.rpc('centre_stock',{p_loc:t.from_location}).then(({data})=>{pkSrc={loc:t.from_location,onhand:{}};(data||[]).forEach(r=>{pkSrc.onhand[r.item_id]=r.on_hand;});renderPkList(t);}).catch(()=>{});
   const camOk=('BarcodeDetector' in window);
   const head=`<div class="banner info">${svg(I.box,17)}<div><b>Picking for ${esc(loc(t.to_location).name)}.</b> Enter the number of <b>boxes</b> you're sending — <b>0 if not sending</b>. Enter what you’re sending now — leave a line <b>blank</b> to not send it this time — then <b>Complete picking</b>; anything not sent can go on a <b>back order</b>. Dispatch comes later, when the freight company collects it.</div></div>
@@ -4201,13 +4201,19 @@ function openPicking(id){
   const d=document.getElementById('pk-disp');if(d){refreshDispBtn(t);d.onclick=async()=>{
     const all=(t.lines||[]);const un=all.filter(l=>!pkTouched.has(l.id));
     const notPicked=new Set(un.map(l=>l.id));un.forEach(l=>{pkCounts[l.id]=0;pkTouched.add(l.id);pkDirty.add(l.id);});   // blank = not sending now
+    {const bad=all.filter(l=>pkExtraPk(l.id)>(+pkCounts[l.id]||0));if(bad.length){if(typeof notPicked!=='undefined')notPicked.forEach(k=>{pkTouched.delete(k);pkCounts[k]=0;});return toast(item(bad[0].item_id).name+': more boxes on the other locations than the Pick total — fix the split',true);}}
     if(isHub(t.from_location)){const miss=all.filter(l=>(+pkCounts[l.id]||0)>0&&!(pkFrom[l.id]||'').trim());if(miss.length)return toast('Central Warehouse: choose the pick-from area for every picked item ('+miss.length+' missing)',true);}
     const over=all.filter(l=>{const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;return q>0&&q>Math.max(0,+srcOH(t.from_location,l.item_id)||0);});   // lines sent as 0 are never checked (on-hand may be negative)
     if(over.length)return toast('Cannot dispatch — over available stock for: '+over.slice(0,3).map(l=>item(l.item_id).name).join(', ')+(over.length>3?'…':'')+'. Reduce those quantities.',true);
     const undoBlank=()=>{if(typeof notPicked!=='undefined'){notPicked.forEach(k=>{pkTouched.delete(k);pkCounts[k]=0;});updatePkProg(t);renderPkList(t);}};
-    const doPick=async bo=>{
-      const boxesStr=window.prompt('Picking complete. Total boxes being set aside for freight (optional — leave blank if not counted):','');
-      if(boxesStr===null){undoBlank();return;} // cancelled
+    const doPick=bo=>{
+      const tot=all.reduce((a,l)=>{const it=item(l.item_id),q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;return a+(ppc(it)?pk2boxWhole(q,it):q);},0);
+      stackConfirm('Complete picking',t.code+' → '+(loc(t.to_location).name||''),`<div class="field"><label>Boxes / cartons going out</label><input type="number" id="pk-boxes" min="0" value="${tot||''}" placeholder="optional"><div class="hint">Printed on the picking slip. Leave blank if not counted.</div></div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13.5px;padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer"><input type="checkbox" id="pk-sendnow" style="margin-top:3px"><span><b>It’s leaving now — mark as dispatched</b><br><span style="color:var(--muted);font-size:12.5px">Skips the separate Dispatch step (use when the van / freight is taking it today). Leave unticked to set it aside until the freight collects it.</span></span></label>`,
+        {okLabel:'Complete picking',cancelLabel:'Go back',onOk:()=>{const bx=(document.getElementById('pk-boxes')||{}).value||'',now=!!(document.getElementById('pk-sendnow')||{}).checked;setTimeout(()=>finishPick(bo,bx,now),0);}});
+      setTimeout(()=>{const c=[...document.querySelectorAll('#sc-cancel')].pop();if(c){const o=c.onclick;c.onclick=e=>{undoBlank();if(o)o(e);};}},0);
+    };
+    const finishPick=async(bo,boxesStr,sendNow)=>{
       await flushPicks(t);
       let res=await sb.rpc('complete_picking',{p_id:id,p_backorder:bo});
       if(res.error&&/schema cache|does not exist/i.test(res.error.message||''))res=await sb.rpc('complete_picking',{p_id:id});   // 106 not run yet
@@ -4215,10 +4221,14 @@ function openPicking(id){
       closeOverlay();
       sb.functions.invoke('square-push',{body:{location_id:t.from_location,item_ids:txItems(t)}}).catch(e=>console.error('square-push',e));
       const bc=res.data&&res.data.backorder_code;
-      toast(bc?`Picked — the rest is back-ordered on ${bc}`:'Picked — stock set aside, waiting for freight');
+      let sent=false;if(sendNow){const{error:de}=await sb.rpc('dispatch_transfer',{p_id:id});if(de)toast('Picked, but not marked dispatched: '+de.message,true);else sent=true;}
+      toast((sent?'Picked and dispatched — now in transit':'Picked — stock set aside, waiting for freight')+(bc?` · the rest is back-ordered on ${bc}`:''));
       await refreshOps([t.from_location,t.to_location]);
-      if(isHub(t.from_location)){for(const l of (t.lines||[])){const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;if(q>0){try{await sb.rpc('bin_pick_fifo',{p_loc:t.from_location,p_item:l.item_id,p_qty:q});}catch(e){console.error('bin_pick_fifo',e);}}}await loadBins();}
-      printPickingSlip(t,boxesStr.trim());
+      if(isHub(t.from_location)){for(const l of (t.lines||[])){const q=pkTouched.has(l.id)?(+pkCounts[l.id]||0):0;if(q<=0)continue;
+          const sp=pkSplitsPk(l.id);let done=false;
+          if(sp.length&&sp.some(r=>r.area||r.aisle)){done=true;for(const r of sp){const{error}=await sb.rpc('bin_pick_from',{p_loc:t.from_location,p_item:l.item_id,p_area:r.area,p_aisle:r.aisle,p_qty:r.qty});if(error){done=false;console.error('bin_pick_from',error);break;}}}
+          if(!done){try{await sb.rpc('bin_pick_fifo',{p_loc:t.from_location,p_item:l.item_id,p_qty:q});}catch(e){console.error('bin_pick_fifo',e);}}}await loadBins();}
+      printPickingSlip(t,String(boxesStr||'').trim());
     };
     // anything sent short (or not at all) → ask: back order the rest, or don't send it
     const shortL=all.filter(l=>(pkTouched.has(l.id)?(+pkCounts[l.id]||0):0)<(+l.qty_requested||0));
@@ -4264,7 +4274,20 @@ function printPickingSlip(t,boxes){
   </body></html>`);
   w.document.close();setTimeout(()=>{try{w.print();}catch(e){}},400);
 }
-let pkOther=new Set();
+let pkOther=new Set(),pkSplit={},pkLineItem={};
+/* storage locations (warehouse bins) holding this item at the sending centre, oldest first */
+function pkLocMap(t,l){const m=new Map();binsFor(t.from_location,l.item_id).filter(b=>(+b.qty||0)>0).forEach(b=>{const k=(b.area||'')+'||'+(b.aisle||'');const o=m.get(k)||{area:b.area||'',aisle:b.aisle||'',qty:0};o.qty+=(+b.qty||0);m.set(k,o);});
+  if(!m.size){const da=areaOf(t.from_location,l.item_id)||'',di=aisleOf(t.from_location,l.item_id)||'';if(da||di)m.set(da+'||'+di,{area:da,aisle:di,qty:null});}return m;}
+const pkExtraPk=k=>(pkSplit[k]||[]).reduce((a,r)=>a+box2pk(+r.qty||0,item(pkLineItem[k])),0);
+/* the full split for a line, in packets: first location gets what the extra rows don't */
+function pkSplitsPk(k){const tot=Math.max(0,+pkCounts[k]||0);const it=item(pkLineItem[k]);const ex=(pkSplit[k]||[]).filter(r=>(+r.qty||0)>0&&r.k).map(r=>{const[a,ai]=r.k.split('||');return {area:a||'',aisle:ai||'',qty:box2pk(+r.qty||0,it)};});
+  const first=tot-ex.reduce((a,r)=>a+r.qty,0);return [{area:pkFrom[k]||'',aisle:pkAisle[k]||'',qty:Math.max(0,first)}].concat(ex).filter(r=>r.qty>0);}
+function pkSplitHtml(t,l){const m=pkLocMap(t,l);const rows=pkSplit[l.id]||[];const it=item(l.item_id);if(m.size<2&&!rows.length)return '';
+  const st='padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--ink);font-size:12px';
+  const opts=cur=>[...m.entries()].map(([k,o])=>`<option value="${esc(k)}"${k===cur?' selected':''}>${esc(o.area||'—')}${o.aisle?' · aisle '+esc(o.aisle):''}${o.qty!=null?' — '+(ppc(it)?boxDec(o.qty,it)+' bx':o.qty+' pk'):''}</option>`).join('');
+  const firstBx=ppc(it)?pk2boxWhole(Math.max(0,(+pkCounts[l.id]||0)-pkExtraPk(l.id)),it):Math.max(0,(+pkCounts[l.id]||0)-pkExtraPk(l.id));const over=pkExtraPk(l.id)>(+pkCounts[l.id]||0);
+  return rows.map((r,i)=>`<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:3px"><span class="cap" style="flex:none">+ also from</span><select data-pksl="${l.id}|${i}" style="${st};flex:1">${opts(r.k)}</select><input type="number" min="0" step="1" data-pksq="${l.id}|${i}" value="${esc(r.qty)}" placeholder="bx" style="${st};width:70px;text-align:right"><span style="font-size:11px;color:var(--faint)">bx</span><button type="button" class="rm" data-pksx="${l.id}|${i}" title="Remove">${svg(I.x,14)}</button></div>`).join('')
+    +`<div style="grid-column:1 / -1;display:flex;align-items:center;gap:8px;margin-top:3px;font-size:11.5px">${m.size>1?`<button type="button" class="btn sm" data-pksa="${l.id}" style="padding:2px 8px">+ Pick some from another location</button>`:''}${rows.length?`<span style="color:${over?'var(--crit)':'var(--muted)'}">${over?'More allocated to the other locations than the Pick total':`First location: <b>${firstBx}</b> bx`}</span>`:''}</div>`;}
 function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=(t.lines||[]).slice();const kk=s=>(s||'~~~~').toLowerCase();lines.sort((a,b)=>{const aa=kk(areaOf(t.from_location,a.item_id)),ba=kk(areaOf(t.from_location,b.item_id));if(aa!==ba)return aa<ba?-1:1;const ai=kk(aisleOf(t.from_location,a.item_id)),bi=kk(aisleOf(t.from_location,b.item_id));if(ai!==bi)return ai<bi?-1:1;return item(a.item_id).name.localeCompare(item(b.item_id).name);});if(q)lines=lines.filter(l=>{const it=item(l.item_id);return it.name.toLowerCase().includes(q)||String(it.sku||'').toLowerCase().includes(q)||String(it.barcode||'').toLowerCase().includes(q);});if(!lines.length)return `<div class="empty" style="padding:24px">${svg(I.search,30)}<div>No items match.</div></div>`;const hubP=isHub(t.from_location);const inpStyle='flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--muted);font-size:12px';
   const areaOpts=(hubP?storeAreasAt(t.from_location):areasAt(t.from_location));const aisleOpts=aislesAt(t.from_location);
   const areaCtl=l=>hubP?`<select data-pkfrom="${l.id}" style="${inpStyle}"><option value="">— area —</option>${areaOpts.map(a=>`<option value="${esc(a)}"${a===(pkFrom[l.id]||'')?' selected':''}>${esc(a)}</option>`).join('')}</select>`:`<input list="pk-areas" data-pkfrom="${l.id}" value="${esc(pkFrom[l.id]||'')}" placeholder="area" style="${inpStyle}">`;
@@ -4277,7 +4300,7 @@ function renderPkRows(t,filter){const q=(filter||'').toLowerCase();let lines=(t.
     const cur=(pkFrom[l.id]||'')+'||'+(pkAisle[l.id]||'');const sel=m.has(cur)?cur:[...m.keys()][0];
     if(sel!==cur){const o=m.get(sel);pkFrom[l.id]=o.area;pkAisle[l.id]=o.aisle;}
     return `<select data-pkloc="${l.id}" style="${inpStyle};color:var(--ink)">${[...m.entries()].map(([k,o])=>`<option value="${esc(k)}"${k===sel?' selected':''}>${esc(o.area||'—')}${o.aisle?' · aisle '+esc(o.aisle):''}${o.qty!=null?' — '+(ppc(it)?boxDec(o.qty,it)+' bx':o.qty+' pk'):''}</option>`).join('')}<option value="__other">Somewhere else…</option></select>`;};
-  return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];const av=srcOH(t.from_location,l.item_id);const pc=ppc(it);return `<div class="recv-row${pkTouched.has(l.id)?' done':''}" style="grid-template-columns:1fr 54px 92px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>${tlShortTag(l,t,it)}<div class="mono" style="font-size:11px;color:var(--faint)"><span style="color:${av>0?'var(--good)':'var(--crit)'};font-weight:700">avail ${pc?boxDec(av,it)+' bx':av}</span>${pc?` <span style="color:var(--faint)">(${av} pk)</span>`:''}</div></div><div><div class="cap">Req (bx)</div><div class="tnum" style="font-weight:600">${pc?pk2boxWhole(l.qty_requested,it):l.qty_requested}${pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${l.qty_requested} pk</div>`:''}</div></div><div><div class="cap">Pick (bx)</div><input type="number" min="0" step="1" inputmode="numeric" value="${pkTouched.has(l.id)?(c==null?'':pk2boxWhole(c,it)):''}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div>${expirySeqHtml(t.from_location,l.item_id)?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Use by (send earliest first)</span>${expirySeqHtml(t.from_location,l.item_id)}</div>`:''}${hubP&&binsFor(t.from_location,l.item_id).length?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Aisle (oldest received)</span>${binSeqHtml(t.from_location,l.item_id)}</div>`:''}<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before (sending)</span>${pkExpSelect(t,l)}</div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span>${pickFromCtl(l)}</div><div data-pkwarn="${l.id}" style="grid-column:1 / -1">${pkWarnInner(t,l)}</div></div>`;}).join('')+`<datalist id="pk-areas">${areaOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="pk-aisles">${aisleOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;}
+  return lines.map(l=>{const it=item(l.item_id);const c=pkCounts[l.id];const av=srcOH(t.from_location,l.item_id);const pc=ppc(it);return `<div class="recv-row${pkTouched.has(l.id)?' done':''}" style="grid-template-columns:1fr 54px 92px"><div><div style="font-weight:600;font-size:13px"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>${tlShortTag(l,t,it)}<div class="mono" style="font-size:11px;color:var(--faint)"><span style="color:${av>0?'var(--good)':'var(--crit)'};font-weight:700">avail ${pc?boxDec(av,it)+' bx':av}</span>${pc?` <span style="color:var(--faint)">(${av} pk)</span>`:''}</div></div><div><div class="cap">Req (bx)</div><div class="tnum" style="font-weight:600">${pc?pk2boxWhole(l.qty_requested,it):l.qty_requested}${pc?`<div style="font-size:9px;color:var(--faint);font-weight:400">${l.qty_requested} pk</div>`:''}</div></div><div><div class="cap">Pick (bx)</div><input type="number" min="0" step="1" inputmode="numeric" value="${pkTouched.has(l.id)?(c==null?'':pk2boxWhole(c,it)):''}" data-pk="${l.id}" style="width:100%;padding:7px 8px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--ink);text-align:right"></div>${expirySeqHtml(t.from_location,l.item_id)?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Use by (send earliest first)</span>${expirySeqHtml(t.from_location,l.item_id)}</div>`:''}${hubP&&binsFor(t.from_location,l.item_id).length?`<div style="grid-column:1 / -1;margin-top:3px;font-size:11px;line-height:1.7"><span class="cap" style="margin-right:4px">Aisle (oldest received)</span>${binSeqHtml(t.from_location,l.item_id)}</div>`:''}<div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap"><span class="cap" style="flex:none">Best before (sending)</span>${pkExpSelect(t,l)}</div><div style="grid-column:1 / -1;display:flex;align-items:center;gap:6px;margin-top:2px"><span class="cap" style="flex:none">Pick from</span>${pickFromCtl(l)}</div>${pkSplitHtml(t,l)}<div data-pkwarn="${l.id}" style="grid-column:1 / -1">${pkWarnInner(t,l)}</div></div>`;}).join('')+`<datalist id="pk-areas">${areaOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist><datalist id="pk-aisles">${aisleOpts.map(a=>`<option value="${esc(a)}"></option>`).join('')}</datalist>`;}
 function renderPkList(t){const el=document.getElementById('pkList');if(!el)return;const f=(document.getElementById('pk-scan')||{}).value||'';el.innerHTML=renderPkRows(t,f);bindPkInputs(t);updatePkProg(t);}
 function pkWarnRefresh(t,k){const l=(t.lines||[]).find(x=>x.id===k);const box=document.querySelector(`#pkList [data-pkwarn="${k}"]`);if(l&&box)box.innerHTML=pkWarnInner(t,l);}
 function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(inp=>{inp.oninput=e=>{const k=e.target.dataset.pk;const l=(t.lines||[]).find(x=>x.id===k);const it=l?item(l.item_id):null;if(e.target.value===''){pkCounts[k]=0;pkTouched.delete(k);}else{pkCounts[k]=box2pk(Math.max(0,Math.floor(+e.target.value||0)),it);pkTouched.add(k);}pkDirty.add(k);{const row=e.target.closest('.recv-row');if(row)row.classList.toggle('done',pkTouched.has(k));}updatePkProg(t);pkWarnRefresh(t,k);};inp.onchange=()=>savePicks(t,false);});
@@ -4287,7 +4310,11 @@ function bindPkInputs(t){document.querySelectorAll('#pkList [data-pk]').forEach(
   document.querySelectorAll('#pkList [data-pkfrom]').forEach(inp=>{inp.onchange=e=>{pkFrom[e.target.dataset.pkfrom]=e.target.value.trim();persistFrom(e.target.dataset.pkfrom);};});
   document.querySelectorAll('#pkList [data-pkaisle]').forEach(inp=>{inp.onchange=e=>{pkAisle[e.target.dataset.pkaisle]=e.target.value.trim();persistFrom(e.target.dataset.pkaisle);};});
   document.querySelectorAll('#pkList [data-pkloc]').forEach(sel=>{sel.onchange=e=>{const k=e.target.dataset.pkloc;if(e.target.value==='__other'){pkOther.add(k);renderPkList(t);return;}const[a,ai]=e.target.value.split('||');pkFrom[k]=a||'';pkAisle[k]=ai||'';pkDirty.add(k);savePicks(t,false);};});
-  document.querySelectorAll('#pkList [data-pkback]').forEach(b=>b.onclick=()=>{pkOther.delete(b.dataset.pkback);renderPkList(t);});}
+  document.querySelectorAll('#pkList [data-pkback]').forEach(b=>b.onclick=()=>{pkOther.delete(b.dataset.pkback);renderPkList(t);});
+  document.querySelectorAll('#pkList [data-pksa]').forEach(b=>b.onclick=()=>{const k=b.dataset.pksa,l=(t.lines||[]).find(x=>x.id===k);const m=pkLocMap(t,l);const cur=(pkFrom[k]||'')+'||'+(pkAisle[k]||'');const used=new Set([cur,...(pkSplit[k]||[]).map(r=>r.k)]);const nk=[...m.keys()].find(x=>!used.has(x))||[...m.keys()][0];(pkSplit[k]=pkSplit[k]||[]).push({k:nk,qty:''});pkDirty.add(k);renderPkList(t);});
+  document.querySelectorAll('#pkList [data-pksl]').forEach(sel=>sel.onchange=()=>{const[k,i]=sel.dataset.pksl.split('|');pkSplit[k][+i].k=sel.value;pkDirty.add(k);savePicks(t,false);});
+  document.querySelectorAll('#pkList [data-pksq]').forEach(inp=>{inp.oninput=()=>{const[k,i]=inp.dataset.pksq.split('|');pkSplit[k][+i].qty=Math.max(0,Math.floor(+inp.value||0))||'';pkDirty.add(k);};inp.onchange=()=>{savePicks(t,false);renderPkList(t);};});
+  document.querySelectorAll('#pkList [data-pksx]').forEach(b=>b.onclick=()=>{const[k,i]=b.dataset.pksx.split('|');pkSplit[k].splice(+i,1);pkDirty.add(k);savePicks(t,false);renderPkList(t);});}
 function updatePkProg(t){refreshDispBtn(t);const total=(t.lines||[]).length;const done=(t.lines||[]).filter(l=>pkTouched.has(l.id)).length;const bar=document.getElementById('pk-bar');if(bar)bar.style.width=(total?Math.round(done/total*100):0)+'%';const el=document.getElementById('pk-prog');if(!el)return;const sending=(t.lines||[]).filter(l=>(+pkCounts[l.id]||0)>0).length;el.textContent=done+' of '+total+' items confirmed · '+sending+' being sent'+(done<total?' — lines left blank won’t be sent now (you can back-order them)':'');}
 function pkScan(t,code){if(!code)return;const cl=code.toLowerCase();const line=(t.lines||[]).find(l=>{const it=item(l.item_id);return String(it.sku||'').toLowerCase()===cl||String(it.barcode||'').toLowerCase()===cl;});if(!line){toast('Not in this transfer: '+code,true);return;}const cur=+pkCounts[line.id]||0;pkCounts[line.id]=cur+1;pkDirty.add(line.id);pkTouched.add(line.id);toast('+1 '+item(line.item_id).name+' = '+(cur+1));savePicks(t,false);updatePkProg(t);}
 function savePicks(t,announce){const picks=pkArray();if(!picks.length&&!announce)return;clearTimeout(pkSaveT);const doSave=async()=>{const{error}=await sb.rpc('save_picks',{p_id:t.id,p_picks:picks});if(announce){toast(error?('Save failed: '+error.message):'Picking saved',!!error);if(!error)await refreshOps([]);}};if(announce)doSave();else pkSaveT=setTimeout(doSave,700);}
@@ -4788,7 +4815,7 @@ function vStock(v){
 }
 /* scope of a stock take: a category, all categories, or a spot check (migration 76) */
 const stIsSpot=s=>s.kind==='spot'||/^CC-/.test(s.code||'');
-function stScopeLbl(s){if(!s)return '';if(stIsSpot(s))return 'Spot check';if(!('category' in s))return '';return s.category||'All categories';}
+function stScopeLbl(s){if(!s)return '';if(stIsSpot(s))return s.category||'Spot check';if(!('category' in s))return '';return s.category||'All categories';}
 /* an open count at this centre that already covers this category (null = all categories) */
 function stScopeConflict(locId,cat){const c=cat||null;
   return S.stocktakes.find(s=>s.location_id===locId&&s.status==='open'&&!stIsSpot(s)&&('category' in s)&&(s.category==null||c==null||String(s.category).toLowerCase()===String(c).toLowerCase()));}
@@ -4809,7 +4836,11 @@ async function newStock(){
   await stExclLoad();
   const cats=['(all categories)',...[...new Set(S.items.filter(i=>i.active!==false).map(i=>i.category).filter(c=>c&&!stCatExcl(c)))].sort()];
   const lo=S.locations.filter(l=>l.active!==false&&!l.stock_from_loc).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field"><label>Scope</label><select id="st-cat"></select></div></div><div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.${S.stExcl&&S.stExcl.size?` Not counted: <b>${[...new Set(S.items.map(i=>i.category).filter(c=>c&&stCatExcl(c)))].map(esc).join(', ')}</b>.`:''}</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
+  modal('Start a stock take','Snapshot a centre and begin counting',`<div class="field"><label>Count by</label><div class="mf-seg" id="st-mode" style="display:inline-flex;border:1px solid var(--border-strong);border-radius:9px;overflow:hidden"><button type="button" data-stm="cat" style="border:0;padding:7px 14px;cursor:pointer;font-family:inherit">Category</button><button type="button" data-stm="items" style="border:0;padding:7px 14px;cursor:pointer;font-family:inherit">Selected items</button></div></div>
+    <div class="grid2"><div class="field"><label>Centre</label><select id="st-loc">${lo}</select></div><div class="field" id="st-catw"><label>Scope</label><select id="st-cat"></select></div></div>
+    <div id="st-itemsw" hidden><div class="field"><label>Items to count <span id="st-n" style="font-weight:400;color:var(--muted)"></span></label><div class="search" style="max-width:none">${svg(I.search,16)}<input id="st-iq" placeholder="Search name, code or scan a barcode — press Enter to add" autocomplete="off"></div></div>
+      <div id="st-ires" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:8px"></div><div id="st-isel" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div></div>
+    <div id="st-open-info"></div><div class="banner info">${svg(I.info,17)}<div>This snapshots current quantities. Count over time — live sales keep adjusting until you finalise. Only <b>one open count per category</b> is allowed at a centre; different categories can be counted at the same time.${S.stExcl&&S.stExcl.size?` Not counted: <b>${[...new Set(S.items.map(i=>i.category).filter(c=>c&&stCatExcl(c)))].map(esc).join(', ')}</b>.`:''}</div></div>`,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Start counting</button>`);
   restrictLocSelect('st-loc');
   const ls=document.getElementById('st-loc'),cs=document.getElementById('st-cat'),go=document.getElementById('go'),info=document.getElementById('st-open-info');
   const draw=keep=>{const lc=ls.value,prev=keep?cs.value:cs.value||cats[0];
@@ -4821,8 +4852,31 @@ async function newStock(){
       :openHere.length?`<div class="banner warn">${svg(I.info,17)}<div>Already open at ${esc(loc(lc).name)}: ${openHere.map(s=>`<b>${esc(s.code)}</b> (${esc(stScopeLbl(s)||'scope unknown')})`).join(', ')}. You can count a different category alongside.</div></div>`:'';
     go.disabled=!!k;
     const j=info.querySelector('[data-stjoin]');if(j)j.onclick=()=>{const id=j.dataset.stjoin;closeOverlay();setTimeout(()=>openStock(id),60);};};
-  ls.onchange=()=>draw(true);cs.onchange=()=>draw(true);draw(false);
+  ls.onchange=()=>{if(MODE==='cat')draw(true);else idraw();};cs.onchange=()=>draw(true);draw(false);
+  // ---- count by selected items ----
+  let MODE='cat';const SEL=new Set();
+  const pool=()=>{const lc=ls.value;return S.items.filter(i=>i.active!==false&&!stCatExcl(i.category)).sort((a,b)=>(onHand(lc,b.id)>0)-(onHand(lc,a.id)>0)||String(a.name).localeCompare(String(b.name)));};
+  const idraw=()=>{if(MODE!=='items')return;const lc=ls.value;const q=(document.getElementById('st-iq').value||'').trim().toLowerCase();
+    const res=(q?pool().filter(i=>(i.name+' '+(i.sku||'')+' '+(i.barcode||'')).toLowerCase().includes(q)):pool()).slice(0,60);
+    document.getElementById('st-ires').innerHTML=res.length?res.map(i=>`<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px"><input type="checkbox" data-sti="${i.id}"${SEL.has(i.id)?' checked':''}><span style="flex:1"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</span><span style="color:var(--faint);font-size:12px">${esc(i.category||'')} · ${onHand(lc,i.id)} on hand</span></label>`).join(''):`<div style="padding:12px;color:var(--faint);font-size:13px">No items match.</div>`;
+    document.getElementById('st-isel').innerHTML=[...SEL].map(id=>`<span class="tag" style="display:inline-flex;gap:6px;align-items:center">${esc(item(id).name)} <button type="button" data-stix="${id}" style="border:0;background:none;cursor:pointer;color:var(--crit)">✕</button></span>`).join('');
+    document.getElementById('st-n').textContent=SEL.size?`— ${SEL.size} selected`:'';
+    document.querySelectorAll('[data-sti]').forEach(c=>c.onchange=()=>{c.checked?SEL.add(c.dataset.sti):SEL.delete(c.dataset.sti);idraw();});
+    document.querySelectorAll('[data-stix]').forEach(b=>b.onclick=()=>{SEL.delete(b.dataset.stix);idraw();});
+    go.disabled=!SEL.size;go.textContent=SEL.size?`Start counting ${SEL.size} item${SEL.size===1?'':'s'}`:'Choose items';};
+  const setMode=m=>{MODE=m;document.querySelectorAll('[data-stm]').forEach(b=>{const on=b.dataset.stm===m;b.style.background=on?'var(--accent)':'var(--surface)';b.style.color=on?'#fff':'var(--ink)';});
+    document.getElementById('st-catw').hidden=m!=='cat';document.getElementById('st-itemsw').hidden=m!=='items';
+    if(m==='cat'){go.textContent='Start counting';draw(true);}else{info.innerHTML='';idraw();setTimeout(()=>document.getElementById('st-iq').focus(),50);}};
+  document.querySelectorAll('[data-stm]').forEach(b=>b.onclick=()=>setMode(b.dataset.stm));setMode('cat');
+  const iq=document.getElementById('st-iq');iq.oninput=idraw;
+  iq.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();const v=iq.value.trim().toLowerCase();if(!v)return;
+    const hit=pool().find(i=>String(i.barcode||'').toLowerCase()===v||String(i.sku||'').toLowerCase()===v)||(()=>{const r=pool().filter(i=>(i.name+' '+(i.sku||'')).toLowerCase().includes(v));return r.length===1?r[0]:null;})();
+    if(!hit)return toast('No single item matches “'+iq.value+'”',true);SEL.add(hit.id);iq.value='';idraw();toast('Added '+hit.name);};
   go.onclick=async()=>{
+    if(MODE==='items'){if(!SEL.size)return toast('Choose at least one item',true);go.disabled=true;
+      const{data,error}=await sb.rpc('start_item_stocktake',{p_loc:ls.value,p_items:[...SEL]});go.disabled=false;
+      if(error)return toast(/start_item_stocktake/.test(error.message)?'Run 109_item_stocktake_and_multi_location_pick.sql in Supabase first':error.message,true);
+      closeOverlay();toast('Stock take started — '+SEL.size+' item(s)');await refreshOps([ls.value]);if(data)openStock(data);return;}
     const lc=ls.value,cat=cs.value;
     if(stScopeConflict(lc,cat.startsWith('(all')?null:cat))return draw(true);
     await callRpc('start_stocktake',{p_loc:lc,p_category:cat.startsWith('(all')?null:cat},'Stock take started');
