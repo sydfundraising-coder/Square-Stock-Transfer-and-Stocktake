@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.13-2';
+const APP_VERSION='2026.11.14-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -4351,12 +4351,13 @@ let tfDraftId=null;
    Central Warehouse staff, National Admins and the Super Admin can choose any site. */
 function tfFromLocs(){const act=S.locations.filter(l=>l.active!==false);if(!scoped())return act;
   const hubs=act.filter(l=>l.is_hub);if(hubs.some(h=>mine(h.id)))return act;return hubs.length?hubs:act;}
-function tfTemplateDl(fromV,toV){const fl=fromV?loc(fromV):null;
+async function tfTemplateDl(fromV,toV){const fl=fromV?loc(fromV):null,tl=toV?loc(toV):null;
   const av=id=>(fromV&&tfSrc.loc===fromV&&tfSrc.avail[id]!=null)?tfSrc.avail[id]:(fromV?availAt(fromV,id):null);
-  const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
-  downloadTemplate('stock-transfer-template'+(toV?'-'+(loc(toV).code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,'Quantity (boxes)','Note'],
-    items.map(i=>{const a=av(i.id);return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'','',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':toV&&newAt(i,toV)?'New for '+loc(toV).name+' - switched on in Square when received':''];}));
-  toast('Template downloaded with all '+items.length+' products. Fill in the Quantity (boxes) column and upload it.');}
+  const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,toV)-newAt(b,toV))||String(a.category||'').localeCompare(String(b.category||''))||String(a.name||'').localeCompare(String(b.name||'')));
+  const cx=toV?await stockCtx(toV):{};const tc=tl?(tl.code||tl.name):'your centre';
+  downloadTemplate('stock-transfer-template'+(toV?'-'+(tl.code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box',`Available at ${fl?fl.code||fl.name:'sending site'} (boxes)`,`SOH at ${tc} (boxes)`,`Incoming to ${tc} (boxes)`,`6-month usage ${toV&&isHub(toV)?'all centres':tc} (boxes)`,'Avg per month (boxes)','Quantity (boxes)','Note'],
+    items.map(i=>{const a=av(i.id),c=cx[i.id]||{oh:0,inc:0,u6:0};return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',hasPpc(i)&&a!=null?pk2boxWhole(Math.max(0,a),i):'',ctxBx(c.oh,i),ctxBx(c.inc,i),ctxBx(c.u6,i),Math.round(ctxBx(c.u6,i)/6*10)/10,'',!hasPpc(i)?'No pack size set - cannot be transferred until a National Admin sets it':toV&&newAt(i,toV)?'New for '+tl.name+' - switched on in Square when received':''];}),[0]);
+  toast('Template downloaded with all '+items.length+' products — your SOH, incoming and 6-month usage included. Fill in Quantity (boxes) and upload it.');}
 function tfDestLocs(){return (scoped()?S.locations.filter(l=>l.active!==false&&mine(l.id)):S.locations.filter(l=>l.active!==false)).filter(l=>!l.stock_from_loc);}
 /* main Transfers screen: download the template / upload a filled one without opening New transfer first */
 function tfTemplateMain(){const fo=tfFromLocs(),de=tfDestLocs();
@@ -4706,9 +4707,70 @@ function poEmail(o){
   const ni=document.getElementById('pm-note');if(ni)ni.oninput=e=>{note=e.target.value;};
 }
 let poLines=[],poUnit='pkt';
-function poTemplateDl(plv){const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.sku||'').localeCompare(String(b.sku||''),undefined,{numeric:true}));
-  downloadTemplate('purchase-order-template'+(plv?'-'+(loc(plv).code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box','Quantity (boxes)','Unit Cost (per packet)','Note'],items.map(i=>[i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'','',i.unit_cost??'',!hasPpc(i)?'No pack size set - cannot be ordered until a National Admin sets it':plv&&newAt(i,plv)?'New for '+loc(plv).name+' - switched on in Square when received':'']));
-  toast('Template downloaded with all '+items.length+' products. Fill in Quantity (boxes) and upload it.');}
+/* ---- stock context for a centre: on hand · incoming (open POs + transfers on the way) · 6-month usage
+   (Central Warehouse = every centre's usage). Migration 111; falls back to what's loaded in the app. ---- */
+const CTX={};
+async function stockCtx(locId,force){if(!locId)return {};const c=CTX[locId];if(c&&!force&&Date.now()-c.at<120000)return c.map;
+  const m={};let ok=false;
+  try{const{data,error}=await sb.rpc('stock_context',{p_loc:locId});if(!error&&data){data.forEach(r=>m[r.item_id]={oh:+r.on_hand||0,inc:+r.incoming||0,u6:+r.usage_6m||0});ok=true;}}catch(e){}
+  if(!ok){const hub=isHub(locId);
+    Object.keys(S.stock||{}).forEach(k=>{const i=k.indexOf('__');if(k.slice(0,i)===locId)(m[k.slice(i+2)]=m[k.slice(i+2)]||{oh:0,inc:0,u6:0}).oh=+S.stock[k]||0;});
+    Object.entries(S.win||{}).forEach(([k,w])=>{const i=k.indexOf('__');if(!hub&&k.slice(0,i)!==locId)return;const id=k.slice(i+2);(m[id]=m[id]||{oh:0,inc:0,u6:0}).u6+=(+w.u180||0);});
+    (S.orders||[]).filter(o=>o.location_id===locId&&(o.status==='placed'||o.status==='shipped')).forEach(o=>(o.lines||[]).forEach(l=>{(m[l.item_id]=m[l.item_id]||{oh:0,inc:0,u6:0}).inc+=(+l.qty||0);}));
+    (S.transfers||[]).filter(t=>t.to_location===locId&&['requested','approved','picked','in_transit','partially_received'].includes(t.status)).forEach(t=>(t.lines||[]).forEach(l=>{const q=['requested','approved'].includes(t.status)?(+l.qty_requested||0):t.status==='picked'?(+l.qty_picked||0):Math.max(0,(+l.qty_dispatched||0)-(+l.qty_received||0));(m[l.item_id]=m[l.item_id]||{oh:0,inc:0,u6:0}).inc+=q;}));}
+  CTX[locId]={at:Date.now(),map:m};return m;}
+const ctxBx=(pk,it)=>{const n=ppc(it);return n?Math.round(pk/n*10)/10:Math.round(pk);};
+/* ---- purchase order template: SOH, incoming and 6-month usage at the delivery centre ---- */
+async function poTemplateDl(plv){const items=(S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!tfCatExcl(i.category)).sort((a,b)=>(newAt(a,plv)-newAt(b,plv))||String(a.category||'').localeCompare(String(b.category||''))||String(a.name||'').localeCompare(String(b.name||'')));
+  toast('Preparing template…');const cx=await stockCtx(plv);const cur={};(poLines||[]).forEach(l=>{if(l.item)cur[l.item]=l;});
+  const hub=plv&&isHub(plv);
+  downloadTemplate('purchase-order-template'+(plv?'-'+(loc(plv).code||''):'')+'.csv',['Product Code','Item Name','Category','Packets per box','SOH (boxes)','Incoming (boxes)',hub?'6-month usage all centres (boxes)':'6-month usage (boxes)','Avg per month (boxes)','Quantity (boxes)','Unit Cost (per packet)','Note'],
+    items.map(i=>{const c=cx[i.id]||{oh:0,inc:0,u6:0};const q=cur[i.id]?pk2boxWhole(cur[i.id].qty,i):'';return [i.sku,i.name,i.category||'',hasPpc(i)?ppc(i):'',ctxBx(c.oh,i),ctxBx(c.inc,i),ctxBx(c.u6,i),Math.round(ctxBx(c.u6,i)/6*10)/10,q,i.unit_cost??'',!hasPpc(i)?'No pack size set - cannot be ordered until a National Admin sets it':plv&&newAt(i,plv)?'New for '+loc(plv).name+' - switched on in Square when received':''];}),[0]);
+  toast('Template downloaded with all '+items.length+' products — SOH, incoming and usage included. Fill in Quantity (boxes) and upload it.');}
+/* ---- purchase order: the FULL item list with SOH / incoming / usage; only lines with a quantity go on the order ---- */
+let poF={q:'',cat:'',show:'all',lim:150},POCOST={};
+function poRowsData(pl){return orderableItems().filter(i=>!nonStock(i)||poLines.some(l=>l.item===i.id)).sort((a,b)=>String(a.category||'').localeCompare(String(b.category||''))||String(a.name).localeCompare(String(b.name)));}
+async function pEd(){
+  const ed=document.getElementById('ped');if(!ed)return;
+  const pl=(document.getElementById('po-loc')||{}).value;poLines=(poLines||[]).filter(l=>l.item);
+  if(!ed.dataset.init){ed.dataset.init='1';ed.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><div class="search" style="flex:1;min-width:200px;max-width:none">${svg(I.search,16)}<input id="pof-q" placeholder="Search item or code…" autocomplete="off"></div>
+      <select class="filter" id="pof-cat"></select><select class="filter" id="pof-show"><option value="all">All items</option><option value="ordered">On this order</option><option value="low">Low cover (&lt; 2 months)</option><option value="out">No stock</option></select><span id="pof-ctx" style="font-size:12px;color:var(--faint)"></span></div><div id="pof-body"></div>`;
+    const q=ed.querySelector('#pof-q');q.value=poF.q;q.oninput=()=>{poF.q=q.value;poF.lim=150;poDraw();};
+    ed.querySelector('#pof-cat').onchange=e=>{poF.cat=e.target.value;poF.lim=150;poDraw();};ed.querySelector('#pof-show').onchange=e=>{poF.show=e.target.value;poF.lim=150;poDraw();};}
+  const cats=[...new Set(poRowsData(pl).map(i=>i.category||'').filter(Boolean))].sort();
+  const cs=document.getElementById('pof-cat');cs.innerHTML=`<option value="">All categories</option>${cats.map(c=>`<option${c===poF.cat?' selected':''}>${esc(c)}</option>`).join('')}`;
+  document.getElementById('pof-show').value=poF.show;
+  document.getElementById('pof-ctx').textContent='Loading stock figures…';poDraw();
+  const cx=await stockCtx(pl);if((document.getElementById('po-loc')||{}).value!==pl)return;
+  window._poCtx={loc:pl,map:cx};document.getElementById('pof-ctx').textContent=`SOH / incoming at ${loc(pl).code||loc(pl).name} · usage ${isHub(pl)?'= all centres (warehouse supplies them all)':'at this centre'}`;poDraw();
+}
+function poDraw(){const body=document.getElementById('pof-body');if(!body)return;
+  const pl=(document.getElementById('po-loc')||{}).value;const cx=(window._poCtx&&window._poCtx.loc===pl)?window._poCtx.map:null;
+  const on={};poLines.forEach(l=>on[l.item]=l);const q=poF.q.trim().toLowerCase();
+  let list=poRowsData(pl).filter(i=>(!poF.cat||(i.category||'')===poF.cat)&&(!q||(i.name+' '+(i.sku||'')+' '+(i.barcode||'')).toLowerCase().includes(q)));
+  const cover=i=>{const c=cx&&cx[i.id];if(!c)return null;const mo=c.u6/6;return mo>0?(c.oh+c.inc)/mo:null;};
+  if(poF.show==='ordered')list=list.filter(i=>on[i.id]);
+  if(poF.show==='low')list=list.filter(i=>{const v=cover(i);return v!=null&&v<2;});
+  if(poF.show==='out')list=list.filter(i=>cx&&(cx[i.id]?cx[i.id].oh:0)<=0);
+  list.sort((a,b)=>(on[b.id]?1:0)-(on[a.id]?1:0));
+  const shown=list.slice(0,poF.lim);const st='padding:6px 7px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink);text-align:right';
+  const f=v=>v==null?'<span style="color:var(--faint)">…</span>':(Math.round(v*10)/10).toLocaleString();
+  body.innerHTML=`<div class="tablewrap" style="box-shadow:none;max-height:58vh;overflow:auto"><table style="min-width:860px"><thead style="position:sticky;top:0;z-index:1;background:var(--surface)"><tr><th>Item</th><th class="num">Pk/box</th><th class="num" title="Stock on hand now">SOH</th><th class="num" title="On open POs + transfers on the way">Incoming</th><th class="num" title="Sold in the last 6 months${pl&&isHub(pl)?' — all centres':''}">6-mo usage</th><th class="num">Avg / mo</th><th class="num" title="(SOH + incoming) ÷ average monthly usage">Cover</th><th class="num" style="width:90px">Order (bx)</th><th class="num" style="width:100px">Cost / pkt</th><th class="num">Line total</th></tr></thead><tbody>
+    ${shown.map(i=>{const c=cx?(cx[i.id]||{oh:0,inc:0,u6:0}):null;const L=on[i.id];const cv=cover(i);const qb=L?pk2boxWhole(L.qty,i):'';const cost=L?L.cost:(POCOST[i.id]??i.unit_cost??'');const nw=pl&&newAt(i,pl);
+      return `<tr data-por="${i.id}" style="${L?'background:var(--accent-soft)':''}"><td><b><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</b>${nw?' <span class="tag" style="color:var(--warn)">NEW here</span>':''}<div style="font-size:11px;color:var(--faint)">${esc(i.category||'')}${!hasPpc(i)?' · <span style="color:var(--crit)">no pack size</span>':''}</div></td>
+        <td class="num tnum">${hasPpc(i)?ppc(i):'—'}</td><td class="num tnum">${c?f(ctxBx(c.oh,i)):f(null)}</td><td class="num tnum" style="color:var(--transit)">${c?(c.inc?f(ctxBx(c.inc,i)):'—'):f(null)}</td><td class="num tnum">${c?f(ctxBx(c.u6,i)):f(null)}</td><td class="num tnum">${c?f(ctxBx(c.u6,i)/6):f(null)}</td>
+        <td class="num tnum" style="color:${cv==null?'var(--faint)':cv<1?'var(--crit)':cv<2?'var(--warn)':'var(--good)'};font-weight:600">${cv==null?'—':(cv>=24?'24+':cv.toFixed(1))+' mo'}</td>
+        <td class="num"><input type="number" min="0" step="1" data-poq="${i.id}" value="${qb}" placeholder="0" ${hasPpc(i)?'':'disabled title="Set packets per box in the Catalogue first"'} style="${st};width:80px"></td>
+        <td class="num"><input type="number" min="0" step="0.01" data-poc="${i.id}" value="${cost===''?'':esc(cost)}" style="${st};width:90px"></td><td class="num tnum" data-pot="${i.id}">${L?money((+L.qty||0)*(+L.cost||0)):'—'}</td></tr>`;}).join('')}
+    </tbody></table></div>${list.length>shown.length?`<div style="text-align:center;margin-top:8px"><button type="button" class="btn sm" id="pof-more">Show ${Math.min(150,list.length-shown.length)} more (${list.length-shown.length} not shown)</button></div>`:''}${!list.length?'<div class="hint" style="margin-top:8px">No items match.</div>':''}`;
+  const more=document.getElementById('pof-more');if(more)more.onclick=()=>{poF.lim+=150;poDraw();};
+  body.querySelectorAll('[data-poq]').forEach(inp=>{inp.oninput=()=>{const id=inp.dataset.poq,it=item(id);const bx=Math.max(0,Math.floor(+inp.value||0));const ix=poLines.findIndex(l=>l.item===id);
+      if(bx>0){const cost=+((body.querySelector(`[data-poc="${id}"]`)||{}).value||it.unit_cost||0);if(ix>=0)poLines[ix].qty=box2pk(bx,it);else poLines.push({item:id,qty:box2pk(bx,it),cost});}
+      else if(ix>=0)poLines.splice(ix,1);
+      const L=poLines.find(l=>l.item===id);const tr=inp.closest('tr');tr.style.background=L?'var(--accent-soft)':'';const tot=body.querySelector(`[data-pot="${id}"]`);if(tot)tot.textContent=L?money((+L.qty||0)*(+L.cost||0)):'—';pSum();};});
+  body.querySelectorAll('[data-poc]').forEach(inp=>{inp.oninput=()=>{const id=inp.dataset.poc;const v=Math.max(0,+inp.value||0);POCOST[id]=v;const L=poLines.find(l=>l.item===id);if(L){L.cost=v;const tot=body.querySelector(`[data-pot="${id}"]`);if(tot)tot.textContent=money((+L.qty||0)*v);}pSum();};});
+  pSum();}
+
 function poTemplateMain(){const ls=S.locations.filter(l=>poLocs().some(p=>p.id===l.id)&&(!scoped()||mine(l.id)));
   if(!ls.length)return toast('Purchase orders can only be raised for the Central Warehouse or Perth.',true);
   if(ls.length===1)return poTemplateDl(ls[0].id);
@@ -4717,7 +4779,7 @@ function poTemplateMain(){const ls=S.locations.filter(l=>poLocs().some(p=>p.id==
 function poUploadMain(f){if(!f)return;newOrder();setTimeout(()=>{const u=document.getElementById('upOF');if(u&&u.onchange)u.onchange({target:{files:[f],value:''}});},60);}
 function newOrder(o){
   o=(o&&o.id)?o:null;
-  poLines=o?(o.lines||[]).map(l=>({item:l.item_id,qty:l.qty,cost:l.unit_cost})):[{item:'',qty:1,cost:0}];
+  poLines=o?(o.lines||[]).map(l=>({item:l.item_id,qty:l.qty,cost:l.unit_cost})):[];poF={q:'',cat:'',show:o?'ordered':'all',lim:150};POCOST={};
   const so=S.suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const lo=S.locations.filter(l=>(poLocs().some(p=>p.id===l.id)&&(!scoped()||mine(l.id)))||(o&&o.location_id===l.id)).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   if(!lo){toast('Purchase orders can only be raised for the Central Warehouse or Perth. Request stock with a transfer instead.',true);return;}
@@ -4727,45 +4789,23 @@ function newOrder(o){
     </section>
     <section class="sec tray field"><div class="sec-h"><h3>Items to order</h3><span class="tray-count" id="ped-count"></span><span class="sec-hint">Quantities in whole boxes</span>
       <div class="sec-tools"><button type="button" class="btn sm" id="dlO">${svg(I.receipt,14)} Download template</button><button type="button" class="btn sm" id="upO">${svg(I.box,14)} Upload filled</button><input type="file" id="upOF" accept=".csv,text/csv,.xlsx,.xls" hidden></div></div>
-      <div class="lines-scroll"><div class="linerow-lbl cols-po"><span>Product</span><span>Boxes</span><span>Cost / packet</span><span>= packets</span><span style="text-align:right;padding-right:6px">Line total</span><span></span></div>
-      <div id="ped"></div><div class="po-total cols-po"><div class="lbl">Order total (ex GST)</div><div class="val" id="po-total-val">$0.00</div></div></div><button type="button" class="addmore" id="pAdd">${svg(I.plus,16)} Add more items</button></section>
+      <div class="hint" style="margin:0 0 8px">Every item is listed with its stock on hand, what’s already coming in and 6-month usage. Type the boxes to order — <b>only items with a quantity go on the order</b>.</div>
+      <div id="ped"></div><div class="po-total" style="display:flex;justify-content:flex-end;gap:14px;align-items:center;margin-top:8px"><div class="lbl">Order total (ex GST)</div><div class="val" id="po-total-val" style="font-weight:800;font-size:16px">$0.00</div></div></section>
     <section class="sec"><div class="field"><label>Notes</label><textarea id="po-notes" rows="2"></textarea></div></section><div class="banner info" id="psum">${svg(I.cost,17)}<div>Add items.</div></div>`;
   modal(o?'Edit purchase order '+o.code:'New purchase order',o?'Change this order (only possible before it ships)':'Place an order and set its ETA',body,`<button class="btn" data-close>Cancel</button><button class="btn primary" id="go">${svg(I.check,16)} ${o?'Save changes':'Place order'}</button>`,'full form');
   restrictLocSelect('po-loc');
   {const pls=document.getElementById('po-loc');if(pls)pls.addEventListener('change',()=>pEd());}
   if(o){document.getElementById('po-sup').value=o.supplier_id;document.getElementById('po-loc').value=o.location_id;document.getElementById('po-eta').value=o.expected_on||today();document.getElementById('po-notes').value=o.notes||'';}
-  pEd();document.getElementById('pAdd').onclick=()=>{poLines.push({item:'',qty:1,cost:0});pEd();focusNewLine('ped');};
+  pEd();
   document.getElementById('dlO').onclick=()=>poTemplateDl((document.getElementById('po-loc')||{}).value);
   document.getElementById('upO').onclick=()=>document.getElementById('upOF').click();
-  document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.map(r=>({item:r.item,qty:box2pk(Math.max(1,Math.round(+r.qty||0)),item(r.item)),cost:r.cost}));pEd();pSum();},'Purchase order');};
+  document.getElementById('upOF').onchange=e=>{const f=e.target.files[0];e.target.value='';readTemplate(f,true,rows=>{poLines=rows.filter(r=>Math.round(+r.qty||0)>0).map(r=>({item:r.item,qty:box2pk(Math.round(+r.qty||0),item(r.item)),cost:r.cost}));poF.show='ordered';poF.lim=150;pEd();pSum();toast(poLines.length+' item(s) with a quantity loaded — blanks and 0s left off');},'Purchase order');};
   document.getElementById('go').onclick=()=>submitOrder(o?o.id:null);
-}
-function pEd(){
-  const pl=(document.getElementById('po-loc')||{}).value;
-  const io=orderableItems().filter(i=>!nonStock(i)||poLines.some(l=>l.item===i.id)).sort((a,b)=>(newAt(a,pl)-newAt(b,pl))).map(i=>{const nw=newAt(i,pl);return `<option value="${i.id}" data-c="${esc(i.sku||'')}" data-n="${esc(i.name)}${nw?' · not sold at '+esc(loc(pl).name)+' yet':''}">${esc(i.sku||'')} — ${esc(i.name)}${nw?' · NEW':''}</option>`;}).join('');
-  const ed=document.getElementById('ped');
-  ed.innerHTML=poLines.map((l,ix)=>{const it0=item(l.item);const pc=ppc(it0);const qBox=(pc&&l.item)?pk2boxWhole(l.qty,it0):l.qty;return `<div class="linerow cols-po"><select data-pi="${ix}"><option value="">Select item…</option>${io}</select><input type="number" min="1" step="1" value="${qBox}" data-pq="${ix}" title="${l.item&&pc?(qBox+' boxes = '+l.qty+' packets'):''}"><input type="number" min="0" step="0.01" value="${l.cost||''}" placeholder="$/pkt" title="Cost per packet" data-pc="${ix}"><div class="lbox" data-ppk="${ix}" title="Packets ordered (auto from boxes × pack size)" style="color:var(--muted);padding:6px 4px">${pc&&l.item?l.qty+' pk':'—'}</div><div class="ltot" data-plt="${ix}">${l.item?money((+l.qty||0)*(+l.cost||0)):'—'}</div><button class="rm" data-pr="${ix}">${svg(I.x,15)}</button></div>`;}).join('');
-  poLines.forEach((l,ix)=>{if(l.item)ed.querySelector(`[data-pi="${ix}"]`).value=l.item;});
-  if(pl)poLines.forEach((l,ix)=>{if(!l.item||!newAt(item(l.item),pl))return;const sel=ed.querySelector(`[data-pi="${ix}"]`);const row=sel&&sel.closest('.linerow');if(row)row.insertAdjacentHTML('afterend',newAtTag(item(l.item),pl));});
-  ed.querySelectorAll('[data-pi]').forEach(s=>s.onchange=e=>{const ix=+e.target.dataset.pi,val=e.target.value,prev=poLines[ix].item;
-    // the same item is already on another line: merge, keep both, or pick something else
-    const dupIx=val?poLines.findIndex((l,j)=>j!==ix&&l.item===val):-1;
-    if(dupIx>=0){const it=item(val),other=poLines[dupIx];e.target.value=prev||'';
-      stackConfirm('Item already on this order',it.name,`<div><b>${esc(it.name)}</b> is already on <b>line ${dupIx+1}</b> (${pk2boxWhole(other.qty,it)} boxes). Ordering it twice on the same PO is usually a mistake.</div><div style="margin-top:8px;color:var(--muted);font-size:13px"><b>Add to line ${dupIx+1}</b> adds this line’s boxes to the existing line. <b>Choose another item</b> leaves this line for a different product.</div>`,
-        {okLabel:'Add to line '+(dupIx+1),cancelLabel:'Choose another item',onOk:()=>{const add=prev?0:(+poLines[ix].qty||box2pk(1,it));other.qty=(+other.qty||0)+(prev?box2pk(1,it):add);if(!prev)poLines.splice(ix,1);pEd();pSum();toast(`Added to line ${dupIx+1} — now ${pk2boxWhole(other.qty,it)} boxes`);}});
-      return;}
-    poLines[ix].item=val;if(!poLines[ix].cost){poLines[ix].cost=item(val).unit_cost;ed.querySelector(`[data-pc="${ix}"]`).value=poLines[ix].cost;}pEd();pSum();});
-  // flag any duplicates already in the list (e.g. from an uploaded template)
-  {const seen={};poLines.forEach((l,ix)=>{if(!l.item)return;if(seen[l.item]!=null){[seen[l.item],ix].forEach(j=>{const row=ed.querySelector(`[data-pi="${j}"]`);if(row){const r=row.closest('.linerow');r.style.outline='2px solid var(--crit)';r.style.borderRadius='8px';r.title='This item is on the order more than once';}});}else seen[l.item]=ix;});}
-  ed.querySelectorAll('[data-pq]').forEach(s=>s.oninput=e=>{const ix=+e.target.dataset.pq;const it0=item(poLines[ix].item);const bx=Math.max(1,Math.floor(+e.target.value||0));poLines[ix].qty=box2pk(bx,it0);const pk=ed.querySelector(`[data-ppk="${ix}"]`);if(pk&&poLines[ix].item&&ppc(it0))pk.textContent=poLines[ix].qty+' pk';pSum();});
-  ed.querySelectorAll('[data-pc]').forEach(s=>s.oninput=e=>{poLines[+e.target.dataset.pc].cost=Math.max(0,+e.target.value||0);pSum();});
-  ed.querySelectorAll('[data-pr]').forEach(s=>s.onclick=e=>{const ix=+e.target.closest('[data-pr]').dataset.pr;if(poLines.length>1)poLines.splice(ix,1);pEd();});
-  pSum();
 }
 function pSum(){trayCount('ped-count',poLines.filter(l=>l.item).length,poLines.filter(l=>l.item).map(l=>[item(l.item),l.qty]));const t=poLines.reduce((a,l)=>a+(l.item?l.qty*l.cost:0),0);poLines.forEach((l,ix)=>{const c=document.querySelector(`[data-plt="${ix}"]`);if(c)c.textContent=l.item?money((+l.qty||0)*(+l.cost||0)):'—';});const pt=document.getElementById('po-total-val');if(pt)pt.textContent=money(t);const ps=document.getElementById('psum');if(ps)ps.hidden=true;}
 async function submitOrder(editId){
   const sup=document.getElementById('po-sup').value,lc=document.getElementById('po-loc').value,eta=document.getElementById('po-eta').value,notes=document.getElementById('po-notes').value.trim();
-  const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Add an item',true);
+  const lines=poLines.filter(l=>l.item&&l.qty>0);if(!lines.length)return toast('Enter an order quantity for at least one item',true);poLines=lines;
   {const cnt={};lines.forEach(l=>{cnt[l.item]=(cnt[l.item]||0)+1;});const dups=Object.keys(cnt).filter(k=>cnt[k]>1);
    if(dups.length&&!editId?.__dupOk){
      stackConfirm('Duplicate items on this order',dups.length+' item(s)',`<div>These items are on the order more than once (highlighted in red):</div><ul style="margin:8px 0 0 18px">${dups.map(k=>{const it=item(k);const tot=lines.filter(l=>l.item===k).reduce((s,l)=>s+(+l.qty||0),0);return `<li><b>${esc(it.name)}</b> — ${cnt[k]} lines, ${pk2boxWhole(tot,it)} boxes in total</li>`;}).join('')}</ul><div style="margin-top:8px;color:var(--muted);font-size:13px"><b>Combine &amp; continue</b> merges each into one line (boxes added together, first line’s cost kept).</div>`,
