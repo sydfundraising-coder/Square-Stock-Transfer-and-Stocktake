@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.14-4';
+const APP_VERSION='2026.11.14-5';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -8086,10 +8086,11 @@ async function renderPerf(){
 const DW_GROUPS=[{k:'kids',label:'Kids Diwali',cats:['kids diwali'],color:'#d97706'},{k:'sweets',label:'Sweets',cats:['sweets','frozen sweets'],color:'#be185d'}];
 const DW_SEASONS={on:{l:'Diwali season (Oct – Nov)',m:[10,11]},oct:{l:'October only',m:[10]},nov:{l:'November only',m:[11]},sepnov:{l:'Sep – Nov',m:[9,10,11]},year:{l:'Whole calendar year',m:[1,2,3,4,5,6,7,8,9,10,11,12]}};
 let dwSeason='on',dwYear=null,dwData=null;
+const dwKidsLocs=()=>(S.locations||[]).filter(l=>/^sydkd$/i.test(String(l.code||'').trim())).map(l=>l.id);
 const dwGroup=c=>{const l=String(c||'').trim().toLowerCase();const g=DW_GROUPS.find(x=>x.cats.includes(l));return g?g.k:null;};
 function vDiwali(v){
   const cs=perfCentres();if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
-  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Diwali sales</b> from Square — <b>Kids Diwali</b> (Kids Diwali category) and <b>Sweets</b> (Sweets + Frozen Sweets), by centre and year, compared with the previous year’s same months.</div></div>
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Diwali sales</b> from Square — <b>Kids Diwali</b> (Kids Diwali category, plus <b>all sales at SYDKD</b>) and <b>Sweets</b> (Sweets + Frozen Sweets), by centre and year, compared with the previous year’s same months.</div></div>
     <div class="rep-actions no-print">${perfPickerHtml()}<select class="filter" id="dw-season">${Object.entries(DW_SEASONS).map(([k,s])=>`<option value="${k}"${k===dwSeason?' selected':''}>${s.l}</option>`).join('')}</select><select class="filter" id="dw-year"></select><button class="btn" id="dw-xls">${svg(I.receipt,15)} Excel</button>${perfCanRefresh()?`<button class="btn" id="dw-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div></div><div id="dw-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
   perfPickerBind(()=>dwLoad());
   document.getElementById('dw-season').onchange=e=>{dwSeason=e.target.value;dwRender();};
@@ -8101,7 +8102,11 @@ function vDiwali(v){
 async function dwLoad(){const el=document.getElementById('dw-body');if(!el)return;const ids=perfSelIds();let rows=[];
   try{for(let from=0;;from+=1000){const{data,error}=await sb.from('sales_category_monthly').select('location_id,ym,category,orders,units,sales').in('location_id',ids).or('category.ilike.*diwali*,category.ilike.*sweet*').range(from,from+999);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<1000)break;}}
   catch(e){console.error('diwali',e);el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Sales by category aren’t set up yet. A Super Admin needs to run <b>103_category_sales_monthly.sql</b>, deploy the updated <b>square-perf</b> function, then press <b>Refresh sales</b> once.</div></div>`;return;}
-  dwData={ids,rows:rows.map(r=>({...r,g:dwGroup(r.category),y:+String(r.ym).slice(0,4),m:+String(r.ym).slice(5,7)})).filter(r=>r.g)};dwRender();}
+  // SYDKD (Kids Diwali stall): EVERY sale there counts as Kids Diwali, whatever the category
+  const kd=dwKidsLocs().filter(id=>ids.includes(id));
+  if(kd.length){try{let all=[];for(let from=0;;from+=1000){const{data,error}=await sb.from('sales_category_monthly').select('location_id,ym,category,orders,units,sales').in('location_id',kd).range(from,from+999);if(error)throw error;all=all.concat(data||[]);if(!data||data.length<1000)break;}
+      rows=rows.filter(r=>!kd.includes(r.location_id)).concat(all);}catch(e){console.error('diwali SYDKD',e);}}
+  dwData={ids,rows:rows.map(r=>({...r,g:kd.includes(r.location_id)?'kids':dwGroup(r.category),y:+String(r.ym).slice(0,4),m:+String(r.ym).slice(5,7)})).filter(r=>r.g)};dwRender();}
 function dwRender(){const el=document.getElementById('dw-body');if(!el||!dwData)return;destroyCharts();
   const months=DW_SEASONS[dwSeason].m;const rows=dwData.rows.filter(r=>months.includes(r.m));
   const years=[...new Set(dwData.rows.map(r=>r.y))].sort((a,b)=>a-b);
