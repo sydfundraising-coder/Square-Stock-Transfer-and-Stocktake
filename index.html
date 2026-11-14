@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.14-5';
+const APP_VERSION='2026.11.15-1';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -8353,32 +8353,44 @@ setInterval(async()=>{
   try{const y=window.scrollY;await loadOps();perfLoadedAt=new Date();renderView();window.scrollTo(0,y);}catch(e){console.error('live refresh',e);}
 },600000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&perfLoadedAt&&Date.now()-perfLoadedAt>600000&&PERF_LIVE_ROUTES.includes(route)&&!document.querySelector('.scrim')){loadOps().then(()=>{perfLoadedAt=new Date();renderView();}).catch(()=>{});}});
+/* Refresh sales: by default only the months since each centre's LAST sync are pulled again
+   (plus the month before it, for late sales / refunds). A full rebuild from 1 Jul 2024 is still one click away. */
+async function perfLastSync(locs){
+  const last={};(S.salesMonthly||[]).forEach(r=>{if(!locs.includes(r.location_id)||!r.updated_at)return;if(!last[r.location_id]||r.updated_at>last[r.location_id])last[r.location_id]=r.updated_at;});
+  // the category figures (migration 103) need their own history: a centre with none gets a full pull
+  const hasCat={};await Promise.all(locs.map(async l=>{try{const{count,error}=await sb.from('sales_category_monthly').select('location_id',{count:'exact',head:true}).eq('location_id',l);hasCat[l]=!error&&(count||0)>0||(error&&/does not exist|schema/i.test(error.message||''));}catch(e){hasCat[l]=true;}}));
+  const out={};locs.forEach(l=>{out[l]=(last[l]&&hasCat[l])?last[l]:null;});return out;}
 async function runPerfSync(){
   const base=scoped()?S.locations.filter(l=>mine(l.id)):S.locations;
   const locs=base.filter(l=>l.square_location_id).map(l=>l.id);
   if(!locs.length)return toast('No Square-linked centre to refresh — link locations in Square Sync first',true);
-  // Build month-aligned windows (6 months each) from 1 Jul 2024 to now, so each Square
-  // pull is small — one centre + one window per call keeps every invocation under the limit.
-  const now=new Date(),cy=now.getUTCFullYear(),cm=now.getUTCMonth();
-  const monthStarts=[];let wy=2024,wm=6;/*Jul 2024*/
-  while(wy<cy||(wy===cy&&wm<=cm)){monthStarts.push(new Date(Date.UTC(wy,wm,1)));wm++;if(wm>11){wm=0;wy++;}}
-  const step=6,windows=[];
-  for(let i=0;i<monthStarts.length;i+=step){const endIdx=Math.min(i+step,monthStarts.length);const endDate=endIdx<monthStarts.length?monthStarts[endIdx]:new Date(Date.UTC(cy,cm+1,1));windows.push({start_at:monthStarts[i].toISOString(),end_at:endDate.toISOString()});}
-  const totalCalls=locs.length*windows.length;let done=0,rowsN=0,failed=0;
-  toast('Pulling sales from Square… this runs in small batches');
-  for(const loc of locs){
-    for(const w of windows){
-      try{
-        const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[loc],start_at:w.start_at,end_at:w.end_at}});
-        if(error){failed++;console.error('square-perf',loc,w,await fnErr(error));}
-        else if(data&&data.error){failed++;console.error('square-perf',data.error);}
-        else rowsN+=(data&&data.rows)||0;
-      }catch(e){failed++;console.error('square-perf',e);}
-      done++;toast('Refreshing sales… '+done+'/'+totalCalls+(failed?(' · '+failed+' failed'):''));
-    }
-  }
-  await loadOps();renderView();
-  toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):('Sales & performance updated ('+rowsN+' month-rows)'),!!failed);
+  const last=await perfLastSync(locs);
+  const fresh=locs.filter(l=>last[l]),never=locs.filter(l=>!last[l]);
+  const oldest=fresh.length?fresh.map(l=>last[l]).sort()[0]:null;
+  stackConfirm('Refresh sales from Square','',`<div style="display:flex;flex-direction:column;gap:8px">
+      <label style="display:flex;gap:10px;padding:10px;border:1.5px solid var(--accent);border-radius:10px;cursor:pointer"><input type="radio" name="pfmode" value="inc" checked style="margin-top:3px"><span><b>Since the last sync — fast</b> (recommended)<br><span style="font-size:12.5px;color:var(--muted)">${oldest?`Last synced ${fmtDT(oldest)}. Only the months since then are pulled again (plus the month before, for late refunds).`:'Nothing synced yet — this first run pulls everything.'}${never.length&&fresh.length?` ${never.length} centre(s) have no history yet and get a full pull.`:''}</span></span></label>
+      <label style="display:flex;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;cursor:pointer"><input type="radio" name="pfmode" value="full" style="margin-top:3px"><span><b>Rebuild everything from 1 Jul 2024 — slow</b><br><span style="font-size:12.5px;color:var(--muted)">Only needed if categories were reorganised, or figures look wrong.</span></span></label></div>`,
+    {okLabel:'Refresh',onOk:()=>{const full=(document.querySelector('input[name="pfmode"]:checked')||{}).value==='full';setTimeout(()=>perfPull(locs,full?{}:last),0);}});
+}
+async function perfPull(locs,last){
+  const now=new Date(),cy=now.getUTCFullYear(),cm=now.getUTCMonth();const endAll=new Date(Date.UTC(cy,cm+1,1));
+  const winsFor=lc=>{let sy=2024,sm=6;   // 1 Jul 2024
+      if(last[lc]){const d=new Date(last[lc]);d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-1);sy=d.getUTCFullYear();sm=d.getUTCMonth();if(sy<2024||(sy===2024&&sm<6)){sy=2024;sm=6;}}
+      const out=[];let y=sy,m=sm;while(Date.UTC(y,m,1)<endAll.getTime()){const s0=new Date(Date.UTC(y,m,1));let y2=y,m2=m+6;while(m2>11){m2-=12;y2++;}const e0=new Date(Math.min(Date.UTC(y2,m2,1),endAll.getTime()));out.push({start_at:s0.toISOString(),end_at:e0.toISOString()});y=y2;m=m2;}
+      return out;};
+  const jobs=[];locs.forEach(lc=>winsFor(lc).forEach(w=>jobs.push({lc,w})));
+  let done=0,rowsN=0,failed=0;const t0=Date.now();
+  toast(`Pulling sales from Square — ${jobs.length} batch${jobs.length===1?'':'es'}…`);
+  // 3 at a time (each call = one centre + one window, well under the function time limit)
+  for(let i=0;i<jobs.length;i+=3){await Promise.all(jobs.slice(i,i+3).map(async j=>{
+      try{const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[j.lc],start_at:j.w.start_at,end_at:j.w.end_at}});
+        if(error){failed++;console.error('square-perf',j,await fnErr(error));}else if(data&&data.error){failed++;console.error('square-perf',data.error);}else rowsN+=(data&&data.rows)||0;}
+      catch(e){failed++;console.error('square-perf',e);}
+      done++;}));
+    toast('Refreshing sales… '+done+'/'+jobs.length+(failed?(' · '+failed+' failed'):''));}
+  await loadOps();CTX&&Object.keys(CTX).forEach(k=>delete CTX[k]);renderView();
+  const secs=Math.round((Date.now()-t0)/1000);
+  toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):(`Sales & performance updated in ${secs}s (${rowsN} month-rows)`),!!failed);
 }
 /* ---- Super Admin: month-by-month comparison of a chosen FY with a chosen earlier FY ---- */
 let pfnCmpA=null,pfnCmpB=null;
@@ -10042,7 +10054,11 @@ async function doReverse(fn,id,label,affectedLocs,itemIds){
    function's time limit; a busy week is split in half automatically. */
 async function runLedger(){
   if(window._ledgerBusy)return toast('Already pulling Square history — please wait');
-  window._ledgerBusy=true;let ins=0,cl=0,done=0;const total=365,step=7;
+  window._ledgerBusy=true;let ins=0,cl=0,done=0,total=365;const step=7;
+  // incremental: start from the newest Square change we already have (a day of overlap; duplicates are skipped)
+  if(!window._ledgerFull){try{const{data}=await sb.from('stock_ledger').select('ts').not('ext_id','is',null).order('ts',{ascending:false}).limit(1);
+    if(data&&data[0]&&data[0].ts){total=Math.max(2,Math.min(365,Math.ceil((Date.now()-new Date(data[0].ts).getTime())/864e5)+1));}}catch(e){}}
+  window._ledgerFull=false;
   const pull=async(from,to)=>{const{data,error}=await sb.functions.invoke('square-ledger',{body:{days:from,until_days:to}});
     if(error)throw new Error(await fnErr(error));if(data&&data.error)throw new Error(data.error);
     ins+=(data&&data.inserted)||0;cl+=(data&&data.cleaned)||0;
@@ -10051,7 +10067,7 @@ async function runLedger(){
     for(let to=0;to<total;to+=step){const from=Math.min(total,to+step);
       toast(`Pulling Square stock history… ${Math.round(done/total*100)}% (${ins} new so far)`);
       await pull(from,to);done=from;}
-    toast('Square history updated: '+ins+' new change'+(ins===1?'':'s')+(cl?', '+cl+' duplicate'+(cl===1?'':'s')+' removed':''));
+    toast('Square history updated'+(total<365?' (last '+total+' day'+(total===1?'':'s')+' — since the previous pull)':' (12 months)')+': '+ins+' new change'+(ins===1?'':'s')+(cl?', '+cl+' duplicate'+(cl===1?'':'s')+' removed':''));
   }catch(e){toast('Square history: '+(e.message||e)+(done?` (got ${Math.round(done/total*100)}% — ${ins} new — click again to finish)`:''),true);}
   finally{window._ledgerBusy=false;}
 }
