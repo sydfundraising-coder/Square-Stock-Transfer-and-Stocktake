@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.15-6';
+const APP_VERSION='2026.11.15-7';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -7103,59 +7103,91 @@ function editUserCentres(id){
   };
 }
 /* ---------- Centre Insights: top sellers + movers ---------- */
-let insCentre=null;
-async function fetchCentreSales(locId){
-  const{data,error}=await sb.from('item_sales_12m').select('item_id,qty,revenue').eq('location_id',locId);
-  if(error)throw error;return data||[];
+let insCentre=null,insSel=null;   // insSel: the centres ticked (one or several)
+async function fetchCentreSales(locIds){
+  const ids=Array.isArray(locIds)?locIds:[locIds];let out=[];
+  for(let from=0;;from+=1000){const{data,error}=await sb.from('item_sales_12m').select('item_id,qty,revenue').in('location_id',ids).range(from,from+999);
+    if(error)throw error;out=out.concat(data||[]);if(!data||data.length<1000)break;}
+  return out;
 }
+/* click a column heading to sort the table: first click = highest first (numbers) / A→Z (text), click again to reverse */
+function makeSortable(root){(root||document).querySelectorAll('table.sortable').forEach(tb=>{
+  const ths=[...tb.querySelectorAll('thead th')];
+  ths.forEach((th,ci)=>{if(th.dataset.nosort!=null)return;th.style.cursor='pointer';th.style.userSelect='none';th.title='Sort';
+    th.insertAdjacentHTML('beforeend','<span class="srt" style="opacity:.35;margin-left:4px;font-size:10px">⇅</span>');
+    th.onclick=()=>{const body=tb.tBodies[0];if(!body)return;const rows=[...body.rows];
+      const val=r=>{const c=r.cells[ci];if(!c)return '';const t=(c.dataset.v!=null?c.dataset.v:c.textContent).trim();const n=parseFloat(t.replace(/[$,%\s]/g,'').replace(/^[▲+]/,'').replace(/^▼/,'-'));return t!==''&&!isNaN(n)&&/^[\s$▲▼+\-]*[\d.,]+/.test(t)?n:t.toLowerCase();};
+      const numeric=rows.some(r=>typeof val(r)==='number');
+      const dir=th.dataset.dir?(th.dataset.dir==='asc'?'desc':'asc'):(numeric?'desc':'asc');
+      ths.forEach(h=>{delete h.dataset.dir;const s=h.querySelector('.srt');if(s){s.textContent='⇅';s.style.opacity='.35';}});
+      th.dataset.dir=dir;const sp=th.querySelector('.srt');if(sp){sp.textContent=dir==='asc'?'▲':'▼';sp.style.opacity='1';}
+      rows.sort((a,b)=>{const x=val(a),y=val(b);let c;if(typeof x==='number'&&typeof y==='number')c=x-y;else if(typeof x==='number')c=1;else if(typeof y==='number')c=-1;else c=String(x).localeCompare(String(y));return dir==='asc'?c:-c;});
+      rows.forEach(r=>body.appendChild(r));};});});}
 function vInsights(v){
   const centres=(scoped()?S.locations.filter(l=>mine(l.id)):S.locations.slice()).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(!centres.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available.</div></div>`;return;}
   if(!insCentre||!centres.find(c=>c.id===insCentre))insCentre=(HOME&&centres.find(c=>c.id===HOME))?HOME:centres[0].id;
+  if(insSel==null){try{insSel=JSON.parse(localStorage.getItem('ins.sel')||'null');}catch(e){}}
+  insSel=(Array.isArray(insSel)?insSel:[insCentre]).filter(id=>centres.some(c=>c.id===id));if(!insSel.length)insSel=[insCentre];
+  const insLbl=()=>insSel.length===centres.length&&centres.length>1?(scoped()?'All my centres':'All centres'):insSel.length===1?loc(insSel[0]).name:insSel.length+' centres';
+  const picker=centres.length<2?'':`<details class="ssmp pf-pick" id="ins-pick" style="position:relative"><summary class="btn" style="list-style:none;user-select:none">${svg(I.location,15)} <span id="ins-lbl">${esc(insLbl())}</span> ▾</summary>
+    <div class="pf-pick-pop"><div class="pf-pick-h"><b>Centres</b><span><button type="button" class="lnk" data-all>All</button> · <button type="button" class="lnk" data-none>Clear</button></span></div>
+    ${centres.map(c=>`<label class="pf-pick-r"><input type="checkbox" value="${c.id}"${insSel.includes(c.id)?' checked':''}> ${esc(c.name)}</label>`).join('')}
+    <div class="pf-pick-f"><button type="button" class="btn sm primary" data-go>Show report</button></div></div></details>`;
   v.innerHTML=`<div class="rep-controls">
-      <div class="banner info" style="flex:1;margin:0">${svg(I.chart,17)}<div>Best and worst sellers and busiest items for a centre over the <b>last 12 months</b>. Sales come from Square — keep them current with <b>Square Sync → Update sales history</b>.</div></div>
-      <div class="rep-actions no-print"><select class="filter" id="ins-c">${centres.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="btn" id="ins-csv">${svg(I.receipt,15)} CSV</button></div>
+      <div class="banner info" style="flex:1;margin:0">${svg(I.chart,17)}<div>Best and worst sellers and busiest items over the <b>last 12 months</b> — tick one centre or several to combine them. Click a column heading to sort. Sales come from Square — keep them current with <b>Square Sync → Update sales history</b>.</div></div>
+      <div class="rep-actions no-print">${picker}<button class="btn" id="ins-csv">${svg(I.receipt,15)} CSV</button></div>
     </div><div id="ins-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
-  document.getElementById('ins-c').value=insCentre;document.getElementById('ins-c').onchange=e=>{insCentre=e.target.value;renderInsights();};
+  const d=document.getElementById('ins-pick');
+  if(d){const boxes=()=>[...d.querySelectorAll('input[type=checkbox]')];
+    d.querySelector('[data-all]').onclick=()=>boxes().forEach(b=>b.checked=true);
+    d.querySelector('[data-none]').onclick=()=>boxes().forEach(b=>b.checked=false);
+    d.querySelector('[data-go]').onclick=()=>{const on=boxes().filter(b=>b.checked).map(b=>b.value);if(!on.length)return toast('Tick at least one centre',true);
+      insSel=on;if(on.length===1)insCentre=on[0];try{localStorage.setItem('ins.sel',JSON.stringify(insSel));}catch(e){}
+      d.open=false;document.getElementById('ins-lbl').textContent=insLbl();renderInsights();};
+    document.addEventListener('click',function out(e){if(!document.body.contains(d)){document.removeEventListener('click',out);return;}if(d.open&&!d.contains(e.target))d.open=false;});}
   document.getElementById('ins-csv').onclick=exportInsights;
   renderInsights();
 }
 async function renderInsights(){
-  const el=document.getElementById('ins-body');if(!el)return;const centre=insCentre;
-  let sales;try{sales=await fetchCentreSales(centre);}catch(e){el.innerHTML=`<div class="card empty">${svg(I.alert,30)}<div>Could not load sales: ${esc(e.message||e)}</div></div>`;return;}
+  const el=document.getElementById('ins-body');if(!el)return;const ids=(insSel&&insSel.length)?insSel.slice():[insCentre];const centre=ids[0];
+  const ohAll=id=>ids.reduce((a,l)=>a+(onHand(l,id)||0),0);
+  const scopeName=ids.length===1?loc(centre).name:ids.length<=3?ids.map(i=>loc(i).name).join(' + '):ids.length+' centres';
+  let sales;try{sales=await fetchCentreSales(ids);}catch(e){el.innerHTML=`<div class="card empty">${svg(I.alert,30)}<div>Could not load sales: ${esc(e.message||e)}</div></div>`;return;}
   const soldU={},soldV={},soldByCat={};let totU=0,totV=0;
   sales.forEach(r=>{const units=Number(r.qty)||0;if(units<=0)return;const rev=Number(r.revenue)||0;const it=item(r.item_id);soldU[r.item_id]=(soldU[r.item_id]||0)+units;soldV[r.item_id]=(soldV[r.item_id]||0)+rev;const c=it.category||'Uncategorised';soldByCat[c]=(soldByCat[c]||0)+units;totU+=units;totV+=rev;});
   const topItems=Object.entries(soldU).sort((a,b)=>b[1]-a[1]).slice(0,50);
   // worst sellers: items the centre sold or holds, lowest units sold first (zero sellers with stock included)
-  const worstPool=S.items.filter(i=>i.active!==false&&((soldU[i.id]||0)>0||onHand(centre,i.id)>0));
-  const worstItems=worstPool.map(i=>[i.id,soldU[i.id]||0]).sort((a,b)=>a[1]-b[1]||((soldV[a[0]]||0)-(soldV[b[0]]||0))||(onHand(centre,b[0])-onHand(centre,a[0]))).slice(0,50);
+  const worstPool=S.items.filter(i=>i.active!==false&&((soldU[i.id]||0)>0||ohAll(i.id)>0));
+  const worstItems=worstPool.map(i=>[i.id,soldU[i.id]||0]).sort((a,b)=>a[1]-b[1]||((soldV[a[0]]||0)-(soldV[b[0]]||0))||(ohAll(b[0])-ohAll(a[0]))).slice(0,50);
   const topCats=Object.entries(soldByCat).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const catMax=topCats.length?topCats[0][1]:0;
-  const movers={};S.transfers.filter(t=>t.to_location===centre&&['received','partially_received'].includes(t.status)).forEach(t=>(t.lines||[]).forEach(l=>{const m=(movers[l.item_id]=movers[l.item_id]||{count:0,units:0});m.count++;m.units+=(l.qty_received||0);}));
+  const movers={};S.transfers.filter(t=>ids.includes(t.to_location)&&['received','partially_received'].includes(t.status)).forEach(t=>(t.lines||[]).forEach(l=>{const m=(movers[l.item_id]=movers[l.item_id]||{count:0,units:0});m.count++;m.units+=(l.qty_received||0);}));
   const topMovers=Object.entries(movers).sort((a,b)=>b[1].count-a[1].count||b[1].units-a[1].units).slice(0,20);
-  window._insData={centre,topItems,topCats,topMovers,soldV,worstItems};
+  window._insData={centre,ids,scopeName,ohAll,topItems,topCats,topMovers,soldV,worstItems};
   const bar=(label,val,max)=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;gap:10px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span class="tnum" style="color:var(--muted);flex:none">${val.toLocaleString()}</span></div><div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:linear-gradient(90deg,var(--accent),var(--accent-ink));border-radius:6px"></div></div></div>`;
   el.innerHTML=`
     <div class="tiles">
-      <div class="tile accent"><div class="lbl">${svg(I.box,14)} Units sold (12mo)</div><div class="val tnum">${totU.toLocaleString()}</div><div class="meta">${loc(centre).name}</div></div>
+      <div class="tile accent"><div class="lbl">${svg(I.box,14)} Units sold (12mo)</div><div class="val tnum">${totU.toLocaleString()}</div><div class="meta">${esc(scopeName)}</div></div>
       <div class="tile"><div class="lbl">${svg(I.cost,14)} Sales value</div><div class="val tnum">${money0(totV)}</div><div class="meta">gross sales</div></div>
       <div class="tile"><div class="lbl">${svg(I.catalog,14)} Distinct items sold</div><div class="val tnum">${topItems.length>=50?'50+':Object.keys(soldU).length}</div><div class="meta">last 12 months</div></div>
       <div class="tile"><div class="lbl">${svg(I.chart,14)} Top category</div><div class="val tnum" style="font-size:18px">${topCats.length?esc(topCats[0][0]):'—'}</div><div class="meta">${topCats.length?topCats[0][1].toLocaleString()+' units':''}</div></div>
     </div>
-    ${!sales.length?`<div class="banner warn">${svg(I.alert,17)}<div>No sales yet for this centre. Run <b>Square Sync → Update sales data</b> to pull 12 months of Square sales.</div></div>`:''}
+    ${!sales.length?`<div class="banner warn">${svg(I.alert,17)}<div>No sales yet for ${ids.length>1?'these centres':'this centre'}. Run <b>Square Sync → Update sales data</b> to pull 12 months of Square sales.</div></div>`:''}
     <div class="grid2" style="align-items:start">
       <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Top 5 categories sold</h3>${topCats.length?topCats.map(([c,u])=>bar(c,u,catMax)).join(''):'<div style="color:var(--faint);font-size:13px">No data.</div>'}</div>
-      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Most frequently received (transfers in)</h3>${topMovers.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Times</th><th class="num">Units</th></tr></thead><tbody>${topMovers.map(([id,m])=>`<tr><td>${esc(item(id).name)}</td><td class="num tnum">${m.count}</td><td class="num tnum">${m.units}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No transfer receipts yet.</div>'}</div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:12px">Most frequently received (transfers in)</h3>${topMovers.length?`<div class="tablewrap" style="border:none;box-shadow:none"><table class="sortable" style="min-width:0"><thead><tr><th>Item</th><th class="num">Times</th><th class="num">Units</th></tr></thead><tbody>${topMovers.map(([id,m])=>`<tr><td>${esc(item(id).name)}</td><td class="num tnum">${m.count}</td><td class="num tnum">${m.units}</td></tr>`).join('')}</tbody></table></div>`:'<div style="color:var(--faint);font-size:13px">No transfer receipts yet.</div>'}</div>
     </div>
     <div class="section-head" style="margin-top:8px"><h2>Top 50 items sold (12 months)</h2></div>
-    ${topItems.length?`<div class="tablewrap"><table><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th></tr></thead><tbody>${topItems.map(([id,u],ix)=>{const it=item(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum">${u.toLocaleString()}</td><td class="num tnum">${money((window._insData&&window._insData.soldV&&window._insData.soldV[id])||0)}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No sales recorded for this centre yet.</div></div>`}
+    ${topItems.length?`<div class="tablewrap"><table class="sortable"><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th></tr></thead><tbody>${topItems.map(([id,u],ix)=>{const it=item(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum">${u.toLocaleString()}</td><td class="num tnum">${money((window._insData&&window._insData.soldV&&window._insData.soldV[id])||0)}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No sales recorded for this centre yet.</div></div>`}
     <div class="section-head" style="margin-top:18px"><h2>Worst 50 selling items (12 months)</h2><small>Lowest units sold first, including items with stock that have not sold</small></div>
-    ${worstItems.length?`<div class="tablewrap"><table><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th><th class="num">On hand</th></tr></thead><tbody>${worstItems.map(([id,u],ix)=>{const it=item(id);const oh=onHand(centre,id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum" style="${u===0?'color:var(--crit);font-weight:700':''}">${u.toLocaleString()}</td><td class="num tnum">${money(soldV[id]||0)}</td><td class="num tnum">${oh.toLocaleString()}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No items to show.</div></div>`}`;
+    ${worstItems.length?`<div class="tablewrap"><table class="sortable"><thead><tr><th>#</th><th>Item</th><th>Category</th><th class="num">Units sold</th><th class="num">Sales value</th><th class="num">On hand</th></tr></thead><tbody>${worstItems.map(([id,u],ix)=>{const it=item(id);const oh=ohAll(id);return `<tr class="clickable" data-openitem="${id}"><td class="tnum" style="color:var(--faint)">${ix+1}</td><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td><span class="tag">${esc(it.category||'—')}</span></td><td class="num tnum" style="${u===0?'color:var(--crit);font-weight:700':''}">${u.toLocaleString()}</td><td class="num tnum">${money(soldV[id]||0)}</td><td class="num tnum">${oh.toLocaleString()}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.box,34)}<div>No items to show.</div></div>`}`;
+  makeSortable(el);
 }
 function exportInsights(){
-  const d=window._insData;if(!d)return;const cn=loc(d.centre).code;const stamp=today();
+  const d=window._insData;if(!d)return;const cn=(d.ids&&d.ids.length>1)?(d.ids.length+'-centres'):loc(d.centre).code;const stamp=today();
   downloadCSV(`top-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)'],d.topItems.map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,((d.soldV&&d.soldV[id])||0).toFixed(2)]));
-  setTimeout(()=>downloadCSV(`worst-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)','On hand'],(d.worstItems||[]).map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,((d.soldV&&d.soldV[id])||0).toFixed(2),onHand(d.centre,id)])),800);
+  setTimeout(()=>downloadCSV(`worst-items-sold_${cn}_${stamp}.csv`,['Rank','Item','Product code','Category','Units sold (12mo)','Sales value (AUD)','On hand'],(d.worstItems||[]).map(([id,u],ix)=>[ix+1,item(id).name,item(id).sku||'',item(id).category||'',u,((d.soldV&&d.soldV[id])||0).toFixed(2),d.ohAll?d.ohAll(id):onHand(d.centre,id)])),800);
   setTimeout(()=>downloadCSV(`most-received_${cn}_${stamp}.csv`,['Item','Product code','Times received','Units received'],d.topMovers.map(([id,m])=>[item(id).name,item(id).sku||'',m.count,m.units])),400);
   toast('Exported top items, worst items and most-received');
 }
