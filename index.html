@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.15-4';
+const APP_VERSION='2026.11.15-5';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -8388,21 +8388,24 @@ async function perfPull(locs,last){
   const now=new Date(),cy=now.getUTCFullYear(),cm=now.getUTCMonth();const endAll=new Date(Date.UTC(cy,cm+1,1));
   const winsFor=lc=>{let sy=2024,sm=6;   // 1 Jul 2024
       if(last[lc]){const d=new Date(last[lc]);d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-1);sy=d.getUTCFullYear();sm=d.getUTCMonth();if(sy<2024||(sy===2024&&sm<6)){sy=2024;sm=6;}}
-      const out=[];let y=sy,m=sm;while(Date.UTC(y,m,1)<endAll.getTime()){const s0=new Date(Date.UTC(y,m,1));let y2=y,m2=m+6;while(m2>11){m2-=12;y2++;}const e0=new Date(Math.min(Date.UTC(y2,m2,1),endAll.getTime()));out.push({start_at:s0.toISOString(),end_at:e0.toISOString()});y=y2;m=m2;}
+      const out=[];let y=sy,m=sm;while(Date.UTC(y,m,1)<endAll.getTime()){const s0=new Date(Date.UTC(y,m,1));let y2=y,m2=m+3;while(m2>11){m2-=12;y2++;}const e0=new Date(Math.min(Date.UTC(y2,m2,1),endAll.getTime()));out.push({start_at:s0.toISOString(),end_at:e0.toISOString()});y=y2;m=m2;}
       return out;};
   const jobs=[];locs.forEach(lc=>winsFor(lc).forEach(w=>jobs.push({lc,w})));
   let done=0,rowsN=0,failed=0;const t0=Date.now();
+  // 3-month batches (a busy Diwali quarter fits easily in the function's time limit); a batch that fails is retried month by month
+  const call=async(lc,w)=>{const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[lc],start_at:w.start_at,end_at:w.end_at}});if(error)throw new Error(await fnErr(error));if(data&&data.error)throw new Error(data.error);return (data&&data.rows)||0;};
+  const months=w=>{const out=[];let d=new Date(w.start_at);const e=Date.parse(w.end_at);while(d.getTime()<e){const n=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1));out.push({start_at:d.toISOString(),end_at:new Date(Math.min(n.getTime(),e)).toISOString()});d=n;}return out;};
   toast(`Pulling sales from Square — ${jobs.length} batch${jobs.length===1?'':'es'}…`);
   // 3 at a time (each call = one centre + one window, well under the function time limit)
   for(let i=0;i<jobs.length;i+=3){await Promise.all(jobs.slice(i,i+3).map(async j=>{
-      try{const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[j.lc],start_at:j.w.start_at,end_at:j.w.end_at}});
-        if(error){failed++;console.error('square-perf',j,await fnErr(error));}else if(data&&data.error){failed++;console.error('square-perf',data.error);}else rowsN+=(data&&data.rows)||0;}
-      catch(e){failed++;console.error('square-perf',e);}
+      try{rowsN+=await call(j.lc,j.w);}
+      catch(e){console.warn('square-perf batch failed, retrying month by month',loc(j.lc).name,e.message);
+        for(const m of months(j.w)){let ok=false;for(let t=0;t<2&&!ok;t++){try{rowsN+=await call(j.lc,m);ok=true;}catch(e2){if(t)console.error('square-perf',loc(j.lc).name,m.start_at.slice(0,7),e2.message);}}if(!ok)failed++;}}
       done++;}));
     toast('Refreshing sales… '+done+'/'+jobs.length+(failed?(' · '+failed+' failed'):''));}
   await loadOps();CTX&&Object.keys(CTX).forEach(k=>delete CTX[k]);renderView();
   const secs=Math.round((Date.now()-t0)/1000);
-  toast(failed?('Sales refresh finished with '+failed+' batch(es) failing — see console (F12)'):(`Sales & performance updated in ${secs}s (${rowsN} month-rows)`),!!failed);
+  toast(failed?('Sales refresh finished but '+failed+' month(s) could not be read from Square — press Refresh sales again to retry'):(`Sales & performance updated in ${secs}s (${rowsN} month-rows)`),!!failed);
 }
 /* ---- Super Admin: month-by-month comparison of a chosen FY with a chosen earlier FY ---- */
 let pfnCmpA=null,pfnCmpB=null;
