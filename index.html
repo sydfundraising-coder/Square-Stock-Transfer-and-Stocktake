@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.14-3';
+const APP_VERSION='2026.11.14-4';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -7999,11 +7999,12 @@ const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE)
 let perfTab='sales';
 function vPerf(v){
   destroyCharts();
-  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${perfTab==='sales'?'active':''}" data-perftab="sales">Sales &amp; performance</button><button class="rep-tab ${perfTab==='insights'?'active':''}" data-perftab="insights">Centre insights</button><button class="rep-tab ${perfTab==='cathall'?'active':''}" data-perftab="cathall">Catering &amp; Hall Hire</button></div><div id="perf-tab"></div>`;
+  v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${perfTab==='sales'?'active':''}" data-perftab="sales">Sales &amp; performance</button><button class="rep-tab ${perfTab==='insights'?'active':''}" data-perftab="insights">Centre insights</button><button class="rep-tab ${perfTab==='cathall'?'active':''}" data-perftab="cathall">Catering &amp; Hall Hire</button><button class="rep-tab ${perfTab==='diwali'?'active':''}" data-perftab="diwali">🪔 Diwali sales</button></div><div id="perf-tab"></div>`;
   v.querySelectorAll('[data-perftab]').forEach(b=>b.onclick=()=>{perfTab=b.dataset.perftab;vPerf(v);});
   const box=document.getElementById('perf-tab');
   if(perfTab==='insights')return vInsights(box);
   if(perfTab==='cathall')return vCatHall(box);
+  if(perfTab==='diwali')return vDiwali(box);
   if(ROLE==='super_admin')return vPerfNational(box);
   if(ROLE==='national_admin')return vPerfFull(box);
   return vPerfCentre(box);                      // Users and Admins: the centre report
@@ -8081,6 +8082,71 @@ async function renderPerf(){
   mkChart('pf-fy',{type:'bar',data:{labels:fys.map(f=>'FY'+f),datasets:[{label:'Net sales $',data:fys.map(f=>Math.round(byFy[f].sales)),backgroundColor:t.good,borderRadius:4}]},options:{scales:axes(),plugins:{legend:{display:false}}}});
   mkChart('pf-basket',{type:'line',data:{labels:yms.map(mLabel),datasets:[{label:'Avg basket $',data:yms.map(y=>Math.round(avg(byYm[y].sales,byYm[y].orders)*100)/100),borderColor:t.accent,tension:.3,pointRadius:2,yAxisID:'y'},{label:'Items / order',data:yms.map(y=>Math.round(avg(byYm[y].units,byYm[y].orders)*100)/100),borderColor:t.warn,tension:.3,pointRadius:2,yAxisID:'y1'}]},options:{scales:{x:axes().x,y:{position:'left',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{color:t.grid}},y1:{position:'right',beginAtZero:true,ticks:{color:t.muted,font:{size:11}},grid:{display:false}}}}});
 }
+/* ---------- Sales & Performance → Diwali sales (Kids Diwali + Sweets), by centre and year, vs previous year ---------- */
+const DW_GROUPS=[{k:'kids',label:'Kids Diwali',cats:['kids diwali'],color:'#d97706'},{k:'sweets',label:'Sweets',cats:['sweets','frozen sweets'],color:'#be185d'}];
+const DW_SEASONS={on:{l:'Diwali season (Oct – Nov)',m:[10,11]},oct:{l:'October only',m:[10]},nov:{l:'November only',m:[11]},sepnov:{l:'Sep – Nov',m:[9,10,11]},year:{l:'Whole calendar year',m:[1,2,3,4,5,6,7,8,9,10,11,12]}};
+let dwSeason='on',dwYear=null,dwData=null;
+const dwGroup=c=>{const l=String(c||'').trim().toLowerCase();const g=DW_GROUPS.find(x=>x.cats.includes(l));return g?g.k:null;};
+function vDiwali(v){
+  const cs=perfCentres();if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Diwali sales</b> from Square — <b>Kids Diwali</b> (Kids Diwali category) and <b>Sweets</b> (Sweets + Frozen Sweets), by centre and year, compared with the previous year’s same months.</div></div>
+    <div class="rep-actions no-print">${perfPickerHtml()}<select class="filter" id="dw-season">${Object.entries(DW_SEASONS).map(([k,s])=>`<option value="${k}"${k===dwSeason?' selected':''}>${s.l}</option>`).join('')}</select><select class="filter" id="dw-year"></select><button class="btn" id="dw-xls">${svg(I.receipt,15)} Excel</button>${perfCanRefresh()?`<button class="btn" id="dw-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div></div><div id="dw-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
+  perfPickerBind(()=>dwLoad());
+  document.getElementById('dw-season').onchange=e=>{dwSeason=e.target.value;dwRender();};
+  document.getElementById('dw-year').onchange=e=>{dwYear=+e.target.value;dwRender();};
+  document.getElementById('dw-xls').onclick=dwExport;
+  const rb=document.getElementById('dw-refresh');if(rb)rb.onclick=runPerfSync;
+  dwLoad();
+}
+async function dwLoad(){const el=document.getElementById('dw-body');if(!el)return;const ids=perfSelIds();let rows=[];
+  try{for(let from=0;;from+=1000){const{data,error}=await sb.from('sales_category_monthly').select('location_id,ym,category,orders,units,sales').in('location_id',ids).or('category.ilike.*diwali*,category.ilike.*sweet*').range(from,from+999);if(error)throw error;rows=rows.concat(data||[]);if(!data||data.length<1000)break;}}
+  catch(e){console.error('diwali',e);el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>Sales by category aren’t set up yet. A Super Admin needs to run <b>103_category_sales_monthly.sql</b>, deploy the updated <b>square-perf</b> function, then press <b>Refresh sales</b> once.</div></div>`;return;}
+  dwData={ids,rows:rows.map(r=>({...r,g:dwGroup(r.category),y:+String(r.ym).slice(0,4),m:+String(r.ym).slice(5,7)})).filter(r=>r.g)};dwRender();}
+function dwRender(){const el=document.getElementById('dw-body');if(!el||!dwData)return;destroyCharts();
+  const months=DW_SEASONS[dwSeason].m;const rows=dwData.rows.filter(r=>months.includes(r.m));
+  const years=[...new Set(dwData.rows.map(r=>r.y))].sort((a,b)=>a-b);
+  if(!years.length){el.innerHTML=`<div class="banner warn">${svg(I.alert,17)}<div>No Kids Diwali or Sweets sales found for ${esc(perfScopeName())}. ${perfCanRefresh()?'If this was just set up, press <b>Refresh sales</b> once.':''} Items must be in the <b>Kids Diwali</b>, <b>Sweets</b> or <b>Frozen Sweets</b> category.</div></div>`;return;}
+  const cy=new Date().getFullYear();if(!dwYear||!years.includes(dwYear))dwYear=years.includes(cy)?cy:years[years.length-1];
+  const ys=document.getElementById('dw-year');if(ys)ys.innerHTML=years.slice().reverse().map(y=>`<option value="${y}"${y===dwYear?' selected':''}>${y} vs ${y-1}</option>`).join('');
+  const sum=(f)=>rows.filter(f).reduce((a,r)=>({sales:a.sales+(+r.sales||0),units:a.units+(+r.units||0),orders:a.orders+(+r.orders||0)}),{sales:0,units:0,orders:0});
+  const Y=dwYear,P=dwYear-1;
+  // a season still running: compare only the months that have happened this year
+  const nowYm=today().slice(0,7);const doneM=months.filter(m=>`${Y}-${String(m).padStart(2,'0')}`<=nowYm);const partial=Y===cy&&doneM.length<months.length;
+  const inY=(r,y)=>r.y===y&&(!partial||doneM.includes(r.m));
+  const pct=(a,b)=>b>0?Math.round((a-b)/b*1000)/10:null;
+  const chg=(a,b)=>{const q=pct(a,b);if(q==null)return '<span style="color:var(--faint)">—</span>';const up=q>=0;return `<span style="color:${up?'var(--good)':'var(--crit)'};font-weight:600">${up?'▲':'▼'} ${Math.abs(q)}%</span>`;};
+  const tile=(g,label,cls)=>{const a=sum(r=>(!g||r.g===g)&&inY(r,Y)),b=sum(r=>(!g||r.g===g)&&inY(r,P));return `<div class="tile ${cls||''}"><div class="lbl">${svg(I.cost,14)} ${label} · ${Y}</div><div class="val tnum">${money0(a.sales)}</div><div class="meta">${chg(a.sales,b.sales)} vs ${P} (${money0(b.sales)}) · ${Math.round(a.units).toLocaleString()} units</div></div>`;};
+  // by centre
+  const locIds=[...new Set(rows.filter(r=>r.y===Y||r.y===P).map(r=>r.location_id))];
+  const byLoc=locIds.map(id=>{const o={id};DW_GROUPS.forEach(g=>{o[g.k]=sum(r=>r.location_id===id&&r.g===g.k&&inY(r,Y)).sales;o[g.k+'P']=sum(r=>r.location_id===id&&r.g===g.k&&inY(r,P)).sales;});o.t=DW_GROUPS.reduce((a,g)=>a+o[g.k],0);o.tP=DW_GROUPS.reduce((a,g)=>a+o[g.k+'P'],0);return o;}).sort((a,b)=>b.t-a.t);
+  const tot={};DW_GROUPS.forEach(g=>{tot[g.k]=byLoc.reduce((a,o)=>a+o[g.k],0);tot[g.k+'P']=byLoc.reduce((a,o)=>a+o[g.k+'P'],0);});tot.t=byLoc.reduce((a,o)=>a+o.t,0);tot.tP=byLoc.reduce((a,o)=>a+o.tP,0);
+  // by year
+  const byYear=years.map(y=>{const o={y};DW_GROUPS.forEach(g=>{const s=sum(r=>r.y===y&&r.g===g.k);o[g.k]=s.sales;o[g.k+'U']=s.units;});o.t=DW_GROUPS.reduce((a,g)=>a+o[g.k],0);return o;});
+  // categories / months detail
+  const byMonth=months.map(m=>{const o={m};DW_GROUPS.forEach(g=>{o[g.k]=sum(r=>r.g===g.k&&r.y===Y&&r.m===m).sales;o[g.k+'P']=sum(r=>r.g===g.k&&r.y===P&&r.m===m).sales;});return o;});
+  window._dw={Y,P,byLoc,byYear,byMonth,tot,season:DW_SEASONS[dwSeason].l,partial};
+  const mName=m=>new Date(2000,m-1,1).toLocaleDateString('en-AU',{month:'long'});
+  el.innerHTML=`${partial?`<div class="banner info" style="margin-bottom:12px">${svg(I.info,16)}<div>${Y}’s season isn’t over — comparing <b>${doneM.map(mName).join(' + ')||'—'}</b> only, against the same months of ${P}.</div></div>`:''}
+    <div class="tiles" style="margin-bottom:14px">${tile('kids','Kids Diwali','accent')}${tile('sweets','Sweets')}${tile(null,'Diwali total')}</div>
+    <div class="section-head"><h2>By centre · ${esc(DW_SEASONS[dwSeason].l)} ${Y} vs ${P}</h2><span class="tag">${esc(perfScopeName())}</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">Kids Diwali ${Y}</th><th class="num">${P}</th><th class="num">Change</th><th class="num">Sweets ${Y}</th><th class="num">${P}</th><th class="num">Change</th><th class="num">Total ${Y}</th><th class="num">${P}</th><th class="num">Change</th></tr></thead><tbody>
+      ${byLoc.map(o=>`<tr><td><b>${esc(loc(o.id).name)}</b></td><td class="num tnum">${money0(o.kids)}</td><td class="num tnum" style="color:var(--muted)">${money0(o.kidsP)}</td><td class="num">${chg(o.kids,o.kidsP)}</td><td class="num tnum">${money0(o.sweets)}</td><td class="num tnum" style="color:var(--muted)">${money0(o.sweetsP)}</td><td class="num">${chg(o.sweets,o.sweetsP)}</td><td class="num tnum"><b>${money0(o.t)}</b></td><td class="num tnum" style="color:var(--muted)">${money0(o.tP)}</td><td class="num">${chg(o.t,o.tP)}</td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--border-strong)"><td><b>All centres</b></td><td class="num tnum"><b>${money0(tot.kids)}</b></td><td class="num tnum" style="color:var(--muted)">${money0(tot.kidsP)}</td><td class="num">${chg(tot.kids,tot.kidsP)}</td><td class="num tnum"><b>${money0(tot.sweets)}</b></td><td class="num tnum" style="color:var(--muted)">${money0(tot.sweetsP)}</td><td class="num">${chg(tot.sweets,tot.sweetsP)}</td><td class="num tnum"><b>${money0(tot.t)}</b></td><td class="num tnum" style="color:var(--muted)">${money0(tot.tP)}</td><td class="num">${chg(tot.t,tot.tP)}</td></tr>
+    </tbody></table></div>
+    <div class="grid2" style="align-items:start;margin-top:16px">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">By year · ${esc(DW_SEASONS[dwSeason].l)}</h3><div style="height:220px"><canvas id="dw-chart"></canvas></div>
+        <div class="tablewrap" style="border:none;box-shadow:none;margin-top:8px"><table style="min-width:0"><thead><tr><th>Year</th><th class="num">Kids Diwali</th><th class="num">Sweets</th><th class="num">Total</th><th class="num">vs prior yr</th></tr></thead><tbody>${byYear.slice().reverse().map((o,i,a)=>{const pr=byYear.find(x=>x.y===o.y-1);return `<tr><td><b>${o.y}</b>${o.y===cy&&partial?' <span class="tag">to date</span>':''}</td><td class="num tnum">${money0(o.kids)}</td><td class="num tnum">${money0(o.sweets)}</td><td class="num tnum"><b>${money0(o.t)}</b></td><td class="num">${pr?chg(o.t,pr.t):'<span style="color:var(--faint)">—</span>'}</td></tr>`;}).join('')}</tbody></table></div></div>
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:10px">By month · ${Y} vs ${P}</h3><div class="tablewrap" style="border:none;box-shadow:none"><table style="min-width:0"><thead><tr><th>Month</th><th class="num">Kids ${Y}</th><th class="num">${P}</th><th class="num">Sweets ${Y}</th><th class="num">${P}</th></tr></thead><tbody>${byMonth.map(o=>`<tr><td>${mName(o.m)}</td><td class="num tnum">${money0(o.kids)}</td><td class="num tnum" style="color:var(--muted)">${money0(o.kidsP)}</td><td class="num tnum">${money0(o.sweets)}</td><td class="num tnum" style="color:var(--muted)">${money0(o.sweetsP)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="hint" style="margin-top:8px">Sales are by calendar month (Square data is grouped by month), so the season is chosen in whole months.</div></div>
+    </div>`;
+  mkChart('dw-chart',{type:'bar',data:{labels:byYear.map(o=>String(o.y)),datasets:DW_GROUPS.map(g=>({label:g.label,data:byYear.map(o=>Math.round(o[g.k])),backgroundColor:g.color,borderRadius:4,stack:'s'}))},options:{scales:{x:{...axes().x,stacked:true},y:{...axes().y,stacked:true}},plugins:{legend:{display:true,position:'bottom'}}}});
+}
+function dwExport(){const d=window._dw;if(!d||!window.XLSX)return toast('Nothing to export yet',true);const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([[`Diwali sales — ${d.season} ${d.Y} vs ${d.P}${d.partial?' (months to date)':''}`],[],['Centre',`Kids Diwali ${d.Y}`,`Kids Diwali ${d.P}`,`Sweets ${d.Y}`,`Sweets ${d.P}`,`Total ${d.Y}`,`Total ${d.P}`],...d.byLoc.map(o=>[loc(o.id).name,+o.kids.toFixed(2),+o.kidsP.toFixed(2),+o.sweets.toFixed(2),+o.sweetsP.toFixed(2),+o.t.toFixed(2),+o.tP.toFixed(2)]),['All centres',+d.tot.kids.toFixed(2),+d.tot.kidsP.toFixed(2),+d.tot.sweets.toFixed(2),+d.tot.sweetsP.toFixed(2),+d.tot.t.toFixed(2),+d.tot.tP.toFixed(2)]]),'By centre');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Year','Kids Diwali (AUD)','Kids Diwali units','Sweets (AUD)','Sweets units','Total (AUD)'],...d.byYear.map(o=>[o.y,+o.kids.toFixed(2),Math.round(o.kidsU),+o.sweets.toFixed(2),Math.round(o.sweetsU),+o.t.toFixed(2)])]),'By year');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Month',`Kids ${d.Y}`,`Kids ${d.P}`,`Sweets ${d.Y}`,`Sweets ${d.P}`],...d.byMonth.map(o=>[o.m,+o.kids.toFixed(2),+o.kidsP.toFixed(2),+o.sweets.toFixed(2),+o.sweetsP.toFixed(2)])]),'By month');
+  XLSX.writeFile(wb,`diwali-sales_${d.Y}_${perfScopeCode()}_${today()}.xlsx`);toast('Excel exported');}
+
 /* ---------- Sales & Performance → Catering & Hall Hire revenue (migration 103: sales_category_monthly) ---------- */
 const CH_STREAMS=[{k:'catering',label:'Catering',color:'#d97706'},{k:'hall',label:'Hall Hire',color:'#2563eb'}];
 const chStream=c=>{const l=String(c||'').toLowerCase();if(/hall|venue|room hire/.test(l))return 'hall';if(/cater/.test(l))return 'catering';return null;};
