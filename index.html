@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.15-1';
+const APP_VERSION='2026.11.15-2';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -8090,7 +8090,7 @@ const dwKidsLocs=()=>(S.locations||[]).filter(l=>/^sydkd$/i.test(String(l.code||
 const dwGroup=c=>{const l=String(c||'').trim().toLowerCase();const g=DW_GROUPS.find(x=>x.cats.includes(l));return g?g.k:null;};
 function vDiwali(v){
   const cs=perfCentres();if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.chart,34)}<div>No centre available to you.</div></div>`;return;}
-  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Diwali sales</b> from Square — <b>Kids Diwali</b> (Kids Diwali category, plus <b>all sales at SYDKD</b>) and <b>Sweets</b> (Sweets + Frozen Sweets), by centre and year, compared with the previous year’s same months.</div></div>
+  v.innerHTML=`<div class="rep-controls"><div class="banner info" style="flex:1;margin:0">${svg(I.cost,17)}<div><b>Diwali sales</b> from Square (net sales: after discounts and refunds, before tax; Sydney dates) — <b>Kids Diwali</b> (Kids Diwali category, plus <b>all sales at SYDKD</b>) and <b>Sweets</b> (Sweets + Frozen Sweets), by centre and year, compared with the previous year’s same months.</div></div>
     <div class="rep-actions no-print">${perfPickerHtml()}<select class="filter" id="dw-season">${Object.entries(DW_SEASONS).map(([k,s])=>`<option value="${k}"${k===dwSeason?' selected':''}>${s.l}</option>`).join('')}</select><select class="filter" id="dw-year"></select><button class="btn" id="dw-xls">${svg(I.receipt,15)} Excel</button>${perfCanRefresh()?`<button class="btn" id="dw-refresh">${svg(I.chart,15)} Refresh sales</button>`:''}</div></div><div id="dw-body"><div class="card empty">${svg(I.chart,30)}<div>Loading…</div></div></div>`;
   perfPickerBind(()=>dwLoad());
   document.getElementById('dw-season').onchange=e=>{dwSeason=e.target.value;dwRender();};
@@ -8106,7 +8106,8 @@ async function dwLoad(){const el=document.getElementById('dw-body');if(!el)retur
   const kd=dwKidsLocs().filter(id=>ids.includes(id));
   if(kd.length){try{let all=[];for(let from=0;;from+=1000){const{data,error}=await sb.from('sales_category_monthly').select('location_id,ym,category,orders,units,sales').in('location_id',kd).range(from,from+999);if(error)throw error;all=all.concat(data||[]);if(!data||data.length<1000)break;}
       rows=rows.filter(r=>!kd.includes(r.location_id)).concat(all);}catch(e){console.error('diwali SYDKD',e);}}
-  dwData={ids,rows:rows.map(r=>({...r,g:kd.includes(r.location_id)?'kids':dwGroup(r.category),y:+String(r.ym).slice(0,4),m:+String(r.ym).slice(5,7)})).filter(r=>r.g)};dwRender();}
+  let unc=[];try{const{data}=await sb.from('sales_category_monthly').select('location_id,ym,sales').in('location_id',ids.filter(x=>!kd.includes(x))).eq('category','Uncategorised');unc=data||[];}catch(e){}
+  dwData={unc,ids,rows:rows.map(r=>({...r,g:kd.includes(r.location_id)?'kids':dwGroup(r.category),y:+String(r.ym).slice(0,4),m:+String(r.ym).slice(5,7)})).filter(r=>r.g)};dwRender();}
 function dwRender(){const el=document.getElementById('dw-body');if(!el||!dwData)return;destroyCharts();
   const months=DW_SEASONS[dwSeason].m;const rows=dwData.rows.filter(r=>months.includes(r.m));
   const years=[...new Set(dwData.rows.map(r=>r.y))].sort((a,b)=>a-b);
@@ -8131,7 +8132,8 @@ function dwRender(){const el=document.getElementById('dw-body');if(!el||!dwData)
   const byMonth=months.map(m=>{const o={m};DW_GROUPS.forEach(g=>{o[g.k]=sum(r=>r.g===g.k&&r.y===Y&&r.m===m).sales;o[g.k+'P']=sum(r=>r.g===g.k&&r.y===P&&r.m===m).sales;});return o;});
   window._dw={Y,P,byLoc,byYear,byMonth,tot,season:DW_SEASONS[dwSeason].l,partial};
   const mName=m=>new Date(2000,m-1,1).toLocaleDateString('en-AU',{month:'long'});
-  el.innerHTML=`${partial?`<div class="banner info" style="margin-bottom:12px">${svg(I.info,16)}<div>${Y}’s season isn’t over — comparing <b>${doneM.map(mName).join(' + ')||'—'}</b> only, against the same months of ${P}.</div></div>`:''}
+  const uncY=(dwData.unc||[]).filter(r=>+String(r.ym).slice(0,4)===Y&&months.includes(+String(r.ym).slice(5,7))).reduce((a,r)=>a+(+r.sales||0),0);
+  el.innerHTML=`${uncY>1?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,16)}<div>${money0(uncY)} of sales in this period at these centres aren’t linked to any category in Square (custom amounts or items without a category), so they can’t be counted as Kids Diwali or Sweets.</div></div>`:''}${partial?`<div class="banner info" style="margin-bottom:12px">${svg(I.info,16)}<div>${Y}’s season isn’t over — comparing <b>${doneM.map(mName).join(' + ')||'—'}</b> only, against the same months of ${P}.</div></div>`:''}
     <div class="tiles" style="margin-bottom:14px">${tile('kids','Kids Diwali','accent')}${tile('sweets','Sweets')}${tile(null,'Diwali total')}</div>
     <div class="section-head"><h2>By centre · ${esc(DW_SEASONS[dwSeason].l)} ${Y} vs ${P}</h2><span class="tag">${esc(perfScopeName())}</span></div>
     <div class="tablewrap"><table><thead><tr><th>Centre</th><th class="num">Kids Diwali ${Y}</th><th class="num">${P}</th><th class="num">Change</th><th class="num">Sweets ${Y}</th><th class="num">${P}</th><th class="num">Change</th><th class="num">Total ${Y}</th><th class="num">${P}</th><th class="num">Change</th></tr></thead><tbody>
