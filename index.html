@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.15-5';
+const APP_VERSION='2026.11.15-6';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -8393,16 +8393,20 @@ async function perfPull(locs,last){
   const jobs=[];locs.forEach(lc=>winsFor(lc).forEach(w=>jobs.push({lc,w})));
   let done=0,rowsN=0,failed=0;const t0=Date.now();
   // 3-month batches (a busy Diwali quarter fits easily in the function's time limit); a batch that fails is retried month by month
+  let wl=null;try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen');}catch(e){}
+  const reWake=async()=>{if(document.visibilityState==='visible'&&navigator.wakeLock&&(!wl||wl.released)){try{wl=await navigator.wakeLock.request('screen');}catch(e){}}};document.addEventListener('visibilitychange',reWake);
+  const backOn=()=>new Promise(res=>{const ok=()=>document.visibilityState==='visible'&&navigator.onLine!==false;if(ok())return setTimeout(res,1500);const f=()=>{if(ok()){document.removeEventListener('visibilitychange',f);window.removeEventListener('online',f);setTimeout(res,1500);}};document.addEventListener('visibilitychange',f);window.addEventListener('online',f);});
   const call=async(lc,w)=>{const{data,error}=await sb.functions.invoke('square-perf',{body:{location_ids:[lc],start_at:w.start_at,end_at:w.end_at}});if(error)throw new Error(await fnErr(error));if(data&&data.error)throw new Error(data.error);return (data&&data.rows)||0;};
   const months=w=>{const out=[];let d=new Date(w.start_at);const e=Date.parse(w.end_at);while(d.getTime()<e){const n=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1));out.push({start_at:d.toISOString(),end_at:new Date(Math.min(n.getTime(),e)).toISOString()});d=n;}return out;};
-  toast(`Pulling sales from Square — ${jobs.length} batch${jobs.length===1?'':'es'}…`);
+  toast(`Pulling sales from Square — ${jobs.length} batch${jobs.length===1?'':'es'}… keep this page open (the screen is kept awake)`);
   // 3 at a time (each call = one centre + one window, well under the function time limit)
   for(let i=0;i<jobs.length;i+=3){await Promise.all(jobs.slice(i,i+3).map(async j=>{
       try{rowsN+=await call(j.lc,j.w);}
       catch(e){console.warn('square-perf batch failed, retrying month by month',loc(j.lc).name,e.message);
-        for(const m of months(j.w)){let ok=false;for(let t=0;t<2&&!ok;t++){try{rowsN+=await call(j.lc,m);ok=true;}catch(e2){if(t)console.error('square-perf',loc(j.lc).name,m.start_at.slice(0,7),e2.message);}}if(!ok)failed++;}}
+        for(const m of months(j.w)){let ok=false;for(let t=0;t<3&&!ok;t++){await backOn();try{rowsN+=await call(j.lc,m);ok=true;}catch(e2){if(t==2)console.error('square-perf',loc(j.lc).name,m.start_at.slice(0,7),e2.message);}}if(!ok)failed++;}}
       done++;}));
     toast('Refreshing sales… '+done+'/'+jobs.length+(failed?(' · '+failed+' failed'):''));}
+  document.removeEventListener('visibilitychange',reWake);try{wl&&wl.release();}catch(e){}
   await loadOps();CTX&&Object.keys(CTX).forEach(k=>delete CTX[k]);renderView();
   const secs=Math.round((Date.now()-t0)/1000);
   toast(failed?('Sales refresh finished but '+failed+' month(s) could not be read from Square — press Refresh sales again to retry'):(`Sales & performance updated in ${secs}s (${rowsN} month-rows)`),!!failed);
