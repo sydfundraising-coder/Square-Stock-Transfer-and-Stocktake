@@ -28,7 +28,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 /* ---- App version: change on every release so you can see which copy a device is running ---- */
-const APP_VERSION='2026.11.21-1';
+const APP_VERSION='2026.11.21-2';
 const APP_VERSION_NOTE='New: Stock Adjustments — move between codes (with conversion), found stock, corrections; approval, Square labels, best-before carried over, upload & export';
 document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-appver]').forEach(el=>{el.textContent='Version '+APP_VERSION;el.title=(el.title?el.title+'\n':'')+APP_VERSION_NOTE;});});
 </script>
@@ -1304,8 +1304,32 @@ const ROLES={
 };
 let ME=null, ROLE='user', HOME=null, MYLOCS=[], HELPER=false, HELPER_UNTIL=null;   /* HELPER = stock-take helper account (counts only) */
 const roleDef=()=>ROLES[ROLE]||ROLES.user;
-const can=a=>{const r=roleDef();return r.can.includes('*')||r.can.includes(a);};
-const scoped=()=>roleDef().scoped;
+/* EXTRA ACCESS (migration 114): keys the Super Admin has given this user on top of their role */
+let EXTRA=[];
+const ACCESS_LIST=[
+  {k:'sales',g:'Sales',l:'Sales & invoicing',d:'Invoices, customers, payments, credit notes, statements, deals and delivery dockets'},
+  {k:'reports.national',g:'Reports',l:'National sales & performance',d:'The full national Sales & Performance report (all centres, all figures)'},
+  {k:'sales.refresh',g:'Reports',l:'Refresh sales from Square',d:'Pull the latest sales into Sales & Performance'},
+  {k:'audit.view',g:'Reports',l:'Reports & audit log',d:'The Reports and Audit Log screens'},
+  {k:'all_centres',g:'Centres',l:'All centres',d:'See and work on every centre, not just their own'},
+  {k:'transfer.dispatch',g:'Stock movement',l:'Pick, dispatch & cancel transfers',d:'Complete picking, dispatch and cancel transfers for their centre(s)'},
+  {k:'warehouse.manage',g:'Stock movement',l:'Warehouse allocation',d:'Central Warehouse allocation planning and settings'},
+  {k:'po.approve',g:'Stock movement',l:'Approve & send purchase orders',d:'Approve purchase orders and email them to suppliers'},
+  {k:'reverse',g:'Stock movement',l:'Reverse & delete records',d:'Reverse completed transfers, receipts, orders and write-offs; delete cancelled transfers / orders'},
+  {k:'catalog.edit',g:'Inventory',l:'Edit catalogue',d:'Packets per box, costs import, hide items, non-stock categories, catalogue clean-up'},
+  {k:'adjust.approve',g:'Inventory',l:'Approve adjustments & write-offs',d:'Approve / reject stock adjustments and damage / expiry requests'},
+  {k:'adjust.direct',g:'Inventory',l:'Direct adjustments & recounts',d:'Adjust stock directly, recount an item, move stock between codes'},
+  {k:'stocktake.manage',g:'Inventory',l:'Manage stock takes',d:'Spot / cycle counts, amend or undo counts, variance reports, date flags, helper requests, excluded categories'},
+  {k:'cash.manage',g:'Sales',l:'Manage cash on hand',d:'All-centres cash view, void cash entries, drawer settings, submit counts'},
+  {k:'supplier.manage',g:'Admin',l:'Manage suppliers',d:'Add and edit suppliers'},
+  {k:'location.manage',g:'Admin',l:'Manage locations',d:'Add / remove locations, storage areas, addresses, cash drawer and stock-from settings'},
+  {k:'sync.run',g:'Admin',l:'Square Sync',d:'Square Sync page: sync now, sync health, retry / dismiss failed syncs'}
+];
+const hasX=k=>ROLE==='super_admin'||(!HELPER&&EXTRA.includes(k));                       // Super Admin, or given this access
+const natX=k=>ROLE==='national_admin'||hasX(k);                                         // was National / Super Admin only
+const admX=k=>['admin','national_admin','super_admin'].includes(ROLE)||hasX(k);         // was Admin and above
+const can=a=>{const r=roleDef();return r.can.includes('*')||r.can.includes(a)||(!HELPER&&EXTRA.includes(a));};
+const scoped=()=>roleDef().scoped&&!(!HELPER&&EXTRA.includes('all_centres'));
 const mine=id=>MYLOCS.includes(id);
 const visLocs=()=>scoped()?MYLOCS.slice():S.locations.map(l=>l.id);
 const canSee=t=>!scoped()||mine(t.from_location)||mine(t.to_location);
@@ -1567,7 +1591,7 @@ const sPillT=t=>`<span class="pill ${tStat(t).cls}">${tStat(t).label}</span>`;
 const OSTATUS={draft:{label:'Draft',cls:'p-draft'},placed:{label:'Placed',cls:'p-req'},shipped:{label:'Shipped',cls:'p-transit'},received:{label:'Received',cls:'p-done'},cancelled:{label:'Cancelled',cls:'p-cancel'}};
 const oPill=(s,o)=>`<span class="pill ${(OSTATUS[s]||OSTATUS.placed).cls}">${(OSTATUS[s]||{label:s}).label}</span>${o&&('approved_at' in o)&&!o.approved_at&&s==='placed'?' <span class="pill p-req" title="A National Admin or Super Admin must approve it before it is emailed to the supplier">Awaiting approval</span>':''}`;
 /* orders waiting for a National / Super Admin to approve (shown on the menu badge for approvers) */
-const poAwaitingCount=()=>(typeof HELPER!=='undefined'&&!HELPER&&['national_admin','super_admin'].includes(ROLE))?(S.orders||[]).filter(o=>('approved_at' in o)&&!o.approved_at&&o.status==='placed').length:0;
+const poAwaitingCount=()=>(typeof HELPER!=='undefined'&&!HELPER&&natX('po.approve'))?(S.orders||[]).filter(o=>('approved_at' in o)&&!o.approved_at&&o.status==='placed').length:0;
 function daysUntil(d){if(!d)return null;return Math.round((new Date(d+'T00:00:00')-new Date(today()+'T00:00:00'))/864e5);}
 function etaText(d){const n=daysUntil(d);if(n===null)return'—';if(n<0)return'overdue '+(-n)+'d';if(n===0)return'due today';return'in '+n+'d';}
 const oValue=o=>(o.lines||[]).reduce((s,l)=>s+l.qty*l.unit_cost,0);
@@ -1774,7 +1798,7 @@ async function startApp(){
   if(prof.active===false){ try{await sb.auth.signOut();}catch(e){} window.__appStarted=false; showLogin('Your access has been removed'+(prof.deactivated_reason?' ('+prof.deactivated_reason+')':'')+'. Ask the Super Admin if this is a mistake.'); return; }
   if(prof.expires_at&&new Date(prof.expires_at)<new Date()){ try{await sb.auth.signOut();}catch(e){} window.__appStarted=false; showLogin('Your stock-take access ended on '+fmtDate(prof.expires_at)+'. Ask your centre Admin if you need more time.'); return; }
   HELPER=prof.access_scope==='stocktake'; HELPER_UNTIL=prof.expires_at||null;
-  ROLE=prof.role||'user'; HOME=prof.home_centre;
+  ROLE=prof.role||'user'; HOME=prof.home_centre; EXTRA=Array.isArray(prof.extra_perms)?prof.extra_perms.slice():[];
   if(HELPER){ ROLE='user'; route='stocktake'; document.body.classList.add('is-helper'); }
   try{ const{data:pl}=await sb.from('profile_locations').select('location_id').eq('profile_id',user.id); MYLOCS=(pl||[]).map(r=>r.location_id); }catch(e){ MYLOCS=[]; }
   if(!MYLOCS.length && HOME) MYLOCS=[HOME];
@@ -1792,7 +1816,7 @@ async function startApp(){
   renderRoleChip(prof); renderNav(); renderSq(); renderView();
   setTimeout(()=>stHydrate(),400);
   if(!HELPER){ loadOnlineCount(); setInterval(loadOnlineCount,300000); tfExclLoad(); loadAdjCount(); setInterval(loadAdjCount,300000); }
-  if(ROLE==='super_admin'||ROLE==='national_admin'){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
+  if(natX('sync.run')){ loadSqStatus(); setInterval(loadSqStatus,180000); if(!HELPER){ loadStDateFlags(); setInterval(loadStDateFlags,300000); } }
   if(scoped()&&!MYLOCS.length){ toast('No centre set on your profile yet — ask a Super Admin.',true); }
 }
 function renderRoleChip(prof){
@@ -1836,20 +1860,20 @@ const NAV=[
   {id:'catalog',label:'Catalogue',kw:'items products prices',icon:I.catalog,group:'Inventory'},
   {id:'labels',label:'Shelf Labels',kw:'barcode print',icon:I.tag,group:'Inventory'},
   {id:'mfg',label:'Manufacturing',kw:'production recipe batch ingredients kitchen dymo lot traceability',icon:I.factory,group:'Inventory',show:()=>!!(MFG&&MFG.access)},
-  {id:'sales',label:'Sales',kw:'invoice customers statements credit',icon:I.invoice,group:'Sales & Cash',need:'*',badge:()=>salesOverdueCount()},
+  {id:'sales',label:'Sales',kw:'invoice customers statements credit',icon:I.invoice,group:'Sales & Cash',need:'*',perm:'sales',badge:()=>salesOverdueCount()},
   {id:'online',label:'Online Orders',kw:'web square online pickup delivery customer',icon:I.inbox,group:'Sales & Cash',badge:()=>S.onlineActive||0},
   {id:'cash',label:'Cash on Hand',kw:'banking till drawer',icon:I.wallet,group:'Sales & Cash'},
   {id:'suppliers',label:'Suppliers',icon:I.supplier,group:'Admin',need:'supplier.manage'},
   {id:'locations',label:'Locations',icon:I.location,group:'Admin',need:'location.manage'},
   {id:'users',label:'Users & Roles',icon:I.users,group:'Admin',need:'*'},
   {id:'audit',label:'Audit Log',icon:I.audit,group:'Admin',need:'audit.view'},
-  {id:'settings',label:'Square Sync',icon:I.settings,group:'Admin',need:'*',badge:()=>{const s=S.sqStatus||{};return (+s.failed||0)+(+s.stuck||0);}},
+  {id:'settings',label:'Square Sync',icon:I.settings,group:'Admin',need:'*',perm:'sync.run',badge:()=>{const s=S.sqStatus||{};return (+s.failed||0)+(+s.stuck||0);}},
 ];
 const MOBILE=['dashboard','transfers','orders','stocktake'];
 let route='dashboard';
 const poLocs=()=>S.locations.filter(l=>l.active!==false&&(l.po_enabled===true||(l.po_enabled==null&&(l.is_hub||/perth/i.test(l.name||'')))));
 const canPO=()=>!scoped()||poLocs().some(l=>mine(l.id));
-function navVisible(n){ if(HELPER)return n.id==='stocktake'; if(n.show&&!n.show())return false; if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'; return can(n.need); }
+function navVisible(n){ if(HELPER)return n.id==='stocktake'; if(n.show&&!n.show())return false; if(!n.need)return true; if(n.need==='*')return ROLE==='super_admin'||(!!n.perm&&hasX(n.perm)); return can(n.need); }
 function myActionCount(){return S.transfers.filter(t=>{if(!canSee(t))return false;if(t.status==='requested'&&canApproveT(t))return true;if((t.status==='approved'||t.status==='picked')&&canDispatchT(t))return true;if((t.status==='in_transit'||t.status==='partially_received')&&canReceiveT(t))return true;return false;}).length;}
 function incomingCount(){return S.orders.filter(o=>(!scoped()||mine(o.location_id))&&(o.status==='placed'||o.status==='shipped')).length;}
 function adjPendingCount(){return (S.adjReq||[]).filter(r=>r.status==='pending'&&(!scoped()||mine(r.location_id))).length;}
@@ -3008,7 +3032,7 @@ function vCash(v){
   const cs=cashCentres();
   if(!cs.length){v.innerHTML=`<div class="card empty">${svg(I.cost,34)}<div>No centre available to you.</div></div>`;return;}
   if(!cashCentre||!cs.find(c=>c.id===cashCentre))cashCentre=(HOME&&cs.find(c=>c.id===HOME))?HOME:cs[0].id;
-  const sup=ROLE==='super_admin';if(!sup)cashTab='centre';
+  const sup=hasX('cash.manage');if(!sup)cashTab='centre';
   v.innerHTML=`${sup?`<div class="rep-tabs no-print" style="margin:0 0 14px"><button class="rep-tab ${cashTab==='all'?'active':''}" data-cashtab="all">All centres</button><button class="rep-tab ${cashTab==='centre'?'active':''}" data-cashtab="centre">Centre</button></div>`:''}<div id="cash-body"></div>`;
   v.querySelectorAll('[data-cashtab]').forEach(b=>b.onclick=()=>{cashTab=b.dataset.cashtab;vCash(v);});
   if(cashTab==='all')cashAll(document.getElementById('cash-body'));else cashCentreView(document.getElementById('cash-body'));
@@ -3054,7 +3078,7 @@ async function cashCentreView(el){
   const noBase=!pos||!pos.base_at;
   const inPeriod=moves.filter(m=>new Date(m.occurred_at)>=r.from&&new Date(m.occurred_at)<r.to);
   const last=moves.find(m=>m.kind==='count'&&!m.voided_at);
-  const canAdmin=['admin','national_admin','super_admin'].includes(ROLE);
+  const canAdmin=admX('cash.manage');
   const fd=cashFeeders(L);
   const byLoc={};days.forEach(d=>{byLoc[d.location_id]=(byLoc[d.location_id]||0)+(+d.amount||0);});
   const shared=fd.length?`<div class="banner info">${svg(I.wallet||I.cost,17)}<div><b>Shared cash drawer.</b> Cash taken at ${fd.map(x=>'<b>'+esc(x.name)+'</b>').join(' and ')} goes into ${esc(loc(L).name)}'s drawer, so expected cash includes their Square cash sales too. Count the one drawer here.<div style="margin-top:6px;font-size:12.5px">Cash sales this period: ${cashGroup(L).map(id=>`${esc(loc(id).name)} <b>${money(byLoc[id]||0)}</b>`).join(' · ')}</div></div></div>`:'';
@@ -3077,13 +3101,13 @@ async function cashCentreView(el){
         <tr class="cash-net"><td>Net short / over</td><td class="num tnum">${sum?cashVar(sum.net_variance):'—'}</td></tr></table></div>
     </div>
     <div class="section-head" style="margin-top:18px"><h2>Cash register</h2><small>${esc(CASH_PERIODS.find(p=>p[0]===cashPeriod)[1])} · newest first</small></div>
-    ${inPeriod.length?`<div class="tablewrap"><table class="cash-led"><thead><tr><th>Date / time</th><th>Entry</th><th>Reference / note</th><th class="num">Cash sales since last count</th><th class="num">In</th><th class="num">Out</th><th class="num">Expected</th><th class="num">Counted</th><th>Short / over</th><th>By</th>${ROLE==='super_admin'?'<th></th>':''}</tr></thead><tbody>${inPeriod.map(m=>{const vd=!!m.voided_at;const isOut=m.kind==='banking'||m.kind==='paid_out';const isIn=m.kind==='cash_in'||m.kind==='opening';
+    ${inPeriod.length?`<div class="tablewrap"><table class="cash-led"><thead><tr><th>Date / time</th><th>Entry</th><th>Reference / note</th><th class="num">Cash sales since last count</th><th class="num">In</th><th class="num">Out</th><th class="num">Expected</th><th class="num">Counted</th><th>Short / over</th><th>By</th>${hasX('cash.manage')?'<th></th>':''}</tr></thead><tbody>${inPeriod.map(m=>{const vd=!!m.voided_at;const isOut=m.kind==='banking'||m.kind==='paid_out';const isIn=m.kind==='cash_in'||m.kind==='opening';
       return `<tr class="${vd?'cash-void':''}"><td class="tnum" style="white-space:nowrap">${fmtCDT(m.occurred_at)}</td><td><span class="cash-k cash-k-${m.kind}">${CASH_KIND[m.kind]}</span><div class="mono" style="font-size:11px;color:var(--faint)">${esc(m.code||'')}</div></td>
         <td style="max-width:260px">${esc([m.reference,m.note].filter(Boolean).join(' · '))||'<span style="color:var(--faint)">—</span>'}${vd?`<div style="color:var(--crit);font-size:12px">Voided: ${esc(m.void_reason||'')}</div>`:''}</td>
         <td class="num tnum">${m.kind==='count'?cashMoney(m.cash_sales):''}</td><td class="num tnum">${isIn?cashMoney(m.amount):''}</td><td class="num tnum">${isOut?cashMoney(m.amount):''}</td>
         <td class="num tnum">${m.kind==='count'?cashMoney(m.expected):''}</td><td class="num tnum" style="font-weight:700">${m.kind==='count'?cashMoney(m.amount):''}</td>
         <td>${m.kind==='count'?(m.variance==null?'<span style="color:var(--muted)">Starting balance</span>':cashVar(m.variance)):''}</td><td style="font-size:12.5px">${esc(pname(m.created_by))}</td>
-        ${ROLE==='super_admin'?`<td>${vd?'':`<button class="btn sm" data-cashvoid="${m.id}">Void</button>`}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`
+        ${hasX('cash.manage')?`<td>${vd?'':`<button class="btn sm" data-cashvoid="${m.id}">Void</button>`}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`
       :`<div class="card empty">${svg(I.cost,30)}<div>No cash entries in this period.</div></div>`}`;
   const ob=document.getElementById('cash-open');if(ob)ob.onclick=()=>openCashMove(L,'opening');
   main.querySelectorAll('[data-cashvoid]').forEach(b=>b.onclick=()=>cashVoid(b.dataset.cashvoid));
@@ -3234,7 +3258,7 @@ const SA_REASONS={move:['Received under the wrong code','Repack (carton → unit
   found:['Found during a check','Found in another storage area','Not received into the system','Returned by a customer'],
   correction:['Counting error','Data entry error','Missing / unexplained loss','Sampling / tasting','Used for an event','Other']};
 const saPill=s=>({pending:'<span class="pill p-req">Waiting for approval</span>',approved:'<span class="pill p-done">Applied</span>',rejected:'<span class="pill p-cancel">Rejected</span>',cancelled:'<span class="pill p-cancel">Cancelled</span>'}[s]||esc(s));
-const saCanApprove=()=>!HELPER&&['national_admin','super_admin'].includes(ROLE);
+const saCanApprove=()=>!HELPER&&natX('adjust.approve');
 function saCentres(){return S.locations.filter(l=>l.active!==false&&(!scoped()||mine(l.id))&&!l.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
 function saItems(){return (S.allItems||S.items).filter(i=>!i.hidden&&i.active!==false&&!nonStock(i));}
 const saQty=(q,it)=>{if(q==null)return '';const pc=ppc(it);return pc?`${q} pk <span style="color:var(--faint)">(${boxDec(Math.abs(q),it)} bx)</span>`:String(q);};
@@ -3421,7 +3445,7 @@ async function cashAll(el){
 /* =================== Central Warehouse: allocation, requests, plan =================== */
 let whTab='alloc',whQ='',whFilter='all',whCentre=null,whData={alloc:[],req:[],plan:null};
 const whHub=()=>S.locations.find(l=>l.is_hub);
-const whMgr=()=>['national_admin','super_admin'].includes(ROLE)||(ROLE==='admin'&&whHub()&&mine(whHub().id));
+const whMgr=()=>natX('warehouse.manage')||(ROLE==='admin'&&whHub()&&mine(whHub().id));
 const bxOf=(pk,it)=>hasPpc(it)?boxDec(pk,it):pk;
 const bxU=it=>hasPpc(it)?'bx':'pk';
 function whCentres(){const ex=(S.rptCfg&&S.rptCfg.cw_excluded)||[];return S.locations.filter(l=>!l.is_hub&&l.active!==false&&!ex.includes(l.id)).sort((a,b)=>String(a.name).localeCompare(String(b.name)));}
@@ -3501,7 +3525,7 @@ async function whPlan(el){
     return {...r,it,ads,cw,net,rop,sugg,cwCover,netCover,key,label};}).filter(r=>r.it&&r.it.id);
   const cnt=k=>rows.filter(r=>r.key===k).length;
   const cs=S.locations.filter(l=>!l.is_hub&&l.active!==false);const ex=cfg.cw_excluded||[];
-  const canSet=['admin','national_admin','super_admin'].includes(ROLE);
+  const canSet=admX('warehouse.manage');
   el.innerHTML=`<div class="banner info">${svg(I.info,17)}<div><b>Warehouse stock plan.</b> Demand is the combined sales of every centre the warehouse supplies (${cs.filter(c=>!ex.includes(c.id)).map(c=>esc(c.code||c.name)).join(', ')||'none'}${ex.length?'; not '+ex.map(id=>esc(loc(id).code||loc(id).name)).join(', '):''}).
       Reorder when the network's stock (warehouse + on order + centres + in transit) falls below demand × <b>${L} days lead time</b> + <b>${SF} safety days</b>; order up to a further <b>${CV} days</b>.</div></div>
     <div class="tiles" style="margin:12px 0"><div class="tile" style="border-left:4px solid var(--crit)"><div class="lbl">Reorder now</div><div class="val tnum">${cnt('reorder')}</div></div><div class="tile" style="border-left:4px solid var(--crit)"><div class="lbl">Out at warehouse</div><div class="val tnum">${cnt('out')}</div></div><div class="tile"><div class="lbl">OK</div><div class="val tnum">${cnt('ok')}</div></div><div class="tile"><div class="lbl">Excess</div><div class="val tnum">${cnt('excess')}</div></div></div>
@@ -3767,7 +3791,7 @@ function reportData(){
     invGst,aging,custAgg,invItemQty,invItemRev,invAvgPayDays};
 }
 
-function repTabs(){const t=[{id:'movement',label:'Stock movement',icon:I.transfer},{id:'purchases',label:'Purchases',icon:I.order},{id:'stocktake',label:'Stock take',icon:I.stocktake},{id:'losses',label:'Losses',icon:I.alert}];if(ROLE==='super_admin')t.push({id:'sales',label:'Sales & invoices',icon:I.cost});return t;}
+function repTabs(){const t=[{id:'movement',label:'Stock movement',icon:I.transfer},{id:'purchases',label:'Purchases',icon:I.order},{id:'stocktake',label:'Stock take',icon:I.stocktake},{id:'losses',label:'Losses',icon:I.alert}];if(hasX('sales'))t.push({id:'sales',label:'Sales & invoices',icon:I.cost});return t;}
 function vReports(v){
   const R=reportData();
   if(!repTabs().some(t=>t.id===repTab))repTab='movement';
@@ -3881,7 +3905,7 @@ function vReports(v){
     <div class="card pad chart-card"><h3>Top items lost to damage/expiry (value) <span class="chint no-print">· click to drill in</span></h3><div class="chart-box"><canvas id="ch-dmgitem"></canvas></div></div>
     `:''}
 
-    ${(repTab==='sales'&&ROLE==='super_admin')?`
+    ${(repTab==='sales'&&hasX('sales'))?`
     <!-- ===== SALES & INVOICES ===== -->
     <div class="section-head"><h2>${svg(I.cost,17)} Sales &amp; invoices</h2></div>
     <div class="tiles">
@@ -4062,7 +4086,7 @@ function exportReportCSV(R){
   const pRows=Object.entries(pAgg).map(([k,x])=>{const[lc,mo,c]=k.split('|');return [loc(lc).name,mLabel(mo),c,x.u,x.v.toFixed(2)];}).sort((a,b)=>a[0].localeCompare(b[0])||a[1].localeCompare(b[1]));
   setTimeout(()=>downloadCSV(`purchases_${scopeLabel}_${stamp}.csv`,['Centre','Month','Category','Units','Value (AUD)'],pRows),1600);
   // 6) Sales invoices (super admin)
-  if(ROLE==='super_admin'&&R.visInv&&R.visInv.length){
+  if(hasX('sales')&&R.visInv&&R.visInv.length){
     const iv=R.visInv.slice().sort((a,b)=>new Date(b.issue_date)-new Date(a.issue_date)).map(i=>{const od=i.due_date&&i.status==='issued'?Math.round((new Date(today()+'T00:00:00')-new Date(i.due_date+'T00:00:00'))/864e5):'';return [i.code,i.status,loc(i.location_id).code,i.bill_name||'',fmtDate(i.issue_date),fmtDate(i.due_date),(i.subtotal||0).toFixed(2),(i.gst||0).toFixed(2),(i.total||0).toFixed(2),(od!==''&&od>0)?od:''];});
     setTimeout(()=>downloadCSV(`sales-invoices_${scopeLabel}_${stamp}.csv`,['Invoice','Status','From','Customer','Issued','Due','Subtotal','GST','Total (AUD)','Days overdue'],iv),2000);
   }
@@ -4087,7 +4111,7 @@ const tfCatExcl=c=>!!(S.tfExcl&&c&&S.tfExcl.has(String(c).trim().toLowerCase()))
 /* non-stock item: its category is sales-only (migration 99) — not stock-managed anywhere */
 const nonStock=it=>!!(it&&tfCatExcl(it.category));
 async function openTfExcluded(){
-  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  if(!hasX('catalog.edit'))return toast('Not allowed — ask the Super Admin for “Edit catalogue” access',true);
   await tfExclLoad();const cats=[...new Set((S.allItems||S.items).map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   modal('Non-stock categories','Ticked categories are for sales reporting only — their stock isn’t managed',`<div class="banner info">${svg(I.info,17)}<div>Items in ticked categories are left out of stock takes, purchase orders, transfers, the catalogue, stock status / reorder and near expiry. They still count in <b>Sales &amp; Performance</b>. Items already on a transfer or order are not affected.</div></div>
     <div style="columns:2 220px;column-gap:18px">${cats.map(c=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13.5px;break-inside:avoid"><input type="checkbox" value="${esc(c)}"${tfCatExcl(c)?' checked':''}> ${esc(c)}</label>`).join('')}</div>`,
@@ -4125,7 +4149,7 @@ function vTransfers(v){
   if(TR_DONE.includes(trFilter)){trTab='completed';trFilter='all';}else if(TR_CANC.includes(trFilter)){trTab='cancelled';trFilter='all';}
   v.innerHTML=`${trTabsHtml()}<div class="toolbar"><div class="search">${svg(I.search,16)}<input id="q" placeholder="Search…" value="${esc(trSearch)}"></div>
     ${trTab==='open'?`<select class="filter" id="f"><option value="all">All open</option><option value="draft">Draft (saved)</option><option value="approved">To pick</option><option value="picked">Picked – awaiting freight</option><option value="in_transit">In transit</option><option value="partially_received">Partly received</option><option value="__bo">Back orders</option></select>`:''}
-    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${ROLE==='super_admin'?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn" id="tr-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="tr-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="tr-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
+    <div class="spacer"></div><button class="btn" id="tr-short">${svg(I.alert,16)} Requested but not in stock</button>${hasX('catalog.edit')?`<button class="btn" id="tr-excl">${svg(I.catalog,16)} Non-stock categories</button>`:''}${can('transfer.create')?`<button class="btn" id="tr-tpl">${svg(I.receipt,16)} Download template</button><button class="btn" id="tr-upl">${svg(I.box,16)} Upload filled</button><input type="file" id="tr-uplf" accept=".csv,text/csv,.xlsx,.xls" hidden>`:''}${can('transfer.create')?`<button class="btn primary" data-act="new-transfer">${svg(I.plus,16)} New transfer</button>`:`<span class="lock">${svg(I.lock,14)} View only</span>`}</div><div id="list"></div>`;
   document.getElementById('tr-short').onclick=openShortReport;{const a=document.getElementById('tr-tpl'),b=document.getElementById('tr-upl'),c=document.getElementById('tr-uplf');if(a)a.onclick=tfTemplateMain;if(b&&c){b.onclick=()=>c.click();c.onchange=e=>{const f=e.target.files[0];e.target.value='';tfUploadMain(f);};}}{const xe=document.getElementById('tr-excl');if(xe)xe.onclick=openTfExcluded;}
   v.querySelectorAll('[data-trtab]').forEach(b=>b.onclick=()=>{trTab=b.dataset.trtab;trFilter='all';vTransfers(v);});
   {const fe=document.getElementById('f');if(fe){fe.value=[...fe.options].some(o=>o.value===trFilter)?trFilter:'all';fe.onchange=e=>{trFilter=e.target.value;trList();};}}
@@ -4158,7 +4182,7 @@ async function openTransfer(id){
   // Approval view rows: requesting centre's stock, their 2-month usage, and extra/short vs that need.
   const approvalRows=(t.lines||[]).map(l=>{const it=item(l.item_id);const di=dinfo&&dinfo[l.item_id];const oh=di?di.oh:null;const use2=di?Math.round(di.avg*2):null;const need=use2==null?null:Math.max(0,use2-(oh||0));const delta=need==null?null:(l.qty_requested-need);let dcell='—',dcol='var(--faint)';if(delta!=null){if(delta>0){dcell='+'+delta+' extra';dcol='var(--warn)';}else if(delta<0){dcell=delta+' short';dcol='var(--muted)';}else{dcell='on target';dcol='var(--good)';}}const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum" style="font-weight:600">${l.qty_requested}${pc?`<div style="font-size:10px;color:var(--faint);font-weight:400">${bxTag(l.qty_requested,it)}</div>`:''}</td><td class="num tnum">${oh==null?'—':oh}${pc&&oh?`<div style="font-size:10px;color:var(--faint)">${bxTag(oh,it)}</div>`:''}</td><td class="num tnum">${use2==null?'—':use2}</td><td class="num tnum" style="color:${dcol};font-weight:600">${dcell}</td></tr>`;}).join('');
   let actions='';
-  if(t.status==='cancelled'&&ROLE==='super_admin')actions=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tpurge="${t.id}">${svg(I.x,15)} Delete permanently</button>`;
+  if(t.status==='cancelled'&&hasX('reverse'))actions=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tpurge="${t.id}">${svg(I.x,15)} Delete permanently</button>`;
   const notDisp=t.status==='requested'||t.status==='approved';
   const atSource=!scoped()||mine(t.from_location);
   const editDel=notDisp?`<button class="btn" data-tedit="${t.id}">Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-tdel="${t.id}">Delete</button>`:'';
@@ -4167,7 +4191,7 @@ async function openTransfer(id){
   else if(t.status==='approved'){let a=editDel;if(atSource){a+=`<button class="btn" data-print="${t.id}">${svg(I.receipt,16)} Pick list</button><button class="btn ${canDispatchT(t)?'primary':''}" data-pick="${t.id}">${svg(I.box,16)} Pick items</button>${canDispatchT(t)?`<button class="btn" data-freight="${t.id}">${svg(I.truck,16)} Book freight</button>`:''}`;}else a+=`<span class="lock">${svg(I.lock,14)} Awaiting ${loc(t.from_location).code}</span>`;actions=a;}
   else if(t.status==='picked'){actions=canDispatchT(t)?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-unpick="${t.id}">${svg(I.x,15)} Cancel (return stock)</button><button class="btn" data-freight="${t.id}">${svg(I.truck,16)} ${t.freight_booking_date?'Change freight booking':'Book freight'}</button><button class="btn primary" data-dispatch="${t.id}">${svg(I.truck,16)} Dispatch — collected by freight</button>`:`<span class="lock">${svg(I.lock,14)} Picked at ${loc(t.from_location).code} — waiting for freight</span>`;}
   else if(t.status==='in_transit'||t.status==='partially_received')actions=canReceiveT(t)?`<button class="btn primary" data-receive="${t.id}">${svg(I.box,16)} Receive stock</button>`:`<span class="lock">${svg(I.lock,14)} ${loc(t.to_location).code} receives</span>`;
-  if(ROLE==='super_admin'&&!t.reversed_at&&['in_transit','partially_received','received'].includes(t.status))actions+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-treverse="${t.id}">${svg(I.alert,15)} Reverse</button>`;
+  if(hasX('reverse')&&!t.reversed_at&&['in_transit','partially_received','received'].includes(t.status))actions+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-treverse="${t.id}">${svg(I.alert,15)} Reverse</button>`;
   if(['approved','picked','in_transit','partially_received'].includes(t.status))actions+=`<button class="btn" data-addcn="${t.id}">${svg(I.truck,15)} Add connote</button>`;
   const tCons=(S.consignments||[]).filter(c=>c.transfer_id===t.id);
   const body=`${t.status==='draft'?`<div class="banner warn">${svg(I.info,17)}<div><b>Draft — not submitted.</b> Stock is <b>not reserved</b> yet. Submit the request to reserve stock and send it for approval.</div></div>`:''}${tCons.length?`<div class="banner info">${svg(I.truck,17)}<div><b>Freight:</b> ${tCons.map(c=>`<span class="mono">${esc(c.connote||c.code)}</span> (${esc(c.carrier||'—')}, ${cnPill(c.status)})`).join(' · ')}</div></div>`:''}${t.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(t.reversed_at)}${t.reverse_reason?` — ${esc(t.reverse_reason)}`:''}. Stock was restored to source, removed from destination, and pushed to Square.</div></div>`:''}${stepHtml}${fbHtml}
@@ -4676,22 +4700,22 @@ function openOrder(id){
   const o=S.orders.find(x=>x.id===id);if(!o)return;
   const rows=(o.lines||[]).map(l=>{const it=item(l.item_id);const pc=ppc(it);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div>${o.status==='received'?'':newAtTag(it,o.location_id)}</td><td class="num tnum">${l.qty}${pc?`<div style="font-size:10px;color:var(--faint)">${bxTag(l.qty,it)}</div>`:''}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>${(l.supplier_use_by||[]).length&&o.status!=='received'?`<tr><td colspan="4" style="padding-top:0;border-top:0;font-size:11.5px;color:var(--muted)">Supplier use-by: ${(l.supplier_use_by||[]).map(d=>esc(fmtDate(d))).join(', ')}</td></tr>`:''}`;}).join('');
   let act='';
-  if(o.status==='cancelled'&&ROLE==='super_admin')act=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-opurge="${o.id}">${svg(I.x,15)} Delete permanently</button>`;
+  if(o.status==='cancelled'&&hasX('reverse'))act=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-opurge="${o.id}">${svg(I.x,15)} Delete permanently</button>`;
   if(o.status==='placed'&&canRecvOrder(o))act=`<button class="btn" data-oship="${o.id}">Mark shipped</button><button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive</button>`;
   if((o.status==='placed'||o.status==='shipped')&&(!scoped()||mine(o.location_id))&&!HELPER){const nd=(o.lines||[]).filter(l=>(l.supplier_use_by||[]).length).length;act=`<button class="btn" data-ouseby="${o.id}" title="Use-by / best-before dates the supplier gave for this delivery">${svg(I.hourglass||I.calendar,15)} Supplier use-by${nd?` (${nd}/${(o.lines||[]).length})`:''}</button>`+act;}
   else if(o.status==='shipped'&&canRecvOrder(o))act=`<button class="btn primary" data-orecv="${o.id}">${svg(I.box,16)} Receive into ${loc(o.location_id).code}</button>`;
   else if((o.status==='placed'||o.status==='shipped')&&scoped()&&!mine(o.location_id))act=`<span class="lock">${svg(I.lock,14)} ${loc(o.location_id).code} receives</span>`;
   if(o.status==='placed'&&can('order.create')&&(!scoped()||mine(o.location_id)))act+=`<button class="btn" data-oedit="${o.id}">${svg(I.edit||I.settings,15)} Edit</button><button class="btn" style="color:var(--crit);border-color:var(--crit)" data-odel="${o.id}">${svg(I.x,15)} Delete</button>`;
   else if((o.status==='shipped'||o.status==='received')&&(!scoped()||mine(o.location_id))&&!o.reversed_at)act+=`<span class="lock" style="font-size:11.5px">${svg(I.lock,13)} Locked — ${o.status}</span>`;
-  if(ROLE==='super_admin'&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
+  if(hasX('reverse')&&o.status==='received'&&!o.reversed_at)act+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-oreverse="${o.id}">${svg(I.alert,15)} Reverse</button>`;
   const body=`${o.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(o.reversed_at)}${o.reverse_reason?` — ${esc(o.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:''}${o.status!=='received'?`<div class="banner transit">${svg(I.calendar,17)}<div><b>Expected ${fmtDate(o.expected_on)}</b> — ${etaText(o.expected_on)}. ${money(oValue(o))} to ${esc(loc(o.location_id).name)}.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>Received into ${esc(loc(o.location_id).name)}.</div></div>`}
     <div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(supplier(o.supplier_id).name)}</dd><dt>Status</dt><dd>${oPill(o.status,o)}</dd><dt>Destination</dt><dd>${esc(loc(o.location_id).name)}</dd><dt>Placed by</dt><dd>${esc(pname(o.created_by))}</dd></dl>${o.notes?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)">${esc(o.notes)}</div>`:''}</div>
     ${qtyStrip('Ordered',qtyTot((o.lines||[]).map(l=>[item(l.item_id),l.qty])))}${o.status==='received'&&(o.lines||[]).some(l=>l.qty_received!=null)?qtyStrip('Received',qtyTot((o.lines||[]).map(l=>[item(l.item_id),l.qty_received]))):''}
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   // send to the supplier: PDF, Excel, or email through the system
-  const canMail=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE)&&(!scoped()||mine(o.location_id));
+  const canMail=!HELPER&&admX('po.approve')&&(!scoped()||mine(o.location_id));
   // approval (migration 71): National / Super Admin approve before the order can go to the supplier
-  const apprOn=('approved_at' in o),approved=!apprOn||!!o.approved_at,isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE);
+  const apprOn=('approved_at' in o),approved=!apprOn||!!o.approved_at,isAppr=!HELPER&&natX('po.approve');
   const canApprove=apprOn&&!approved&&o.status==='placed'&&isAppr;
   const share=`<button class="btn" data-opdf="${o.id}" title="Download as PDF">${svg(I.receipt,15)} PDF</button><button class="btn" data-oxls="${o.id}" title="Download as Excel">${svg(I.receipt,15)} Excel</button>${canApprove?`<button class="btn primary" data-oappr="${o.id}">${svg(I.check,15)} Approve</button>`:''}${canMail&&o.status!=='cancelled'?(approved?`<button class="btn" data-omail="${o.id}">${svg(I.order,15)} Email supplier</button>`:`<button class="btn" disabled title="A National Admin or Super Admin must approve this order first">${svg(I.lock,15)} Email supplier</button>`):''}`;
   const sent=(apprOn&&!approved&&o.status==='placed'?`<div class="banner warn" style="margin-bottom:12px">${svg(I.alert,17)}<div><b>Awaiting approval.</b> A National Admin or Super Admin must approve this order before it can be emailed to the supplier.${isAppr?' Check the lines below, then tap <b>Approve</b>.':''}</div></div>`
@@ -4884,9 +4908,9 @@ function vStock(v){
   v.innerHTML=(HELPER?`<div class="banner info">${svg(I.stocktake,17)}<div><b>You’re signed in to count stock</b> at ${esc((MYLOCS.length?MYLOCS:[HOME]).filter(Boolean).map(l=>loc(l).name).join(', ')||'your centre')}${HELPER_UNTIL?` until <b>${fmtDate(HELPER_UNTIL)}</b>`:''}. Open a count below, scan or search each item and enter what you see. Every entry saves straight away — your team sees it live.</div></div>`
     :`<div class="banner info">${svg(I.stocktake,17)}<div><b>You can count while trading.</b> Each item’s variance is measured against the system stock at the moment it was counted, so anything sold (or received) before you finalise is kept — not lost. Several people can count the same stock take at once — every entry saves straight away.</div></div>`)+
     (!HELPER&&stFlagCount()?`<div class="banner warn" style="align-items:center">${svg(I.alert,17)}<div style="flex:1"><b>${stFlagCount()} typed best-before date${stFlagCount()===1?'':'s'} to check</b> — counters typed a date that isn’t on the system’s list for that item.</div><button class="btn sm" id="st-flags">Review dates</button></div>`:'')+
-    (!HELPER&&['national_admin','super_admin'].includes(ROLE)&&S.helperReqN?`<div class="banner warn" style="align-items:center">${svg(I.users||I.alert,17)}<div style="flex:1"><b>${S.helperReqN} stock-take helper request${S.helperReqN===1?'':'s'}</b> waiting for your approval.</div><button class="btn sm" id="st-hreq">Review requests</button></div>`:'')+`
-    <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-excl">${svg(I.catalog||I.stocktake,16)} Excluded categories</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${ROLE==='super_admin'&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
-    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span>${stScopeLbl(st)?`<div class="st-scope">${esc(stScopeLbl(st))}</div>`:''}</td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&['super_admin','national_admin'].includes(ROLE)?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
+    (!HELPER&&natX('stocktake.manage')&&S.helperReqN?`<div class="banner warn" style="align-items:center">${svg(I.users||I.alert,17)}<div style="flex:1"><b>${S.helperReqN} stock-take helper request${S.helperReqN===1?'':'s'}</b> waiting for your approval.</div><button class="btn sm" id="st-hreq">Review requests</button></div>`:'')+`
+    <div class="toolbar"><div class="spacer"></div>${canHelpers?`<button class="btn" id="st-helpers">${svg(I.users||I.stocktake,16)} Stock-take helpers</button>`:''}${hasX('stocktake.manage')&&!HELPER?`<button class="btn" id="st-excl">${svg(I.catalog||I.stocktake,16)} Excluded categories</button>`:''}${hasX('stocktake.manage')&&!HELPER?`<button class="btn" id="st-undo">${svg(I.stocktake,16)} Undo a deleted count</button>`:''}${hasX('stocktake.manage')&&!HELPER?`<button class="btn" data-act="cycle-count">${svg(I.stocktake,16)} Spot check (by movement)</button>`:''}${can('stocktake.do')&&!HELPER?`<button class="btn primary" data-act="new-stock">${svg(I.plus,16)} Start stock take</button>`:''}</div>
+    ${list.length?`<div class="tablewrap"><table><thead><tr><th>Stock take</th><th>Centre</th><th>Status</th><th class="num">Items</th><th>Date</th></tr></thead><tbody>${list.map(st=>`<tr class="clickable" data-stk="${st.id}"><td><span class="mono">${st.code}</span>${stScopeLbl(st)?`<div class="st-scope">${esc(stScopeLbl(st))}</div>`:''}</td><td>${loc(st.location_id).code}</td><td>${st.status==='open'?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}${!HELPER&&stFlagCount(st.id)?` <span class="pill p-cancel" title="Typed best-before dates to check">${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</span>`:''}</td><td class="num tnum">${st.status==='open'?(()=>{const t=(st.lines||[]).length,d=(st.lines||[]).filter(l=>l.counted_qty!=null).length;return `<span data-stpc="${st.id}" data-t="${t}">${d} / ${t}<div style="font-size:11px;color:var(--muted)">${t?Math.round(d/t*100):0}% counted</div></span>`;})():(st.lines||[]).length}${st.status==='open'&&!HELPER&&natX('stocktake.manage')?`<div><button class="btn sm" data-stprog="${st.id}" style="margin-top:4px">Progress &amp; variance</button></div>`:''}</td><td style="color:var(--faint);font-size:12.5px">${fmtDate(st.completed_at||st.started_at)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.stocktake,38)}<div>${HELPER?'No count is open at your centre right now. When your Admin starts one it appears here — pull down or reopen the app to refresh.':'No stock takes yet.'}</div></div>`}`;
   const hb=document.getElementById('st-helpers');if(hb)hb.onclick=openStHelpers;
   const fb=document.getElementById('st-flags');if(fb)fb.onclick=()=>openStDateFlags(null);
   const hq=document.getElementById('st-hreq');if(hq)hq.onclick=openStHelpers;
@@ -4918,7 +4942,7 @@ function stScopeConflict(locId,cat){const c=cat||null;
 async function stExclLoad(){try{const{data,error}=await sb.from('stocktake_excluded_categories').select('category');if(!error){S.stExcl=new Set((data||[]).map(r=>String(r.category).trim().toLowerCase()));return S.stExcl;}}catch(e){}S.stExcl=S.stExcl||new Set();return S.stExcl;}
 const stCatExcl=c=>!!((S.stExcl&&c&&S.stExcl.has(String(c).trim().toLowerCase()))||tfCatExcl(c));
 async function openStExcluded(){
-  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  if(!hasX('stocktake.manage'))return toast('Not allowed — ask the Super Admin for “Manage stock takes” access',true);
   await stExclLoad();const cats=[...new Set(S.items.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   modal('Categories left out of stock takes','Ticked categories are never counted',`<div class="banner info">${svg(I.info,17)}<div>Ticked categories are not added to new stock takes or spot checks, and can’t be added by hand. Open counts keep anything already counted.</div></div>
     <div style="columns:2 220px;column-gap:18px">${cats.map(c=>`<label style="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13.5px;break-inside:avoid"><input type="checkbox" value="${esc(c)}"${stCatExcl(c)?' checked':''}> ${esc(c)}</label>`).join('')}</div>`,
@@ -4992,7 +5016,7 @@ function pickByMovement(locId,n){
 }
 /* Super Admin: auto-generate a spot-check stock take of N items chosen by movement */
 async function cycleCountModal(){
-  if(ROLE!=='super_admin')return toast('Super Admin only',true);
+  if(!hasX('stocktake.manage'))return toast('Not allowed — ask the Super Admin for “Manage stock takes” access',true);
   await stExclLoad();
   const lo=`<option value="__all">All centres</option>`+S.locations.filter(l=>l.active!==false).map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('');
   modal('Spot-check stock take','System picks items weighted by movement',`<div class="grid2">
@@ -5023,7 +5047,7 @@ function openStock(id,amend){
   {const s0=(S.stocktakes||[]).find(x=>x.id===id);if(s0&&s0._lazy){sbAll(()=>sb.from('stocktake_lines').select('*').eq('stocktake_id',id).order('id')).then(r=>{if(!r.error){s0.lines=r.data||[];delete s0._lazy;}openStock(id,amend);});return;}}
   if(!S.stExcl)stExclLoad();
   const st=S.stocktakes.find(x=>x.id===id);if(!st)return;const open=st.status==='open';
-  const editable=open||(!!amend&&ROLE==='super_admin'&&st.status==='completed');
+  const editable=open||(!!amend&&hasX('stocktake.manage')&&st.status==='completed');
   stEditable=editable;stAmending=!!amend;
   if(stCurrentId!==id||amend){ stCounts={};stArea={};stAisle={};stExp={};stSplit={};stWho={};stLastSeen=null;stMine=new Set();stSig={};stNoExp={};stKnown={};stKnownSrc={};stOther={};stLocOpen={};stEnt={};stEntSeen=null;STE=!!window._steKnown; (st.lines||[]).forEach(l=>{stCounts[l.id]=(l.counted_qty==null?'':l.counted_qty);stArea[l.id]=l.area||areaOf(st.location_id,l.item_id);stAisle[l.id]=l.aisle||aisleOf(st.location_id,l.item_id);
       if(Array.isArray(l.splits)&&l.splits.length){stSplit[l.id]=l.splits.map(s=>({qty:+s.qty||0,exp:s.exp}));stExp[l.id]='';}else stExp[l.id]=(l.expiry?String(l.expiry).slice(0,10):'')||(open?'':((batchComp(st.location_id,l.item_id).batches[0]||{}).expiry))||'';   // open counts: the counter picks the date from the list — no silent pre-fill
@@ -5042,16 +5066,16 @@ function openStock(id,amend){
     </div>
     <div style="font-size:12.5px;color:var(--muted);margin:0 0 10px"><b>Blind count</b> — type what you see, or tap <b>+</b> to add a count with its location and best-before. Everything saves straight away.</div>`;
   } else if(editable){ head=`<div class="st-head"><div class="banner warn" style="margin-bottom:8px">${svg(I.alert,17)}<div><b>Amending a submitted count.</b> Changes update ${esc(loc(st.location_id).name)}'s stock and push to Square.</div></div><div class="st-scanrow"><div class="search">${svg(I.search,16)}<input id="st-scan" placeholder="Search name / code" autocomplete="off"></div></div><div class="st-chips" id="st-chips" style="margin-top:8px"></div></div>`; }
-  const canDel=!HELPER&&(open?can('stocktake.do'):(ROLE==='super_admin'&&!amend));
+  const canDel=!HELPER&&(open?can('stocktake.do'):(hasX('stocktake.manage')&&!amend));
   let foot=`<button class="btn" data-close>Close</button>`;
   if(canDel) foot+=`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-st-del="${st.id}">${svg(I.x,16)}<span class="hide-sm"> Delete</span></button>`;
   if(!open&&!editable) foot+=`<button class="btn" id="st-hist2">Count history</button>`;
-  if(!HELPER&&['super_admin','national_admin'].includes(ROLE)&&stFlagCount(st.id)) foot+=`<button class="btn" id="st-flags2" style="color:var(--warn);border-color:var(--warn)">${svg(I.alert,16)} ${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</button>`;
-  if(!open&&!editable&&['super_admin','national_admin'].includes(ROLE)&&!HELPER) foot+=`<button class="btn" id="st-var">${svg(I.chart||I.stocktake,16)} Variance report</button>`;
+  if(!HELPER&&natX('stocktake.manage')&&stFlagCount(st.id)) foot+=`<button class="btn" id="st-flags2" style="color:var(--warn);border-color:var(--warn)">${svg(I.alert,16)} ${stFlagCount(st.id)} typed date${stFlagCount(st.id)===1?'':'s'}</button>`;
+  if(!open&&!editable&&natX('stocktake.manage')&&!HELPER) foot+=`<button class="btn" id="st-var">${svg(I.chart||I.stocktake,16)} Variance report</button>`;
   if(open&&HELPER) foot+=`<button class="btn primary" id="st-save">${svg(I.check,16)} Done for now</button>`;
   else if(open&&can('stocktake.do')) foot+=`<button class="btn" id="st-save">Save</button><button class="btn primary" id="fin">${svg(I.check,16)} Finalise</button>`;
   else if(editable) foot+=`<button class="btn primary" id="st-amend-save">${svg(I.check,16)} Save amendment</button>`;
-  else if(st.status==='completed'&&ROLE==='super_admin') foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
+  else if(st.status==='completed'&&hasX('stocktake.manage')) foot+=`<button class="btn" id="st-amend">Amend counts</button>`;
   const info=editable?'':`<div class="card pad" style="margin-bottom:14px"><dl class="kv"><dt>Centre</dt><dd>${esc(loc(st.location_id).name)}</dd><dt>Status</dt><dd>${open?'<span class="pill p-transit">In progress</span>':'<span class="pill p-done">Completed</span>'}</dd><dt>Started</dt><dd>${fmtDT(st.started_at)}</dd>${st.completed_at?`<dt>Finalised</dt><dd>${fmtDT(st.completed_at)}</dd>`:''}</dl></div>`;
   slideover(st.code,loc(st.location_id).name+(stScopeLbl(st)?' · '+stScopeLbl(st):'')+(open?' · started '+fmtDate(st.started_at):''),`${head}${info}<div id="stList">${renderStRows(st,editable,'')}</div>`,foot,editable?'stp':'');
   if(editable){
@@ -5373,7 +5397,7 @@ async function openSquareCompare(itemId){
     const qOpen=lid=>(data.queue||[]).filter(q=>q.location_id===lid&&['pending','processing','failed'].includes(q.status));
     const kindTxt=ch=>ch.type==='count'?'Re-counted to':ch.to==='RESERVED_FOR_SALE'?'<b style="color:var(--warn)">Committed to an order</b>':ch.from==='RESERVED_FOR_SALE'?(ch.to==='SOLD'?'Order completed (sold)':'Released from order'):(ch.to==='SOLD'?'Sold':ch.to==='WASTE'?'Waste / spoiled':ch.from==='NONE'||ch.to==='IN_STOCK'&&ch.from!=='IN_STOCK'?'Added':ch.from==='IN_STOCK'?'Removed':esc((ch.from||'')+'→'+(ch.to||'')));
     box.innerHTML=`<div class="banner info" style="margin-bottom:12px">${svg(I.info,17)}<div>Live figures straight from Square. A difference while a change is <b>waiting</b> is normal — it clears when the push goes through (every 2 minutes). A difference with nothing waiting means the two have drifted: use <b>Set Square to the app’s figure</b> (or recount).</div></div>
-      <div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Centre</th><th class="num">App</th><th class="num">Square on hand</th><th class="num" title="In Square orders not yet completed">Committed</th><th class="num">Available</th><th>Status</th><th></th></tr></thead><tbody>${C.map(c=>{const o=qOpen(c.id);const same=Math.round(c.app)===Math.round(c.square);const cm=+c.committed||0;return `<tr><td><b>${esc(c.name)}</b></td><td class="num tnum">${c.app}</td><td class="num tnum" style="font-weight:700;color:${same?'var(--good)':'var(--crit)'}">${c.square}</td><td class="num tnum" style="color:${cm?'var(--warn)':'var(--muted)'}">${cm}</td><td class="num tnum">${c.square-cm}</td><td style="font-size:12.5px">${same?'<span class="pill p-done">Matches</span>':o.length?`<span class="pill p-transit">${o.some(q=>q.status==='failed')?'Push failed':'Waiting to send'}</span>${o.find(q=>q.last_error)?`<div style="color:var(--crit);margin-top:3px">${esc(o.find(q=>q.last_error).last_error)}</div>`:''}`:'<span class="pill p-cancel">Different</span>'}</td><td style="text-align:right">${!same&&ROLE==='super_admin'?`<button class="btn sm" data-sqfix="${c.id}">Set Square to ${c.app}</button>`:''}</td></tr>`;}).join('')||'<tr><td colspan="7" style="color:var(--muted)">No stock of this item anywhere.</td></tr>'}</tbody></table></div>
+      <div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Centre</th><th class="num">App</th><th class="num">Square on hand</th><th class="num" title="In Square orders not yet completed">Committed</th><th class="num">Available</th><th>Status</th><th></th></tr></thead><tbody>${C.map(c=>{const o=qOpen(c.id);const same=Math.round(c.app)===Math.round(c.square);const cm=+c.committed||0;return `<tr><td><b>${esc(c.name)}</b></td><td class="num tnum">${c.app}</td><td class="num tnum" style="font-weight:700;color:${same?'var(--good)':'var(--crit)'}">${c.square}</td><td class="num tnum" style="color:${cm?'var(--warn)':'var(--muted)'}">${cm}</td><td class="num tnum">${c.square-cm}</td><td style="font-size:12.5px">${same?'<span class="pill p-done">Matches</span>':o.length?`<span class="pill p-transit">${o.some(q=>q.status==='failed')?'Push failed':'Waiting to send'}</span>${o.find(q=>q.last_error)?`<div style="color:var(--crit);margin-top:3px">${esc(o.find(q=>q.last_error).last_error)}</div>`:''}`:'<span class="pill p-cancel">Different</span>'}</td><td style="text-align:right">${!same&&hasX('sync.run')?`<button class="btn sm" data-sqfix="${c.id}">Set Square to ${c.app}</button>`:''}</td></tr>`;}).join('')||'<tr><td colspan="7" style="color:var(--muted)">No stock of this item anywhere.</td></tr>'}</tbody></table></div>
       ${C.some(c=>+c.committed)?`<div class="banner warn" style="margin:-6px 0 14px">${svg(I.alert,17)}<div><b>Committed</b> = units sitting in Square orders that haven’t been completed (open online / pickup / invoice orders). Square shows <b>Available = On hand − Committed</b>. Complete or cancel those orders in Square to release them — the list below shows which orders are holding it.</div></div>`:''}
       ${(data.committed_by||[]).length?`<h3 style="font-size:14px;margin:4px 0 8px">What is holding the committed stock</h3><div class="tablewrap" style="margin-bottom:14px"><table class="no-cards"><thead><tr><th>Centre</th><th>Square order / reference</th><th class="num">Held</th><th>Since</th><th>Made by</th></tr></thead><tbody>${data.committed_by.map(h=>`<tr><td>${esc(loc(h.loc).name||'—')}</td><td><span class="mono" style="font-size:12px;user-select:all">${esc(h.order||'(no order id)')}</span></td><td class="num tnum" style="font-weight:700;color:var(--warn)">${h.qty}</td><td style="white-space:nowrap;font-size:12.5px">${fmtDT(h.first)}</td><td style="font-size:12.5px">${esc(h.source||'—')}</td></tr>`).join('')}</tbody></table></div><div style="font-size:12px;color:var(--muted);margin:-8px 0 14px">Copy the order id into the search box in Square → Orders (choose <b>All</b> and widen the date range — old orders are hidden by the default 12-month filter). Completing or cancelling the order releases the stock.</div>`:''}
       <h3 style="font-size:14px;margin:4px 0 8px">Square’s recent history</h3>
@@ -5496,7 +5520,7 @@ function bindStInputs(root){
 /* ---- stock take scanning: one scan = one entry (quantity, location, best-before) ---- */
 let stScanLast={code:'',t:0}, stScanOpen=false;
 /* ---- an item that isn't in the count (e.g. added to the catalogue after the count started): add it (migration 77) ---- */
-function stItemInScope(st,it){if(stCatExcl(it.category))return false;if(stIsSpot(st))return ROLE==='super_admin'&&!HELPER;return !st.category||it.category===st.category;}
+function stItemInScope(st,it){if(stCatExcl(it.category))return false;if(stIsSpot(st))return hasX('stocktake.manage')&&!HELPER;return !st.category||it.category===st.category;}
 function stMissingMatches(st,q){const ql=String(q||'').trim().toLowerCase();if(ql.length<2)return [];const have=new Set((st.lines||[]).map(l=>l.item_id));
   return S.items.filter(i=>!have.has(i.id)&&(String(i.sku||'').toLowerCase()===ql||String(i.barcode||'').toLowerCase()===ql||(i.name||'').toLowerCase().includes(ql)||String(i.sku||'').toLowerCase().includes(ql))).slice(0,6);}
 function stMissingHtml(st,q){const m=stMissingMatches(st,q);if(!m.length)return '';
@@ -5890,7 +5914,7 @@ async function openStProgressReport(st){
       ${D.noLog?`<div style="font-size:12px;color:var(--muted);margin-top:10px">Run 54_stocktake_team.sql for per-entry figures.</div>`:''}`;
     bindTabs();};
   // Super / National Admin also see the variance while the count is still open (counters never do — it's a blind count)
-  const canVar=!HELPER&&['super_admin','national_admin'].includes(ROLE);let tab='sum';
+  const canVar=!HELPER&&natX('stocktake.manage');let tab='sum';
   const bindTabs=()=>{const t=document.getElementById('spr-tabs');if(t)t.onclick=e=>{const b=e.target.closest('[data-sprt]');if(!b)return;tab=b.dataset.sprt;draw();};};
   const load=async()=>{
     const base='id,item_id,counted_qty,area,aisle,counted_by,counted_by_name,counted_at,entries,expiry,splits';
@@ -5906,7 +5930,7 @@ async function openStProgressReport(st){
 }
 /* ---------- post stock-take variance report (Super Admin): each item with its counters underneath ---------- */
 async function openStVarianceReport(st){
-  if(!['super_admin','national_admin'].includes(ROLE)||HELPER)return toast('Super Admin / National Admin only',true);
+  if(!natX('stocktake.manage')||HELPER)return toast('Super Admin / National Admin only',true);
   modal('Variance report — '+st.code,loc(st.location_id).name+' · finalised '+fmtDT(st.completed_at),`<div id="svr-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
     `<button class="btn" id="svr-back">Back</button><button class="btn" id="svr-csv">Export CSV</button><button class="btn" id="svr-print">Print</button>`,'full form');
   let D=await stLoadReportData(st.id,'id,item_id,system_qty,counted_qty,area,aisle,expiry,splits,counted_by,counted_by_name,counted_at,entries,moved_during,final_qty,sys_at_count_at');
@@ -5973,7 +5997,7 @@ async function openStVarianceReport(st){
 }
 /* ---------- typed best-before dates: flagged for the Super Admin to check (migration 56) ---------- */
 async function loadStDateFlags(){
-  if(!['super_admin','national_admin'].includes(ROLE)||HELPER)return;
+  if(!natX('stocktake.manage')||HELPER)return;
   const{data,error}=await sbAll(()=>sb.from('stocktake_date_flags').select('id,stocktake_id,location_id').is('reviewed_at',null).order('id'));
   S.stFlags=error?[]:(data||[]);
   try{const{count,error:he}=await sb.from('helper_requests').select('id',{count:'exact',head:true}).eq('status','pending');S.helperReqN=he?0:(count||0);}catch(e){S.helperReqN=0;}
@@ -5982,7 +6006,7 @@ async function loadStDateFlags(){
 }
 const stFlagCount=stId=>(S.stFlags||[]).filter(f=>!stId||f.stocktake_id===stId).length;
 async function openStDateFlags(stId){
-  const canRev=['super_admin','national_admin'].includes(ROLE);
+  const canRev=natX('stocktake.manage');
   modal('Typed best-before dates','Items where the counter typed a date that isn’t on the system’s list',`<div id="sdf-body"><div class="card empty">${svg(I.stocktake,26)}<div>Loading…</div></div></div>`,
     `<button class="btn" data-close>Close</button><button class="btn" id="sdf-csv">Export CSV</button>${canRev?`<button class="btn primary" id="sdf-ok">${svg(I.check,16)} Mark selected as checked</button>`:''}`,'full form');
   const{data,error}=await sbAll(()=>{let q=sb.from('stocktake_date_flags').select('*');if(stId)q=q.eq('stocktake_id',stId);return q.order('id',{ascending:false});});
@@ -6009,7 +6033,7 @@ async function openStDateFlags(stId){
 }
 /* ---------- stock-take helpers (people not in Square who only count) ---------- */
 async function openStHelpers(){
-  const isAppr=!HELPER&&['national_admin','super_admin'].includes(ROLE),isAdm=!HELPER&&['admin','national_admin','super_admin'].includes(ROLE),isStaff=!HELPER&&!!ROLE;
+  const isAppr=!HELPER&&natX('stocktake.manage'),isAdm=!HELPER&&admX('stocktake.manage'),isStaff=!HELPER&&!!ROLE;
   modal('Stock-take helpers','People who only count stock — no Square account needed',`<div id="sh-req"></div><div id="sh-body">${isStaff?`<div class="card empty">${svg(I.users||I.stocktake,26)}<div>Loading…</div></div>`:''}</div>`,
     `<button class="btn" data-close>Close</button><button class="btn primary" id="sh-add">${svg(I.plus,16)} Add a helper</button>`,'full form');
   document.getElementById('sh-add').onclick=()=>stHelperForm(isAppr?'add':'centre');
@@ -6270,7 +6294,7 @@ function openReceipt(id){
   const r=S.receipts.find(x=>x.id===id);if(!r)return;
   const rows=(r.lines||[]).map(l=>{const it=item(l.item_id);return `<tr><td><div style="font-weight:600"><span class="icode">${esc(it.sku||'')}</span>${esc(it.name)}</div></td><td class="num tnum">${l.qty}</td><td class="num tnum">${money(l.unit_cost)}</td><td class="num tnum">${money(l.qty*l.unit_cost)}</td></tr>`;}).join('');
   const rbanner=r.reversed_at?`<div class="banner crit">${svg(I.alert,17)}<div><b>Reversed</b> on ${fmtDate(r.reversed_at)}${r.reverse_reason?` — ${esc(r.reverse_reason)}`:''}. Stock was removed and pushed to Square.</div></div>`:'';
-  const ract=(ROLE==='super_admin'&&!r.reversed_at)?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-rreverse="${r.id}">${svg(I.alert,15)} Reverse</button>`:'';
+  const ract=(hasX('reverse')&&!r.reversed_at)?`<button class="btn" style="color:var(--crit);border-color:var(--crit)" data-rreverse="${r.id}">${svg(I.alert,15)} Reverse</button>`:'';
   slideover(r.code,r.supplier||'',`${rbanner}<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>Supplier</dt><dd>${esc(r.supplier||'—')}</dd><dt>Reference</dt><dd class="mono">${esc(r.reference||'—')}</dd><dt>Into</dt><dd>${esc(loc(r.location_id).name)}</dd><dt>Date</dt><dd>${fmtDate(r.received_on)}</dd><dt>By</dt><dd>${esc(pname(r.created_by))}</dd></dl></div><div class="tablewrap"><table style="min-width:0"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Cost</th><th class="num">Total</th></tr></thead><tbody>${rows}</tbody></table></div>`,ract);
 }
 let recLines=[];
@@ -6329,8 +6353,8 @@ function vCatalog(v){
       <select class="filter" id="cen" title="Centre">${cenOpts}</select>
       <select class="filter" id="c">${cats.map(c=>`<option value="${c}">${c==='all'?'All categories':esc(c)}</option>`).join('')}<option value="__noppc">⚠ No packets / box set (${S.items.filter(i=>!nonStock(i)&&!(i.pack_per_carton>0)).length})</option></select>
       <div class="spacer"></div>
-      ${ROLE==='super_admin'?`<button class="btn" id="cat-nonstock">${svg(I.catalog,15)} Non-stock categories</button>`:''}${HELPER?'':`<button class="btn" id="cat-areas">${svg(I.location,15)} Areas &amp; aisles</button>`}<button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
-      ${(ROLE==='super_admin'||ROLE==='national_admin')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button><button class="btn" id="cat-clean">${svg(I.check,15)} Clean up catalogue</button>`:''}
+      ${hasX('catalog.edit')?`<button class="btn" id="cat-nonstock">${svg(I.catalog,15)} Non-stock categories</button>`:''}${HELPER?'':`<button class="btn" id="cat-areas">${svg(I.location,15)} Areas &amp; aisles</button>`}<button class="btn" data-route="labels">${svg(I.receipt,15)} Shelf labels</button><button class="btn" id="cat-csv">${svg(I.receipt,15)} CSV</button><button class="btn" id="cat-xls">${svg(I.receipt,15)} Excel</button>
+      ${natX('catalog.edit')?`<button class="btn" id="cat-import">${svg(I.receipt,15)} Import cost / carton</button><button class="btn" id="cat-clean">${svg(I.check,15)} Clean up catalogue</button>`:''}
       ${can('sync.run')?`<button class="btn" data-act="sync">${svg(I.sync,16)} Sync now</button>`:''}</div><div id="list"></div>`;
   document.getElementById('c').value=catCat;
   const cenSel=document.getElementById('cen');cenSel.value=catCentre;cenSel.onchange=e=>{catCentre=e.target.value;catList();};
@@ -6680,7 +6704,7 @@ function catList(){
   const list=catFiltered();
   const ohLbl=catCentre?('On hand ('+loc(catCentre).code+')'):(scoped()?'On hand (your centres)':'Total on hand');
   const showLoc=!!catCentre;
-  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/box</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${hv?`<th class="num" title="Central Warehouse stock on hand minus what is set aside for transfer requests and pending write-offs">CW available</th><th class="num" title="On supplier orders (placed or shipped) coming into the Central Warehouse">CW on order</th>${showAl?'<th class="num" title="Your centre’s share of Central Warehouse stock still available to request">Your allocation left</th>':''}`:''}${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${(ROLE==='super_admin'||ROLE==='national_admin')?`<input type="number" min="1" step="1" data-ppc="${i.id}" value="${i.pack_per_carton||''}" placeholder="set" title="Packets per box — type and press Enter" style="width:64px;padding:4px 6px;border:1px solid ${i.pack_per_carton?'var(--border)':'var(--warn)'};border-radius:6px;background:var(--surface);color:var(--ink);text-align:right">`:(i.pack_per_carton||'<span style="color:var(--faint)">—</span>')}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${hv?(()=>{const h=hv[i.id]||{};return `<td class="num tnum"${(h.cw_reserved||0)>0?` title="${h.cw_on_hand||0} on hand − ${h.cw_reserved} reserved"`:''}>${catPk(h.cw_available!=null?Math.max(0,h.cw_available):0,i)}</td><td class="num tnum"${h.cw_next_eta?` title="Next delivery expected ${fmtDate(h.cw_next_eta)}"`:''}>${h.cw_on_order?`${catPk(h.cw_on_order,i)}${h.cw_next_eta?`<div style="font-size:10.5px;color:var(--transit)">ETA ${fmtDate(h.cw_next_eta)}</div>`:''}`:'<span style="color:var(--faint)">—</span>'}</td>${showAl?`<td class="num tnum">${h.my_alloc_remaining==null?'<span style="color:var(--faint)">—</span>':`<span style="${h.my_alloc_remaining<0?'color:var(--crit);font-weight:700':''}">${catPk(h.my_alloc_remaining,i)}</span>`}</td>`:''}`;})():''}${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('list').innerHTML=`<div class="tablewrap"><table><thead><tr><th>Item</th><th>Category</th><th class="num">Cost/pkt</th><th class="num">Pkts/box</th><th class="num">Price</th><th class="num">${ohLbl}</th><th class="num">In boxes</th>${hv?`<th class="num" title="Central Warehouse stock on hand minus what is set aside for transfer requests and pending write-offs">CW available</th><th class="num" title="On supplier orders (placed or shipped) coming into the Central Warehouse">CW on order</th>${showAl?'<th class="num" title="Your centre’s share of Central Warehouse stock still available to request">Your allocation left</th>':''}`:''}${showLoc?'<th>Stored location</th>':''}</tr></thead><tbody>${list.map(i=>{const t=catOnHand(i);const bl=showLoc?binLabel(catCentre,i.id):'';const bx=pktToBox(t,i);return `<tr class="clickable" data-itm="${i.id}"><td><div style="font-weight:600"><span class="icode">${esc(i.sku||'')}</span>${esc(i.name)}</div></td><td><span class="tag">${esc(i.category||'—')}</span></td><td class="num tnum">${money(i.unit_cost)}</td><td class="num tnum">${natX('catalog.edit')?`<input type="number" min="1" step="1" data-ppc="${i.id}" value="${i.pack_per_carton||''}" placeholder="set" title="Packets per box — type and press Enter" style="width:64px;padding:4px 6px;border:1px solid ${i.pack_per_carton?'var(--border)':'var(--warn)'};border-radius:6px;background:var(--surface);color:var(--ink);text-align:right">`:(i.pack_per_carton||'<span style="color:var(--faint)">—</span>')}</td><td class="num tnum">${money(i.price)}</td><td class="num tnum">${t}</td><td class="num tnum">${bx==null?'<span style="color:var(--faint)">—</span>':(Math.round(bx*100)/100)}</td>${hv?(()=>{const h=hv[i.id]||{};return `<td class="num tnum"${(h.cw_reserved||0)>0?` title="${h.cw_on_hand||0} on hand − ${h.cw_reserved} reserved"`:''}>${catPk(h.cw_available!=null?Math.max(0,h.cw_available):0,i)}</td><td class="num tnum"${h.cw_next_eta?` title="Next delivery expected ${fmtDate(h.cw_next_eta)}"`:''}>${h.cw_on_order?`${catPk(h.cw_on_order,i)}${h.cw_next_eta?`<div style="font-size:10.5px;color:var(--transit)">ETA ${fmtDate(h.cw_next_eta)}</div>`:''}`:'<span style="color:var(--faint)">—</span>'}</td>${showAl?`<td class="num tnum">${h.my_alloc_remaining==null?'<span style="color:var(--faint)">—</span>':`<span style="${h.my_alloc_remaining<0?'color:var(--crit);font-weight:700':''}">${catPk(h.my_alloc_remaining,i)}</span>`}</td>`:''}`;})():''}${showLoc?`<td>${bl?esc(bl):'<span style="color:var(--faint)">—</span>'}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
 }
 function exportCatalogue(fmt){
   const list=catFiltered();const cen=catCentre;
@@ -6694,7 +6718,7 @@ function exportCatalogue(fmt){
 }
 /* Import cost per packet + packets-per-carton from a supplier cost sheet (matched by SKU / name). */
 function importCostCarton(){
-  if(!(ROLE==='super_admin'||ROLE==='national_admin'))return toast('Admins only',true);
+  if(!natX('catalog.edit'))return toast('Admins only',true);
   if(!window.XLSX)return toast('Spreadsheet library still loading — try again in a moment',true);
   modal('Import cost / carton','Update cost per packet & packets-per-carton from your sheet',
     `<div class="banner info">${svg(I.info,17)}<div>Upload your cost sheet (Excel or CSV). It matches on <b>item code (SKU)</b> (falling back to item name), updates <b>cost per packet</b> and <b>packets per carton</b>, and downloads a sheet of any items it can't find.</div></div>
@@ -6810,7 +6834,7 @@ function openItem(id){
   const preqHtml=preq.length?`<div class="banner warn" style="margin:16px 0 8px">${svg(I.alert,17)}<div><b>${preq.length} pending damage/expire request(s)</b> — this stock is reserved from transfers until decided.</div></div>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Ref</th><th>Centre</th><th>Type</th><th class="num">Qty</th><th>By</th><th></th></tr></thead><tbody>${preq.map(r=>`<tr><td class="mono">${esc(r.code||'')}</td><td>${loc(r.location_id).code}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'')}</td></tr>`).join('')}</tbody></table></div>`:'';
   const body=`<div class="card pad" style="margin-bottom:16px"><dl class="kv"><dt>SKU</dt><dd class="mono">${esc(it.sku||'—')}</dd><dt>Category</dt><dd>${esc(it.category||'—')}</dd><dt>Cost</dt><dd class="tnum">${money(it.unit_cost)}</dd><dt>Price</dt><dd class="tnum">${money(it.price)}</dd><dt>Margin</dt><dd class="tnum">${it.price>0?Math.round((1-it.unit_cost/it.price)*100):0}%</dd></dl></div>
-    ${(ROLE==='super_admin'||ROLE==='national_admin')?`<div class="card pad" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><div style="font-weight:600;font-size:13px">Packets per carton (box)</div><div style="font-size:11.5px;color:var(--muted)">Drives the box figures shown on transfers, orders, picking & reports</div></div><div class="spacer"></div><input id="it-ppc" type="number" min="1" value="${it.pack_per_carton||''}" placeholder="e.g. 24" style="max-width:120px"><button class="btn primary" id="it-ppc-save">Save</button></div>`:(it.pack_per_carton?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${it.pack_per_carton} packets / carton</div>`:'')}
+    ${natX('catalog.edit')?`<div class="card pad" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div><div style="font-weight:600;font-size:13px">Packets per carton (box)</div><div style="font-size:11.5px;color:var(--muted)">Drives the box figures shown on transfers, orders, picking & reports</div></div><div class="spacer"></div><input id="it-ppc" type="number" min="1" value="${it.pack_per_carton||''}" placeholder="e.g. 24" style="max-width:120px"><button class="btn primary" id="it-ppc-save">Save</button></div>`:(it.pack_per_carton?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px">${it.pack_per_carton} packets / carton</div>`:'')}
     <h3 style="font-size:13px;margin:0 0 8px">Stock by location <span style="font-weight:400;color:var(--faint)">— click a centre to see its history</span></h3>
     <div class="tablewrap"><table style="min-width:0"><thead><tr><th>Location</th><th>Stored at</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">Value</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${preqHtml}
@@ -6824,8 +6848,8 @@ function openItem(id){
   const foot=`<button class="btn" data-close>Close</button>`
     +`<button class="btn" id="it-loc">${svg(I.location,15)} Set location</button>`
     +`<button class="btn" id="it-label">${svg(I.receipt,15)} Shelf label</button>`
-    +(['super_admin','national_admin'].includes(ROLE)?`<button class="btn" id="it-sqchk">${svg(I.check,15)} Check with Square</button>`:'')
-    +(ROLE==='super_admin'?`<button class="btn" id="it-transfer">${svg(I.transfer,15)} Transfer</button><button class="btn" id="it-recount">${svg(I.stocktake,15)} Recount</button>`:'')
+    +(natX('sync.run')?`<button class="btn" id="it-sqchk">${svg(I.check,15)} Check with Square</button>`:'')
+    +(hasX('adjust.direct')?`<button class="btn" id="it-transfer">${svg(I.transfer,15)} Transfer</button><button class="btn" id="it-recount">${svg(I.stocktake,15)} Recount</button>`:'')
     +(HELPER?'':`<button class="btn" id="it-adj">${svg(I.sync,15)} Adjust stock</button>`)+`<button class="btn" style="color:var(--crit);border-color:var(--crit)" id="it-dmg">${svg(I.alert,15)} Report damage / expired</button>`;
   slideover(it.name,it.sku||'',body,foot);
   document.getElementById('ih-kind').onchange=e=>{ihKind=e.target.value;renderItemHistory(id);};
@@ -6966,9 +6990,9 @@ function newSupplier(s){
 function vLocations(v){
   const unlinked=S.locations.filter(l=>!l.square_location_id).length;
   v.innerHTML=`
-    ${can('sync.run')?`<div class="toolbar"><div class="spacer"></div>${ROLE==='super_admin'?`<button class="btn" data-act="new-location">${svg(I.plus,16)} Add location</button>`:''}<button class="btn primary" data-act="link-locs">${svg(I.sync,16)} Pull locations from Square</button></div>`:''}
+    ${can('sync.run')?`<div class="toolbar"><div class="spacer"></div>${hasX('location.manage')?`<button class="btn" data-act="new-location">${svg(I.plus,16)} Add location</button>`:''}<button class="btn primary" data-act="link-locs">${svg(I.sync,16)} Pull locations from Square</button></div>`:''}
     ${!S.locations.length?`<div class="banner info">${svg(I.info,17)}<div>No locations yet. Click <b>Pull locations from Square</b> to bring them in automatically.</div></div>`:(unlinked?`<div class="banner warn">${svg(I.alert,17)}<div><b>${unlinked} location(s) not linked to Square yet</b> — stock won’t sync for them. Click <b>Pull locations from Square</b>. If a centre isn’t in Square (e.g. a stockroom), that’s fine — just leave it.</div></div>`:`<div class="banner info">${svg(I.check,17)}<div>All locations are linked to Square.</div></div>`)}
-    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th><th class="num">Areas</th>${adminPlus()?'<th></th>':''}</tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td><td class="num tnum">${storeAreasAt(l.id).length||'—'}</td>${adminPlus()?`<td style="text-align:right;white-space:nowrap">${(!scoped()||mine(l.id))?`<button class="btn sm" data-areas="${l.id}">Storage areas</button>`:''}${ROLE==='super_admin'&&!l.is_hub?` <button class="btn sm" data-sethub="${l.id}">Set as hub</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
+    <div class="tablewrap"><table><thead><tr><th>Location</th><th>Code</th><th>City</th><th class="num">Stock value</th><th>Square</th><th>Type</th><th class="num">Areas</th>${adminPlus()?'<th></th>':''}</tr></thead><tbody>${S.locations.map(l=>{let val=0;S.items.forEach(i=>val+=onHand(l.id,i.id)*i.unit_cost);return `<tr><td style="font-weight:600">${esc(l.name)}</td><td><span class="tag">${l.code}</span></td><td style="color:var(--muted)">${esc(l.city||'—')}</td><td class="num tnum">${money(val)}</td><td>${l.square_location_id?'<span class="pill p-done">linked</span>':'<span class="tag" style="color:var(--warn)">not linked</span>'}</td><td>${l.is_hub?'<span class="pill p-appr">Hub</span>':'<span class="tag">Store</span>'}</td><td class="num tnum">${storeAreasAt(l.id).length||'—'}</td>${adminPlus()?`<td style="text-align:right;white-space:nowrap">${(!scoped()||mine(l.id))?`<button class="btn sm" data-areas="${l.id}">Storage areas</button>`:''}${hasX('location.manage')&&!l.is_hub?` <button class="btn sm" data-sethub="${l.id}">Set as hub</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`;
   v.querySelectorAll('[data-areas]').forEach(b=>b.onclick=()=>openStoreAreas(b.dataset.areas));
 }
 const adminPlus=()=>['admin','national_admin','super_admin'].includes(ROLE);
@@ -7015,8 +7039,8 @@ function openStoreAreas(locId){
   const render=()=>{const areas=(S.storeAreas||[]).filter(a=>a.location_id===locId).sort((a,b)=>a.name.localeCompare(b.name));
     return `<div class="banner info">${svg(I.info,17)}<div>Storage areas for <b>${esc(loc(locId).name)}</b>${isHub(locId)?' (Central Warehouse — users must pick from this list, so keep it accurate).':' (optional; other centres also allow free-text locations).'}</div></div>
     <div class="field"><label>Centre address (shown on the dispatch / picking slip)</label><div style="display:flex;gap:8px;align-items:flex-start"><textarea id="sa-addr" rows="2" placeholder="Street, suburb, state, postcode" style="flex:1">${esc(loc(locId).address||'')}</textarea><button class="btn" id="sa-addrsave">Save</button></div></div>
-    ${ROLE==='super_admin'?`<div class="field"><label>Cash goes into the drawer at</label><div style="display:flex;gap:8px"><select id="sa-drawer" style="flex:1"><option value="">${esc(loc(locId).name)} (its own drawer)</option>${S.locations.filter(x=>x.id!==locId&&!x.cash_drawer_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).cash_drawer_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-drawersave">Save</button></div><div class="hint">For locations that share one cash drawer (e.g. Shayona Cafe and SYDKD → Sydney). Their Square cash sales are added to that drawer’s expected cash.</div></div>`:''}
-    ${ROLE==='super_admin'?`<div class="field"><label>Sells from the stock at</label><div style="display:flex;gap:8px"><select id="sa-stockfrom" style="flex:1"><option value="">${esc(loc(locId).name)} (its own stock)</option>${S.locations.filter(x=>x.id!==locId&&!x.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).stock_from_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-stockfromsave">Save</button></div><div class="hint">For locations that sell another location’s stock (e.g. SYDKD, Shayona Cafe, Shayona, Food Van → Sydney). From the moment you save, every Square sale here is taken off that location’s stock instead — in the app and in Square. Existing stock isn’t moved.${loc(locId).stock_from_since?` <b>On since ${fmtDT(loc(locId).stock_from_since)}.</b>`:''}</div></div>`:''}
+    ${hasX('location.manage')?`<div class="field"><label>Cash goes into the drawer at</label><div style="display:flex;gap:8px"><select id="sa-drawer" style="flex:1"><option value="">${esc(loc(locId).name)} (its own drawer)</option>${S.locations.filter(x=>x.id!==locId&&!x.cash_drawer_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).cash_drawer_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-drawersave">Save</button></div><div class="hint">For locations that share one cash drawer (e.g. Shayona Cafe and SYDKD → Sydney). Their Square cash sales are added to that drawer’s expected cash.</div></div>`:''}
+    ${hasX('location.manage')?`<div class="field"><label>Sells from the stock at</label><div style="display:flex;gap:8px"><select id="sa-stockfrom" style="flex:1"><option value="">${esc(loc(locId).name)} (its own stock)</option>${S.locations.filter(x=>x.id!==locId&&!x.stock_from_loc).sort((a,b)=>String(a.name).localeCompare(String(b.name))).map(x=>`<option value="${x.id}"${loc(locId).stock_from_loc===x.id?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="btn" id="sa-stockfromsave">Save</button></div><div class="hint">For locations that sell another location’s stock (e.g. SYDKD, Shayona Cafe, Shayona, Food Van → Sydney). From the moment you save, every Square sale here is taken off that location’s stock instead — in the app and in Square. Existing stock isn’t moved.${loc(locId).stock_from_since?` <b>On since ${fmtDT(loc(locId).stock_from_since)}.</b>`:''}</div></div>`:''}
     <div id="sa-mgr"></div>`;};
   modal('Storage areas & settings',loc(locId).name,render(),`<button class="btn primary" data-close>Done</button>`,'full form');
   const wire=()=>{
@@ -7081,7 +7105,7 @@ function vUsers(v){
     <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">${svg(I.info,13)} People removed from (or made inactive in) the Square team lose access at the next team sync (every night, or click <b>Sync team from Square</b>). Their history is kept.</div>
     <div class="tablewrap"><table><thead><tr><th style="cursor:pointer;user-select:none" data-usort="name">Name${arrow('name')}</th><th>Email</th><th style="cursor:pointer;user-select:none" data-usort="role">Role${arrow('role')}</th><th>Centres</th>${ROLE==='super_admin'?'<th>Access</th>':''}</tr></thead><tbody>${uList.map(u=>`<tr style="${u.active===false?'opacity:.55':''}"><td style="font-weight:600">${esc(u.full_name||'—')}${u.access_scope==='stocktake'?` <span class="tag" title="Can only count stock${u.expires_at?' until '+fmtDate(u.expires_at):''} — manage from Stock Take → Stock-take helpers">Stock-take helper${u.expires_at?' · until '+fmtDate(u.expires_at):''}</span>`:''}${u.active===false?`<div><span class="pill p-cancel">Removed</span> <span style="font-size:11px;color:var(--faint);font-weight:400">${esc(u.deactivated_reason||'')}${u.deactivated_at?' · '+fmtDate(u.deactivated_at):''}</span></div>`:''}</td><td class="mono" style="font-size:12px;color:var(--muted)">${esc(u.email||'')}</td>
       <td>${can('*')?`<select data-urole="${u.id}" style="padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--ink)">${Object.keys(ROLES).map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${ROLES[r].name}</option>`).join('')}</select>`:`<span class="pill ${badge(u.role)}">${(ROLES[u.role]||{name:u.role}).name}</span>`}</td>
-      <td>${centresCell(u)}</td>${ROLE==='super_admin'?`<td style="white-space:nowrap">${u.role==='super_admin'?'<span class="tag">Always</span>':u.active===false?`<button class="btn sm" data-uon="${u.id}">Reinstate</button>`:`<button class="btn sm" data-uoff="${u.id}" style="color:var(--crit);border-color:var(--crit)">Remove access</button>`}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
+      <td>${centresCell(u)}</td>${ROLE==='super_admin'?`<td style="white-space:nowrap">${u.role!=='super_admin'&&u.active!==false&&u.access_scope!=='stocktake'?`<button class="btn sm" data-uperm="${u.id}" title="Give this person extra access on top of their role">Extra access${(u.extra_perms||[]).length?` <span class="tag" style="background:var(--accent-soft,#e3f2f1);color:var(--accent-ink,#0b6b63)">${(u.extra_perms||[]).length}</span>`:''}</button> `:''}${u.role==='super_admin'?'<span class="tag">Always</span>':u.active===false?`<button class="btn sm" data-uon="${u.id}">Reinstate</button>`:`<button class="btn sm" data-uoff="${u.id}" style="color:var(--crit);border-color:var(--crit)">Remove access</button>`}</td>`:''}</tr>`).join('')}</tbody></table></div>`;
   const uo=document.getElementById('usr-off');if(uo)uo.onchange=e=>{usrShowOff=e.target.checked;renderView();};
   v.querySelectorAll('[data-uoff]').forEach(b=>b.onclick=()=>{const u=S.profiles.find(p=>p.id===b.dataset.uoff);if(!u)return;
     stackConfirm('Remove access',u.full_name||u.email,`<div>Remove <b>${esc(u.full_name||u.email)}</b>'s access to the portal? They can no longer see or change anything. Their history is kept and you can reinstate them any time.</div><div style="margin-top:8px;font-size:12.5px;color:var(--muted)">If they are still an active member of the Square team, also remove them in Square — otherwise leave that to the team sync.</div>`,{okLabel:'Remove access',danger:true,onOk:async()=>{const{error}=await sb.from('profiles').update({active:false,deactivated_at:new Date().toISOString(),deactivated_reason:'Removed by Super Admin'}).eq('id',u.id);if(error)return toast(error.message,true);toast('Access removed');refresh();}});});
@@ -7093,6 +7117,24 @@ function vUsers(v){
     document.querySelectorAll('[data-urole]').forEach(s=>s.onchange=async e=>{const{error}=await sb.from('profiles').update({role:e.target.value}).eq('id',e.target.dataset.urole);toast(error?error.message:'Role updated',!!error);if(!error)refresh();});
     document.querySelectorAll('[data-ucentres]').forEach(b=>b.onclick=()=>editUserCentres(b.dataset.ucentres));
   }
+  if(ROLE==='super_admin')document.querySelectorAll('[data-uperm]').forEach(b=>b.onclick=()=>editUserAccess(b.dataset.uperm));
+}
+/* EXTRA ACCESS (migration 114) — tick what this person may do on top of their role */
+function editUserAccess(id){
+  const u=S.profiles.find(p=>p.id===id);if(!u)return;
+  const have=new Set(u.extra_perms||[]);const rd=ROLES[u.role]||ROLES.user;
+  const inRole=k=>rd.can.includes('*')||rd.can.includes(k)||(k==='all_centres'&&!rd.scoped)||(['reports.national','sales','reverse','adjust.direct','location.manage','cash.manage'].includes(k)?false:
+    (u.role==='national_admin'&&['adjust.approve','stocktake.manage','po.approve','warehouse.manage','sync.run','catalog.edit','sales.refresh','audit.view'].includes(k))||(u.role==='admin'&&['transfer.dispatch','sales.refresh','audit.view','supplier.manage'].includes(k)));
+  const groups=[...new Set(ACCESS_LIST.map(a=>a.g))];
+  const body=`<div class="banner info">${svg(I.lock,17)}<div>Extra access for <b>${esc(u.full_name||u.email)}</b> on top of their role (<b>${esc(rd.name)}</b>). Things their role already allows are marked <span class="tag">in role</span>. Users &amp; Roles and backups always stay Super Admin only.</div></div>
+    ${groups.map(g=>`<div class="sec-h" style="margin-top:12px"><h3>${esc(g)}</h3></div>${ACCESS_LIST.filter(a=>a.g===g).map(a=>{const r=inRole(a.k);return `<label style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:${r?'default':'pointer'};${r?'opacity:.6':''}"><input type="checkbox" data-ak="${a.k}"${have.has(a.k)||r?' checked':''}${r?' disabled':''} style="margin-top:3px"><span><b>${esc(a.l)}</b>${r?' <span class="tag">in role</span>':''}<br><span style="font-size:12.5px;color:var(--muted)">${esc(a.d)}</span></span></label>`;}).join('')}`).join('')}`;
+  modal('Extra access',u.full_name||u.email,body,`<button class="btn" data-close>Cancel</button><button class="btn" id="ua-none">Remove all</button><button class="btn primary" id="ua-save">${svg(I.check,15)} Save access</button>`,'form');
+  const save=async keys=>{const{error}=await sb.from('profiles').update({extra_perms:keys}).eq('id',id);
+    if(error)return toast(/extra_perms/i.test(error.message||'')?'Run 114_user_extra_access.sql in Supabase first':(error.message||'Save failed'),true);
+    u.extra_perms=keys;try{sb.rpc('log_system_event',{p_action:'Extra access for '+(u.full_name||u.email)+': '+(keys.length?keys.join(', '):'none')});}catch(e){}
+    closeOverlay();toast(keys.length?`Saved — ${keys.length} extra access${keys.length===1?'':'es'}. They see it next time they open or refresh the app.`:'Extra access removed');renderView();};
+  document.getElementById('ua-save').onclick=()=>save([...document.querySelectorAll('[data-ak]')].filter(c=>c.checked&&!c.disabled).map(c=>c.dataset.ak));
+  document.getElementById('ua-none').onclick=()=>save([]);
 }
 function editUserCentres(id){
   const u=S.profiles.find(p=>p.id===id);const have=new Set((S.plocs||[]).filter(p=>p.profile_id===id).map(p=>p.location_id));
@@ -8037,7 +8079,7 @@ function perfPickerBind(onChange){const d=document.getElementById('pf-pick');if(
   document.addEventListener('click',function out(e){if(!document.body.contains(d)){document.removeEventListener('click',out);return;}if(d.open&&!d.contains(e.target))d.open=false;});}
 const fyOfYm=ym=>{const p=ym.split('-');const y=+p[0],m=+p[1];return m>=7?y+1:y;};
 const prevYm=ym=>{const p=ym.split('-');return ((+p[0])-1)+'-'+p[1];};
-const perfCanRefresh=()=>['admin','national_admin','super_admin'].includes(ROLE);
+const perfCanRefresh=()=>admX('sales.refresh');
 let perfTab='sales';
 function vPerf(v){
   destroyCharts();
@@ -8047,7 +8089,7 @@ function vPerf(v){
   if(perfTab==='insights')return vInsights(box);
   if(perfTab==='cathall')return vCatHall(box);
   if(perfTab==='diwali')return vDiwali(box);
-  if(ROLE==='super_admin')return vPerfNational(box);
+  if(hasX('reports.national'))return vPerfNational(box);
   if(ROLE==='national_admin')return vPerfFull(box);
   return vPerfCentre(box);                      // Users and Admins: the centre report
 }
@@ -8636,7 +8678,7 @@ async function renderPerfNational(){
 /* ---------- Damage / Expiry requests ---------- */
 let ajFilter='pending';
 function vAdjustments(v){
-  const isApprover=['national_admin','super_admin'].includes(ROLE);
+  const isApprover=natX('adjust.approve');
   v.innerHTML=`<div class="rep-controls">
       <div class="banner info" style="flex:1;margin:0">${svg(I.alert,17)}<div>Report <b>damaged</b> or <b>expired</b> stock. A request reserves the quantity (it can’t be transferred) and needs ${isApprover?'approval by a National/Super Admin (you can approve here)':'National / Super Admin approval'} before stock is removed and pushed to Square.</div></div>
       <div class="rep-actions no-print"><select class="filter" id="aj-f"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected/Cancelled</option><option value="all">All</option></select><button class="btn primary" id="aj-new">${svg(I.plus,15)} Report damage/expired</button></div>
@@ -8647,12 +8689,12 @@ function vAdjustments(v){
 }
 function renderAdjList(){
   const el=document.getElementById('aj-list');if(!el)return;
-  const isApprover=['national_admin','super_admin'].includes(ROLE);
+  const isApprover=natX('adjust.approve');
   let list=(S.adjReq||[]).filter(r=>!scoped()||mine(r.location_id));
   if(ajFilter==='pending')list=list.filter(r=>r.status==='pending');
   else if(ajFilter==='approved')list=list.filter(r=>r.status==='approved');
   else if(ajFilter==='rejected')list=list.filter(r=>r.status==='rejected'||r.status==='cancelled');
-  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Ref</th><th>Date</th><th>Centre</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Value</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>${list.map(r=>{const it=item(r.item_id);const val=r.qty*(it.unit_cost||0);return `<tr><td class="mono">${esc(r.code||'')}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(r.requested_at)}</td><td>${loc(r.location_id).code}</td><td>${esc(it.name)}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td class="num tnum">${money(val)}</td><td>${adjPill(r.status)}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'—')):(r.status==='approved'&&ROLE==='super_admin'?`<button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rv="${r.id}" title="Put the stock back">Reverse</button> `:'')+(r.status==='reversed'&&r.reverse_reason?`<span style="font-size:12px;color:var(--muted)">Reversed: ${esc(r.reverse_reason)}</span>`:(r.decision_note?`<span style="font-size:12px;color:var(--muted)">${esc(r.decision_note)}</span>`:''))}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.alert,34)}<div>No ${ajFilter==='all'?'':esc(ajFilter)+' '}requests.</div></div>`;
+  el.innerHTML=list.length?`<div class="tablewrap"><table><thead><tr><th>Ref</th><th>Date</th><th>Centre</th><th>Item</th><th>Type</th><th class="num">Qty</th><th class="num">Value</th><th>Status</th><th>By</th><th></th></tr></thead><tbody>${list.map(r=>{const it=item(r.item_id);const val=r.qty*(it.unit_cost||0);return `<tr><td class="mono">${esc(r.code||'')}</td><td style="white-space:nowrap;font-size:12.5px;color:var(--muted)">${fmtDate(r.requested_at)}</td><td>${loc(r.location_id).code}</td><td>${esc(it.name)}</td><td style="color:var(--crit);font-weight:600">${esc(lkind(r.kind).l)}</td><td class="num tnum">${r.qty}</td><td class="num tnum">${money(val)}</td><td>${adjPill(r.status)}</td><td style="font-size:12px">${esc(pname(r.requested_by))}</td><td style="white-space:nowrap;text-align:right">${r.status==='pending'?(isApprover?`<button class="btn sm" data-areq-ap="${r.id}">Approve</button> <button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rj="${r.id}">Reject</button>`:(ME&&r.requested_by===ME.id?`<button class="btn sm" data-areq-cx="${r.id}">Cancel</button>`:'—')):(r.status==='approved'&&hasX('reverse')?`<button class="btn sm" style="color:var(--crit);border-color:var(--crit)" data-areq-rv="${r.id}" title="Put the stock back">Reverse</button> `:'')+(r.status==='reversed'&&r.reverse_reason?`<span style="font-size:12px;color:var(--muted)">Reversed: ${esc(r.reverse_reason)}</span>`:(r.decision_note?`<span style="font-size:12px;color:var(--muted)">${esc(r.decision_note)}</span>`:''))}</td></tr>`;}).join('')}</tbody></table></div>`:`<div class="card empty">${svg(I.alert,34)}<div>No ${ajFilter==='all'?'':esc(ajFilter)+' '}requests.</div></div>`;
   el.querySelectorAll('[data-areq-ap]').forEach(b=>b.onclick=()=>decideAdjust('approve_adjustment',b.dataset.areqAp,true));
   el.querySelectorAll('[data-areq-rj]').forEach(b=>b.onclick=()=>decideAdjust('reject_adjustment',b.dataset.areqRj,false));
   el.querySelectorAll('[data-areq-rv]').forEach(b=>b.onclick=()=>{const r=(S.adjReq||[]).find(x=>x.id===b.dataset.areqRv);if(r)doReverse('reverse_adjustment',r.id,lkind(r.kind).l.toLowerCase()+' write-off '+(r.code||''),[r.location_id],[r.item_id]);});
@@ -8776,7 +8818,7 @@ async function salesRefresh(){if(route!=='sales')return;await loadSalesData();if
 async function slAfterChange(reopenId){await loadSalesData();if(route==='sales'){renderSalesTab();}try{renderNav();}catch(e){}if(reopenId)openInvoice(reopenId);}
 function vInvoices(v){salesTab='invoice';return vSales(v);}
 async function vSales(v){
-  if(ROLE!=='super_admin'){v.innerHTML=`<div class="card empty">${svg(I.lock,34)}<div>Sales is available to the Super Admin only.</div></div>`;return;}
+  if(!hasX('sales')){v.innerHTML=`<div class="card empty">${svg(I.lock,34)}<div>Sales is available to the Super Admin only.</div></div>`;return;}
   v.innerHTML=`<div class="rep-tabs no-print" style="margin:0 0 14px;flex-wrap:wrap">${SALES_TABS.map(([id,l,ic])=>`<button class="rep-tab ${salesTab===id?'active':''}" data-sltab="${id}">${svg(ic,16)} ${esc(l)}</button>`).join('')}</div><div id="sl-body"><div class="card empty">${svg(I.cost,30)}<div>Loading…</div></div></div>`;
   v.querySelectorAll('[data-sltab]').forEach(b=>b.onclick=()=>slSetTab(b.dataset.sltab));
   await loadSalesData();
@@ -9504,7 +9546,7 @@ async function saveInvoice(issue,after){
       if(full){if(after==='docket')printDocket(full);else printInvoice(full);}}catch(e){toast('Saved, but the PDF could not be made: '+(e.message||e),true);}}
 }
 function openInvoice(id){
-  if(!window._slLoaded&&ROLE==='super_admin'){loadSalesData().then(()=>openInvoice(id),()=>{window._slLoaded=true;openInvoice(id);});return;}
+  if(!window._slLoaded&&hasX('sales')){loadSalesData().then(()=>openInvoice(id),()=>{window._slLoaded=true;openInvoice(id);});return;}
   const inv=invList.find(x=>x.id===id)||(S.invoices||[]).find(x=>x.id===id);if(!inv)return;
   const rateTxt=(inv.gst_rate||10)+'%';
   const pays=invPayments.filter(p=>p.invoice_id===inv.id),paid=invPaid(inv),bal=invBal(inv),odd=invOverdueDays(inv);
@@ -9805,7 +9847,7 @@ function vSettings(v){
   v.innerHTML=`<div class="card pad" style="margin-bottom:16px"><div class="sq-title" style="font-size:15px">${svg(I.sync,18)} Square connection</div>
     <dl class="kv" style="margin-top:12px"><dt>Locations</dt><dd>${S.locations.length}</dd><dt>Catalog items</dt><dd>${S.items.length}</dd></dl>
     <div style="font-size:13px;color:var(--muted);margin-top:12px">Live stock and new items flow <b>in</b> from Square automatically (webhooks + every 10 minutes). Every stock change made in the app is queued and sent <b>back</b> to Square within about 2 minutes, retried automatically until it succeeds, and recorded in the sync log below.</div></div>
-    ${(ROLE==='super_admin'||ROLE==='national_admin')?`<div id="sq-health" style="margin-bottom:16px"><div class="card empty">${svg(I.sync,26)}<div>Loading sync health…</div></div></div>`:''}
+    ${natX('sync.run')?`<div id="sq-health" style="margin-bottom:16px"><div class="card empty">${svg(I.sync,26)}<div>Loading sync health…</div></div></div>`:''}
     ${can('sync.run')?`<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" data-act="sync">${svg(I.sync,16)} Pull from Square (full)</button><button class="btn" data-act="velocity">${svg(I.chart,16)} Update sales data</button><button class="btn" data-act="ledger">${svg(I.receipt,16)} Update Square history</button><button class="btn" data-act="push-all">${svg(I.truck,16)} Push all stock to Square</button></div>
     <div style="font-size:12px;color:var(--faint);margin-top:10px">“Update sales data” pulls 12 months of Square sales for Centre Insights and the 2-month transfer recommendations. “Update Square history” adds every Square stock change (sales, returns, stock added / removed, waste, order holds, transfers and counts done in Square) to each item’s History — it also runs by itself every 30 minutes. “Push all stock to Square” overwrites Square’s counts with this system’s — use only for a full reconcile.</div>`:`<span class="lock">${svg(I.lock,14)} Sync is National/Super Admin only</span>`}
     ${ROLE==='super_admin'?`<div class="card pad" style="margin-top:16px"><div class="sq-title" style="font-size:15px">${svg(I.receipt,18)} Backups</div>
@@ -9813,7 +9855,7 @@ function vSettings(v){
       <div id="bk-status" style="font-size:13px;margin-bottom:12px;color:var(--muted)">Loading…</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="bk-now">${svg(I.check,16)} Back up now</button><button class="btn" id="bk-dl">${svg(I.box,16)} Download latest (JSON)</button></div>
       <div id="bk-list" style="margin-top:14px"></div></div>`:''}`;
-  if(ROLE==='super_admin'||ROLE==='national_admin')renderSyncHealth();
+  if(natX('sync.run'))renderSyncHealth();
   if(ROLE==='super_admin'){
     const bn=document.getElementById('bk-now');if(bn)bn.onclick=runBackupNow;
     const bd=document.getElementById('bk-dl');if(bd)bd.onclick=()=>downloadBackup();
@@ -9825,7 +9867,7 @@ let slogFilter={dir:'all',status:'all',kind:'all',days:'7',q:''},sqQueueShow='op
 const SQ_KIND={stock:'Stock',reconcile:'Full reconcile',catalog:'Catalogue & stock',range:'Centre range',delete:'Delete items',sales:'Sales data',perf:'Sales report',team:'Team',cash:'Cash sales'};
 const SQ_ST={ok:['OK','p-done'],partial:['Partly failed','p-req'],failed:['Failed','p-cancel'],info:['Info','p-draft']};
 async function loadSqStatus(){
-  if(!(ROLE==='super_admin'||ROLE==='national_admin'))return;
+  if(!natX('sync.run'))return;
   try{const{data,error}=await sb.rpc('sq_status');if(!error&&data){S.sqStatus=data;renderNav();renderSq();}}catch(e){}
 }
 function sqKick(){clearTimeout(window._sqKickT);window._sqKickT=setTimeout(()=>{sb.functions.invoke('square-push',{body:{mode:'queue'}}).then(()=>{if(route==='settings')renderSyncHealth();loadSqStatus();},()=>{});},1500);}
@@ -9851,7 +9893,7 @@ async function renderSyncHealth(){
   box.innerHTML=`<div class="card pad">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div class="sq-title" style="font-size:15px;margin:0">${svg(I.check,18)} Sync health</div>
       <span class="pill ${healthy?'p-done':'p-cancel'}">${healthy?'All changes reaching Square':'Needs attention'}</span><div style="flex:1"></div>
-      <button class="btn sm" id="sqh-refresh">${svg(I.sync,14)} Refresh</button>${ROLE==='super_admin'?`<button class="btn sm primary" id="sqh-send">Send waiting changes now</button>`:''}</div>
+      <button class="btn sm" id="sqh-refresh">${svg(I.sync,14)} Refresh</button>${hasX('sync.run')?`<button class="btn sm primary" id="sqh-send">Send waiting changes now</button>`:''}</div>
     <div class="tiles" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin:0 0 14px">
       <div class="tile ${s.pending?'accent':''}"><div class="lbl">Waiting to send</div><div class="val tnum">${s.pending||0}</div><div class="meta">${s.stuck?`<b style="color:var(--crit)">${s.stuck} waiting over 1 hour</b>`:'sent within ~2 minutes'}</div></div>
       <div class="tile ${s.failed?'crit':''}"><div class="lbl">Failed (needs you)</div><div class="val tnum" style="${s.failed?'color:var(--crit)':''}">${s.failed||0}</div><div class="meta">after 8 automatic tries</div></div>
@@ -9861,9 +9903,9 @@ async function renderSyncHealth(){
     </div>
     <div class="section-head" style="margin-top:4px"><h2 style="font-size:15px">Changes waiting for Square</h2><small>Created automatically for every stock change in the app</small></div>
     <div class="toolbar" style="margin-bottom:8px"><select class="filter" id="sqq-show"><option value="open">Waiting &amp; failed</option><option value="all">Include sent (last 500)</option></select><div class="spacer"></div>
-      ${ROLE==='super_admin'&&failedQ.length?`<button class="btn sm" id="sqq-retry-all">Retry all ${failedQ.length} failed</button><button class="btn sm" id="sqq-dismiss" style="color:var(--crit);border-color:var(--crit)">Dismiss selected…</button>`:''}</div>
-    ${queue.length?`<div class="tablewrap" style="max-height:340px;overflow:auto"><table><thead><tr>${ROLE==='super_admin'?'<th></th>':''}<th>Since</th><th>Item</th><th>Centre</th><th class="num">Change</th><th>Status</th><th class="num">Tries</th><th>Next try / result</th><th>Last error</th>${ROLE==='super_admin'?'<th></th>':''}</tr></thead><tbody>${queue.map(r=>{const it=item(r.item_id);const stp={pending:['Waiting','p-req'],processing:['Sending','p-transit'],failed:['Failed','p-cancel'],done:['Sent','p-done'],skipped:['Dismissed','p-draft']}[r.status]||[r.status,'p-draft'];
-      return `<tr>${ROLE==='super_admin'?`<td>${r.status==='failed'||r.status==='pending'?`<input type="checkbox" data-sqsel="${r.id}">`:''}</td>`:''}<td style="white-space:nowrap;font-size:12px;color:var(--muted)">${fmtDT(r.created_at)}</td><td><b>${esc(it.name)}</b><div style="font-size:11px;color:var(--faint)">${esc(it.sku||'')} · ${esc(r.reason||'')}</div></td><td>${esc(loc(r.location_id).name)}</td><td class="num tnum">${r.absolute?'<span title="Stock-take count — sent as the counted figure">count</span>':(r.delta>0?'+':'')+r.delta}</td><td><span class="pill ${stp[1]}">${stp[0]}</span></td><td class="num tnum">${r.attempts}</td><td style="font-size:12px;white-space:nowrap">${r.status==='done'?`Square ${r.square_before!=null?Math.round(r.square_before)+' → ':''}${r.pushed_qty!=null?Math.round(r.pushed_qty):''}`:r.status==='pending'?ago(r.next_at).replace(' ago','').replace('just now','now'):''}</td><td style="font-size:12px;color:var(--crit);max-width:260px">${esc(r.last_error||'')}</td>${ROLE==='super_admin'?`<td>${r.status==='failed'?`<button class="btn sm" data-sqretry="${r.id}">Retry</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`:`<div class="banner info" style="margin:0">${svg(I.check,17)}<div>Nothing waiting — every change made in the app has reached Square.</div></div>`}
+      ${hasX('sync.run')&&failedQ.length?`<button class="btn sm" id="sqq-retry-all">Retry all ${failedQ.length} failed</button><button class="btn sm" id="sqq-dismiss" style="color:var(--crit);border-color:var(--crit)">Dismiss selected…</button>`:''}</div>
+    ${queue.length?`<div class="tablewrap" style="max-height:340px;overflow:auto"><table><thead><tr>${hasX('sync.run')?'<th></th>':''}<th>Since</th><th>Item</th><th>Centre</th><th class="num">Change</th><th>Status</th><th class="num">Tries</th><th>Next try / result</th><th>Last error</th>${hasX('sync.run')?'<th></th>':''}</tr></thead><tbody>${queue.map(r=>{const it=item(r.item_id);const stp={pending:['Waiting','p-req'],processing:['Sending','p-transit'],failed:['Failed','p-cancel'],done:['Sent','p-done'],skipped:['Dismissed','p-draft']}[r.status]||[r.status,'p-draft'];
+      return `<tr>${hasX('sync.run')?`<td>${r.status==='failed'||r.status==='pending'?`<input type="checkbox" data-sqsel="${r.id}">`:''}</td>`:''}<td style="white-space:nowrap;font-size:12px;color:var(--muted)">${fmtDT(r.created_at)}</td><td><b>${esc(it.name)}</b><div style="font-size:11px;color:var(--faint)">${esc(it.sku||'')} · ${esc(r.reason||'')}</div></td><td>${esc(loc(r.location_id).name)}</td><td class="num tnum">${r.absolute?'<span title="Stock-take count — sent as the counted figure">count</span>':(r.delta>0?'+':'')+r.delta}</td><td><span class="pill ${stp[1]}">${stp[0]}</span></td><td class="num tnum">${r.attempts}</td><td style="font-size:12px;white-space:nowrap">${r.status==='done'?`Square ${r.square_before!=null?Math.round(r.square_before)+' → ':''}${r.pushed_qty!=null?Math.round(r.pushed_qty):''}`:r.status==='pending'?ago(r.next_at).replace(' ago','').replace('just now','now'):''}</td><td style="font-size:12px;color:var(--crit);max-width:260px">${esc(r.last_error||'')}</td>${hasX('sync.run')?`<td>${r.status==='failed'?`<button class="btn sm" data-sqretry="${r.id}">Retry</button>`:''}</td>`:''}</tr>`;}).join('')}</tbody></table></div>`:`<div class="banner info" style="margin:0">${svg(I.check,17)}<div>Nothing waiting — every change made in the app has reached Square.</div></div>`}
     <div class="section-head" style="margin-top:18px"><h2 style="font-size:15px">Sync log</h2><small>Every push to and pull from Square</small></div>
     <div class="toolbar" style="margin-bottom:8px;flex-wrap:wrap">
       <select class="filter" id="sl-dir"><option value="all">Push &amp; pull</option><option value="push">Pushes to Square</option><option value="pull">Pulls from Square</option><option value="webhook">Webhook</option></select>
